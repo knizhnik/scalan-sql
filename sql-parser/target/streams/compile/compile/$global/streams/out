@@ -1,0 +1,110 @@
+[0m[[0mdebug[0m] [0m[0m
+[0m[[0mdebug[0m] [0mInitial source changes: [0m
+[0m[[0mdebug[0m] [0m	removed:Set()[0m
+[0m[[0mdebug[0m] [0m	added: Set(/home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlAST.scala, /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlToScalaConverter.scala, /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlCompiler.scala, /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlParser.scala)[0m
+[0m[[0mdebug[0m] [0m	modified: Set()[0m
+[0m[[0mdebug[0m] [0mRemoved products: Set()[0m
+[0m[[0mdebug[0m] [0mExternal API changes: API Changes: Set()[0m
+[0m[[0mdebug[0m] [0mModified binary dependencies: Set()[0m
+[0m[[0mdebug[0m] [0mInitial directly invalidated sources: Set(/home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlAST.scala, /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlToScalaConverter.scala, /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlCompiler.scala, /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlParser.scala)[0m
+[0m[[0mdebug[0m] [0m[0m
+[0m[[0mdebug[0m] [0mSources indirectly invalidated by:[0m
+[0m[[0mdebug[0m] [0m	product: Set()[0m
+[0m[[0mdebug[0m] [0m	binary dep: Set()[0m
+[0m[[0mdebug[0m] [0m	external source: Set()[0m
+[0m[[0mdebug[0m] [0mAll initially invalidated sources: Set(/home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlAST.scala, /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlToScalaConverter.scala, /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlCompiler.scala, /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlParser.scala)[0m
+[0m[[0mdebug[0m] [0mRecompiling all 4 sources: invalidated sources (4) exceeded 50.0% of all sources[0m
+[0m[[0minfo[0m] [0mCompiling 4 Scala sources to /home/knizhnik/scalan-ce/sql-parser/target/scala-2.10/classes...[0m
+[0m[[0mdebug[0m] [0mGetting compiler-interface from component compiler for Scala 2.10.4[0m
+[0m[[0mdebug[0m] [0mGetting compiler-interface from component compiler for Scala 2.10.4[0m
+[0m[[0mdebug[0m] [0mRunning cached compiler 2c56365, interfacing (CompilerInterface) with Scala compiler version 2.10.4[0m
+[0m[[0mdebug[0m] [0mCalling Scala compiler with arguments  (CompilerInterface):[0m
+[0m[[0mdebug[0m] [0m	-encoding[0m
+[0m[[0mdebug[0m] [0m	UTF-8[0m
+[0m[[0mdebug[0m] [0m	-unchecked[0m
+[0m[[0mdebug[0m] [0m	-deprecation[0m
+[0m[[0mdebug[0m] [0m	-Xlint[0m
+[0m[[0mdebug[0m] [0m	-feature[0m
+[0m[[0mdebug[0m] [0m	-Ywarn-adapted-args[0m
+[0m[[0mdebug[0m] [0m	-Ywarn-inaccessible[0m
+[0m[[0mdebug[0m] [0m	-Ywarn-nullary-override[0m
+[0m[[0mdebug[0m] [0m	-language:higherKinds[0m
+[0m[[0mdebug[0m] [0m	-language:implicitConversions[0m
+[0m[[0mdebug[0m] [0m	-language:existentials[0m
+[0m[[0mdebug[0m] [0m	-language:experimental.macros[0m
+[0m[[0mdebug[0m] [0m	-bootclasspath[0m
+[0m[[0mdebug[0m] [0m	/usr/lib/jvm/java-7-oracle/jre/lib/resources.jar:/usr/lib/jvm/java-7-oracle/jre/lib/rt.jar:/usr/lib/jvm/java-7-oracle/jre/lib/sunrsasign.jar:/usr/lib/jvm/java-7-oracle/jre/lib/jsse.jar:/usr/lib/jvm/java-7-oracle/jre/lib/jce.jar:/usr/lib/jvm/java-7-oracle/jre/lib/charsets.jar:/usr/lib/jvm/java-7-oracle/jre/lib/jfr.jar:/usr/lib/jvm/java-7-oracle/jre/classes:/home/knizhnik/.sbt/boot/scala-2.10.4/lib/scala-library.jar[0m
+[0m[[0mdebug[0m] [0m	-classpath[0m
+[0m[[0mdebug[0m] [0m	/home/knizhnik/scalan-ce/sql-parser/target/scala-2.10/classes:/home/knizhnik/scalan-ce/common/target/scala-2.10/classes:/home/knizhnik/.sbt/boot/scala-2.10.4/lib/scala-compiler.jar:/home/knizhnik/.sbt/boot/scala-2.10.4/lib/scala-reflect.jar:/home/knizhnik/.ivy2/cache/com.typesafe.scala-logging/scala-logging-slf4j_2.10/jars/scala-logging-slf4j_2.10-2.1.2.jar:/home/knizhnik/.ivy2/cache/com.typesafe.scala-logging/scala-logging-api_2.10/jars/scala-logging-api_2.10-2.1.2.jar:/home/knizhnik/.ivy2/cache/org.slf4j/slf4j-api/jars/slf4j-api-1.7.7.jar:/home/knizhnik/.ivy2/cache/ch.qos.logback/logback-classic/jars/logback-classic-1.1.2.jar:/home/knizhnik/.ivy2/cache/ch.qos.logback/logback-core/jars/logback-core-1.1.2.jar[0m
+[0m[[33mwarn[0m] [0m/home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlCompiler.scala:117: match may not be exhaustive.[0m
+[0m[[33mwarn[0m] [0mIt would fail on the following inputs: AvgExpr(_), CountExpr(), MaxExpr(_), MinExpr(_), SumExpr(_)[0m
+[0m[[33mwarn[0m] [0m    expr match {[0m
+[0m[[33mwarn[0m] [0m    ^[0m
+[0m[[33mwarn[0m] [0m/home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlCompiler.scala:199: match may not be exhaustive.[0m
+[0m[[33mwarn[0m] [0mIt would fail on the following inputs: AddExpr(_, _), AvgExpr(_), CastExpr(_, _), ColumnRef(_, _), CountExpr(), DivExpr(_, _), DoubleLiteral(_), GeExpr(_, _), GtExpr(_, _), IntLiteral(_), LeExpr(_, _), LtExpr(_, _), MaxExpr(_), MinExpr(_), MulExpr(_, _), NeExpr(_, _), NegExpr(_), NotExpr(_), OrExpr(_, _), StrLiteral(_), SubExpr(_, _), SumExpr(_)[0m
+[0m[[33mwarn[0m] [0m    on match {[0m
+[0m[[33mwarn[0m] [0m    ^[0m
+[0m[[33mwarn[0m] [0m/home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlCompiler.scala:223: match may not be exhaustive.[0m
+[0m[[33mwarn[0m] [0mIt would fail on the following inputs: AddExpr(_, _), AndExpr(_, _), CastExpr(_, _), ColumnRef(_, _), DivExpr(_, _), DoubleLiteral(_), EqExpr(_, _), GeExpr(_, _), GtExpr(_, _), IntLiteral(_), LeExpr(_, _), LtExpr(_, _), MulExpr(_, _), NeExpr(_, _), NegExpr(_), NotExpr(_), OrExpr(_, _), StrLiteral(_), SubExpr(_, _)[0m
+[0m[[33mwarn[0m] [0m    agg match {[0m
+[0m[[33mwarn[0m] [0m    ^[0m
+[0m[[33mwarn[0m] [0m/home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlCompiler.scala:233: match may not be exhaustive.[0m
+[0m[[33mwarn[0m] [0mIt would fail on the following inputs: AddExpr(_, _), AndExpr(_, _), CastExpr(_, _), ColumnRef(_, _), DivExpr(_, _), DoubleLiteral(_), EqExpr(_, _), GeExpr(_, _), GtExpr(_, _), IntLiteral(_), LeExpr(_, _), LtExpr(_, _), MulExpr(_, _), NeExpr(_, _), NegExpr(_), NotExpr(_), OrExpr(_, _), StrLiteral(_), SubExpr(_, _)[0m
+[0m[[33mwarn[0m] [0m    agg match {[0m
+[0m[[33mwarn[0m] [0m    ^[0m
+[0m[[33mwarn[0m] [0m/home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlCompiler.scala:252: match may not be exhaustive.[0m
+[0m[[33mwarn[0m] [0mIt would fail on the following inputs: AddExpr(_, _), AndExpr(_, _), CastExpr(_, _), DivExpr(_, _), DoubleLiteral(_), EqExpr(_, _), GeExpr(_, _), GtExpr(_, _), IntLiteral(_), LeExpr(_, _), LtExpr(_, _), MulExpr(_, _), NeExpr(_, _), NegExpr(_), NotExpr(_), OrExpr(_, _), StrLiteral(_), SubExpr(_, _)[0m
+[0m[[33mwarn[0m] [0m    columns(i) match {[0m
+[0m[[33mwarn[0m] [0m           ^[0m
+[0m[[33mwarn[0m] [0m5 warnings found[0m
+[0m[[0mdebug[0m] [0mScala compilation took 12.696634318 s[0m
+[0m[[0mdebug[0m] [0mInvalidating /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlAST.scala...[0m
+[0m[[0mdebug[0m] [0mInvalidating (transitively) by inheritance from /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlAST.scala...[0m
+[0m[[0mdebug[0m] [0mInitial set of included nodes: Set(/home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlAST.scala)[0m
+[0m[[0mdebug[0m] [0mIncluding /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlCompiler.scala by /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlAST.scala[0m
+[0m[[0mdebug[0m] [0mIncluding /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlToScalaConverter.scala by /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlCompiler.scala[0m
+[0m[[0mdebug[0m] [0mIncluding /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlParser.scala by /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlAST.scala[0m
+[0m[[0mdebug[0m] [0mInvalidated by transitive inheritance dependency: Set(/home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlParser.scala, /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlToScalaConverter.scala, /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlAST.scala, /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlCompiler.scala)[0m
+[0m[[0mdebug[0m] [0mThe /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlAST.scala source file has the following regular definitions changed:[0m
+[0m[[0mdebug[0m] [0m	notify, StringType, unapply, curried, parent, BoolType, ExprList, outer, name, predicate, printStackTrace, getLocalizedMessage, LtExpr, wait, SumExpr, GroupBy, Column, copy$default$2, $asInstanceOf, Operator, compose, SelectStmt, CreateIndexStmt, GtExpr, productArity, equals, SqlAST, fillInStackTrace, LongType, ctype, initCause, MaxExpr, asInstanceOf, CastExpr, GeExpr, synchronized, left, SqlException, SubExpr, $isInstanceOf, NegExpr, andThen, getCause, OrderBy, IntType, tupled, SubSelect, TableAlias, opd, expr, sqlName, canEqual, NotExpr, AvgExpr, productPrefix, notifyAll, readResolve, StrLiteral, AndExpr, to, scalaName, key, isInstanceOf, getStackTrace, DoubleType, getStackTraceElement, alias, MinExpr, <init>, getMessage, setStackTrace, schema, Script, on, apply, Statement, getSuppressed, ColumnRef, CharType, MulExpr, ==, Project, operator, columns, getStackTraceDepth, DoubleLiteral, clone, DateType, addSuppressed, Table, DivExpr, $init$, ColumnList, copy$default$3, copy, CreateTableStmt, toString, Join, msg, AddExpr, EqExpr, CountExpr, LeExpr, !=, ColumnType, getClass, copy$default$1, Schema, inner, Filter, ColumnExpr, ne, IntLiteral, value, eq, productIterator, Scan, right, ##, finalize, OrExpr, table, productElement, hashCode, NeExpr.[0m
+[0m[[0mdebug[0m] [0mAll member reference dependencies will be considered within this context.[0m
+[0m[[0mdebug[0m] [0mThe following modified names cause invalidation of /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlCompiler.scala: Set(StringType, parent, BoolType, ExprList, outer, name, predicate, Column, Operator, CreateIndexStmt, SqlAST, ctype, asInstanceOf, left, IntType, opd, expr, sqlName, AvgExpr, to, scalaName, key, isInstanceOf, DoubleType, alias, <init>, schema, on, apply, ColumnRef, ==, operator, columns, DateType, Table, ColumnList, toString, CountExpr, !=, ColumnType, inner, ColumnExpr, ne, value, eq, right, table)[0m
+[0m[[0mdebug[0m] [0mThe following modified names cause invalidation of /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlCompiler.scala: Set(StringType, parent, BoolType, ExprList, outer, name, predicate, Column, Operator, CreateIndexStmt, SqlAST, ctype, asInstanceOf, left, IntType, opd, expr, sqlName, AvgExpr, to, scalaName, key, isInstanceOf, DoubleType, alias, <init>, schema, on, apply, ColumnRef, ==, operator, columns, DateType, Table, ColumnList, toString, CountExpr, !=, ColumnType, inner, ColumnExpr, ne, value, eq, right, table)[0m
+[0m[[0mdebug[0m] [0mThe following modified names cause invalidation of /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlParser.scala: Set(StringType, BoolType, ExprList, name, Column, Operator, SelectStmt, SqlAST, LongType, asInstanceOf, IntType, opd, expr, sqlName, key, isInstanceOf, DoubleType, alias, <init>, schema, Script, on, apply, Statement, ColumnRef, CharType, operator, columns, DateType, Table, ColumnList, toString, ColumnType, Schema, ColumnExpr, ne, table)[0m
+[0m[[0mdebug[0m] [0mThe following modified names cause invalidation of /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlToScalaConverter.scala: Set(<init>, apply)[0m
+[0m[[0mdebug[0m] [0mInvalidating /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlToScalaConverter.scala...[0m
+[0m[[0mdebug[0m] [0mInvalidating (transitively) by inheritance from /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlToScalaConverter.scala...[0m
+[0m[[0mdebug[0m] [0mInitial set of included nodes: Set(/home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlToScalaConverter.scala)[0m
+[0m[[0mdebug[0m] [0mInvalidated by transitive inheritance dependency: Set(/home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlToScalaConverter.scala)[0m
+[0m[[0mdebug[0m] [0mThe /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlToScalaConverter.scala source file has the following implicit definitions changed:[0m
+[0m[[0mdebug[0m] [0m	regex, accept, TypeImplicitCasts, literal, parser2packrat.[0m
+[0m[[0mdebug[0m] [0mAll member reference dependencies will be considered within this context.[0m
+[0m[[0mdebug[0m] [0mInvalidating /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlCompiler.scala...[0m
+[0m[[0mdebug[0m] [0mInvalidating (transitively) by inheritance from /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlCompiler.scala...[0m
+[0m[[0mdebug[0m] [0mInitial set of included nodes: Set(/home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlCompiler.scala)[0m
+[0m[[0mdebug[0m] [0mIncluding /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlToScalaConverter.scala by /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlCompiler.scala[0m
+[0m[[0mdebug[0m] [0mInvalidated by transitive inheritance dependency: Set(/home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlToScalaConverter.scala, /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlCompiler.scala)[0m
+[0m[[0mdebug[0m] [0mThe /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlCompiler.scala source file has the following implicit definitions changed:[0m
+[0m[[0mdebug[0m] [0m	regex, accept, TypeImplicitCasts, literal, parser2packrat.[0m
+[0m[[0mdebug[0m] [0mAll member reference dependencies will be considered within this context.[0m
+[0m[[0mdebug[0m] [0mThe following member ref dependencies of /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlCompiler.scala are invalidated:[0m
+[0m[[0mdebug[0m] [0m	/home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlToScalaConverter.scala[0m
+[0m[[0mdebug[0m] [0mInvalidating /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlParser.scala...[0m
+[0m[[0mdebug[0m] [0mInvalidating (transitively) by inheritance from /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlParser.scala...[0m
+[0m[[0mdebug[0m] [0mInitial set of included nodes: Set(/home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlParser.scala)[0m
+[0m[[0mdebug[0m] [0mIncluding /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlCompiler.scala by /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlParser.scala[0m
+[0m[[0mdebug[0m] [0mIncluding /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlToScalaConverter.scala by /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlCompiler.scala[0m
+[0m[[0mdebug[0m] [0mInvalidated by transitive inheritance dependency: Set(/home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlParser.scala, /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlToScalaConverter.scala, /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlCompiler.scala)[0m
+[0m[[0mdebug[0m] [0mThe /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlParser.scala source file has the following implicit definitions changed:[0m
+[0m[[0mdebug[0m] [0m	literal, accept, regex, parser2packrat.[0m
+[0m[[0mdebug[0m] [0mAll member reference dependencies will be considered within this context.[0m
+[0m[[0mdebug[0m] [0mThe following member ref dependencies of /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlParser.scala are invalidated:[0m
+[0m[[0mdebug[0m] [0m	/home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlCompiler.scala[0m
+[0m[[0mdebug[0m] [0mThe following member ref dependencies of /home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlCompiler.scala are invalidated:[0m
+[0m[[0mdebug[0m] [0m	/home/knizhnik/scalan-ce/sql-parser/src/main/scala/scalan/sql/parser/SqlToScalaConverter.scala[0m
+[0m[[0mdebug[0m] [0mNew invalidations:[0m
+[0m[[0mdebug[0m] [0m	Set()[0m
+[0m[[0mdebug[0m] [0mInitial set of included nodes: Set()[0m
+[0m[[0mdebug[0m] [0mPreviously invalidated, but (transitively) depend on new invalidations:[0m
+[0m[[0mdebug[0m] [0m	Set()[0m
+[0m[[0mdebug[0m] [0mAll newly invalidated sources after taking into account (previously) recompiled sources:Set()[0m

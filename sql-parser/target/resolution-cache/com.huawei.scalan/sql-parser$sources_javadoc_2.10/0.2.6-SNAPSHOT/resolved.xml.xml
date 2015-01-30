@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ivy-module version="2.0" xmlns:e="http://ant.apache.org/ivy/extra">
+	<info organisation="com.huawei.scalan"
+		module="sql-parser$sources_javadoc_2.10"
+		revision="0.2.6-SNAPSHOT"
+		status="integration"
+		publication="20150130135959"
+	/>
+	<configurations>
+		<conf name="compile" visibility="public" description=""/>
+		<conf name="runtime" visibility="public" description="" extends="compile"/>
+		<conf name="test" visibility="public" description="" extends="runtime"/>
+		<conf name="provided" visibility="public" description=""/>
+		<conf name="optional" visibility="public" description=""/>
+		<conf name="it" visibility="public" description="" extends="test"/>
+		<conf name="perf" visibility="public" description="" extends="test"/>
+		<conf name="compile-internal" visibility="private" description="" extends="compile,optional,provided"/>
+		<conf name="runtime-internal" visibility="private" description="" extends="runtime,optional"/>
+		<conf name="test-internal" visibility="private" description="" extends="test,optional,provided"/>
+		<conf name="plugin" visibility="private" description=""/>
+		<conf name="sources" visibility="public" description=""/>
+		<conf name="docs" visibility="public" description=""/>
+		<conf name="pom" visibility="public" description=""/>
+		<conf name="scala-tool" visibility="private" description=""/>
+	</configurations>
+	<publications>
+	</publications>
+	<dependencies>
+		<dependency org="org.scala-lang" name="scala-compiler" rev="2.10.4" transitive="false" conf="compile->default(compile);runtime->default(compile);test->default(compile);it->default(compile);perf->default(compile);compile-internal->default(compile);runtime-internal->default(compile);test-internal->default(compile);scala-tool->default(compile)">
+			<artifact name="scala-compiler" type="src" ext="jar" conf="sources" e:classifier="sources"/>
+			<artifact name="scala-compiler" type="doc" ext="jar" conf="docs" e:classifier="javadoc"/>
+		</dependency>
+		<dependency org="org.scala-lang" name="scala-library" rev="2.10.4" transitive="false" conf="compile->default(compile);runtime->default(compile);test->default(compile);it->default(compile);perf->default(compile);compile-internal->default(compile);runtime-internal->default(compile);test-internal->default(compile);scala-tool->default(compile)" info.apiURL="http://www.scala-lang.org/api/2.10.4/">
+			<artifact name="scala-library" type="src" ext="jar" conf="sources" e:classifier="sources"/>
+			<artifact name="scala-library" type="doc" ext="jar" conf="docs" e:classifier="javadoc"/>
+		</dependency>
+		<dependency org="org.scala-lang" name="scala-reflect" rev="2.10.4" transitive="false" conf="compile->default(compile);runtime->default(compile);test->default(compile);it->default(compile);perf->default(compile);compile-internal->default(compile);runtime-internal->default(compile);test-internal->default(compile);scala-tool->default(compile)" info.apiURL="http://www.scala-lang.org/api/2.10.4/">
+			<artifact name="scala-reflect" type="src" ext="jar" conf="sources" e:classifier="sources"/>
+			<artifact name="scala-reflect" type="doc" ext="jar" conf="docs" e:classifier="javadoc"/>
+		</dependency>
+		<dependency org="com.huawei.scalan" name="common_2.10" rev="0.2.6-SNAPSHOT" transitive="false" conf="compile->default(compile);runtime->default(compile);test->default(compile);it->default(compile);perf->default(compile);compile-internal->default(compile);runtime-internal->default(compile);test-internal->default(compile)">
+			<artifact name="common_2.10" type="src" ext="jar" conf="sources" e:classifier="sources"/>
+			<artifact name="common_2.10" type="doc" ext="jar" conf="docs" e:classifier="javadoc"/>
+		</dependency>
+		<dependency org="com.typesafe.scala-logging" name="scala-logging-slf4j_2.10" rev="2.1.2" transitive="false" conf="compile->default(compile);runtime->default(compile);test->default(compile);it->default(compile);perf->default(compile);compile-internal->default(compile);runtime-internal->default(compile);test-internal->default(compile)">
+			<artifact name="scala-logging-slf4j_2.10" type="src" ext="jar" conf="sources" e:classifier="sources"/>
+			<artifact name="scala-logging-slf4j_2.10" type="doc" ext="jar" conf="docs" e:classifier="javadoc"/>
+		</dependency>
+		<dependency org="com.typesafe.scala-logging" name="scala-logging-api_2.10" rev="2.1.2" transitive="false" conf="compile->default(compile);runtime->default(compile);test->default(compile);it->default(compile);perf->default(compile);compile-internal->default(compile);runtime-internal->default(compile);test-internal->default(compile)">
+			<artifact name="scala-logging-api_2.10" type="src" ext="jar" conf="sources" e:classifier="sources"/>
+			<artifact name="scala-logging-api_2.10" type="doc" ext="jar" conf="docs" e:classifier="javadoc"/>
+		</dependency>
+		<dependency org="org.slf4j" name="slf4j-api" rev="1.7.7" transitive="false" conf="compile->default(compile);runtime->default(compile);test->default(compile);it->default(compile);perf->default(compile);compile-internal->default(compile);runtime-internal->default(compile);test-internal->default(compile)">
+			<artifact name="slf4j-api" type="src" ext="jar" conf="sources" e:classifier="sources"/>
+			<artifact name="slf4j-api" type="doc" ext="jar" conf="docs" e:classifier="javadoc"/>
+		</dependency>
+		<dependency org="ch.qos.logback" name="logback-classic" rev="1.1.2" transitive="false" conf="compile->default(compile);runtime->default(compile);test->default(compile);it->default(compile);perf->default(compile);compile-internal->default(compile);runtime-internal->default(compile);test-internal->default(compile)">
+			<artifact name="logback-classic" type="src" ext="jar" conf="sources" e:classifier="sources"/>
+			<artifact name="logback-classic" type="doc" ext="jar" conf="docs" e:classifier="javadoc"/>
+		</dependency>
+		<dependency org="ch.qos.logback" name="logback-core" rev="1.1.2" transitive="false" conf="compile->default(compile);runtime->default(compile);test->default(compile);it->default(compile);perf->default(compile);compile-internal->default(compile);runtime-internal->default(compile);test-internal->default(compile)">
+			<artifact name="logback-core" type="src" ext="jar" conf="sources" e:classifier="sources"/>
+			<artifact name="logback-core" type="doc" ext="jar" conf="docs" e:classifier="javadoc"/>
+		</dependency>
+		<dependency org="org.scalatest" name="scalatest_2.10" rev="2.2.3" transitive="false" conf="test->default(compile);it->default(compile);perf->default(compile);test-internal->default(compile)">
+			<artifact name="scalatest_2.10" type="src" ext="jar" conf="sources" e:classifier="sources"/>
+			<artifact name="scalatest_2.10" type="doc" ext="jar" conf="docs" e:classifier="javadoc"/>
+		</dependency>
+		<dependency org="org.scalacheck" name="scalacheck_2.10" rev="1.12.1" transitive="false" conf="test->default(compile);it->default(compile);perf->default(compile);test-internal->default(compile)">
+			<artifact name="scalacheck_2.10" type="src" ext="jar" conf="sources" e:classifier="sources"/>
+			<artifact name="scalacheck_2.10" type="doc" ext="jar" conf="docs" e:classifier="javadoc"/>
+		</dependency>
+		<dependency org="org.scala-sbt" name="test-interface" rev="1.0" transitive="false" conf="test->default(compile);it->default(compile);perf->default(compile);test-internal->default(compile)">
+			<artifact name="test-interface" type="src" ext="jar" conf="sources" e:classifier="sources"/>
+			<artifact name="test-interface" type="doc" ext="jar" conf="docs" e:classifier="javadoc"/>
+		</dependency>
+		<dependency org="com.github.axel22" name="scalameter_2.10" rev="0.5-M2" transitive="false" conf="test->default(compile);it->default(compile);perf->default(compile);test-internal->default(compile)">
+			<artifact name="scalameter_2.10" type="src" ext="jar" conf="sources" e:classifier="sources"/>
+			<artifact name="scalameter_2.10" type="doc" ext="jar" conf="docs" e:classifier="javadoc"/>
+		</dependency>
+		<dependency org="com.github.wookietreiber" name="scala-chart_2.10" rev="0.4.0" transitive="false" conf="test->default(compile);it->default(compile);perf->default(compile);test-internal->default(compile)" info.apiURL="http://wookietreiber.github.io/scala-chart/latest/api/">
+			<artifact name="scala-chart_2.10" type="src" ext="jar" conf="sources" e:classifier="sources"/>
+			<artifact name="scala-chart_2.10" type="doc" ext="jar" conf="docs" e:classifier="javadoc"/>
+		</dependency>
+		<dependency org="org.jfree" name="jfreechart" rev="1.0.17" transitive="false" conf="test->default(compile);it->default(compile);perf->default(compile);test-internal->default(compile)">
+			<artifact name="jfreechart" type="src" ext="jar" conf="sources" e:classifier="sources"/>
+			<artifact name="jfreechart" type="doc" ext="jar" conf="docs" e:classifier="javadoc"/>
+		</dependency>
+		<dependency org="org.jfree" name="jcommon" rev="1.0.21" transitive="false" conf="test->default(compile);it->default(compile);perf->default(compile);test-internal->default(compile)">
+			<artifact name="jcommon" type="src" ext="jar" conf="sources" e:classifier="sources"/>
+			<artifact name="jcommon" type="doc" ext="jar" conf="docs" e:classifier="javadoc"/>
+		</dependency>
+		<dependency org="xml-apis" name="xml-apis" rev="1.3.04" transitive="false" conf="test->default(compile);it->default(compile);perf->default(compile);test-internal->default(compile)">
+			<artifact name="xml-apis" type="src" ext="jar" conf="sources" e:classifier="sources"/>
+		</dependency>
+		<dependency org="org.scala-lang" name="scala-swing" rev="2.10.4" transitive="false" conf="test->default(compile);it->default(compile);perf->default(compile);test-internal->default(compile)" info.apiURL="http://www.scala-lang.org/api/2.10.4/">
+			<artifact name="scala-swing" type="src" ext="jar" conf="sources" e:classifier="sources"/>
+			<artifact name="scala-swing" type="doc" ext="jar" conf="docs" e:classifier="javadoc"/>
+		</dependency>
+		<dependency org="org.apache.commons" name="commons-math3" rev="3.2" transitive="false" conf="test->default(compile);it->default(compile);perf->default(compile);test-internal->default(compile)">
+			<artifact name="commons-math3" type="src" ext="jar" conf="sources" e:classifier="sources"/>
+			<artifact name="commons-math3" type="doc" ext="jar" conf="docs" e:classifier="javadoc"/>
+		</dependency>
+		<dependency org="org.scala-lang" name="jline" rev="2.10.4" transitive="false" conf="scala-tool->default(compile)">
+			<artifact name="jline" type="src" ext="jar" conf="sources" e:classifier="sources"/>
+			<artifact name="jline" type="doc" ext="jar" conf="docs" e:classifier="javadoc"/>
+		</dependency>
+		<dependency org="org.fusesource.jansi" name="jansi" rev="1.4" transitive="false" conf="scala-tool->default(compile)">
+			<artifact name="jansi" type="src" ext="jar" conf="sources" e:classifier="sources"/>
+			<artifact name="jansi" type="doc" ext="jar" conf="docs" e:classifier="javadoc"/>
+		</dependency>
+	</dependencies>
+</ivy-module>

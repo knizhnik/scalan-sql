@@ -1,0 +1,27 @@
+package scalan.sql
+
+import scalan._
+import scalan.common.Default
+import scalan.common.Lazy
+import scalan.common.OverloadHack.Overloaded1
+
+trait Sql extends Base { self: SqlDsl =>
+
+  trait Table[A] extends Base { 
+    def select[P:Elem](projection: Rep[A => P]): Rep[Table[R]]
+    def where(predicate: Rep[A => Boolean]): Rep[Table[A]]
+
+    def sum[E:Elem](agg: Rep[A => E])(implicit n:Numeric[E]): Rep[E]
+    def max[E:Elem](agg: Rep[A => E])(implicit o:Ordering[E]): Rep[E]
+    def min[E:Elem](agg: Rep[A => E])(implicit o:Ordering[E]): Rep[E]
+    def avg[E:Elem](agg: Rep[A => E])(implicit n:Numeric[E]): Rep[Double]
+    def count: Rep[Int]
+
+    def sortBy[O: Elem](by: Rep[A] => Rep[O])(implicit o:Ordering[O]): Arr[A]
+    def groupBy[G: Elem](by: Rep[A] => Rep[G]): PM[E, Table[A]]
+
+    def join[B:Elem, K:Elem](with: Table[O])(outKey: Rep[A => K], inKey: Rep[B => K]): Table[(A,B)]
+
+         
+    def insert(record: Rep[A]): Rep[Table[A]]
+    de
