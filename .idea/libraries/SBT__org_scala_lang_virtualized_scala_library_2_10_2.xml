@@ -1,0 +1,17 @@
+<component name="libraryTable">
+  <library name="SBT: org.scala-lang.virtualized:scala-library:2.10.2" type="Scala">
+    <properties>
+      <option name="languageLevel" value="Scala_2_10" />
+      <compiler-classpath>
+        <root url="file://$USER_HOME$/.ivy2/cache/org.scala-lang.virtualized/scala-compiler/jars/scala-compiler-2.10.2.jar" />
+        <root url="file://$USER_HOME$/.ivy2/cache/org.scala-lang.virtualized/scala-library/jars/scala-library-2.10.2.jar" />
+        <root url="file://$USER_HOME$/.ivy2/cache/org.scala-lang.virtualized/scala-reflect/jars/scala-reflect-2.10.2.jar" />
+      </compiler-classpath>
+    </properties>
+    <CLASSES>
+      <root url="jar://$USER_HOME$/.ivy2/cache/org.scala-lang.virtualized/scala-library/jars/scala-library-2.10.2.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>

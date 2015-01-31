@@ -101,28 +101,30 @@ class LmsSqlItTests extends CommunitySqlItTests {
     compareOutputWithSequential(progStaged)(progSeq.sqlDsl, progStaged.sqlDsl, "sqlDsl", in)
   }
 
+  val tpch_data = "benchmarks/sql/lineitem-small.tbl"
+  
   test("tpchQ1") {
-    val in = scala.io.Source.fromFile("/home/knizhnik/tpch-data/sf1/lineitem-small.tbl").getLines().map(s => s.split("\\|")).toArray
+    val in = scala.io.Source.fromFile(tpch_data).getLines().map(s => s.split("\\|")).toArray
     compareOutputWithSequential(progStaged)(progSeq.tpchQ1, progStaged.tpchQ1, "tpchQ1", in)
   }
 
   test("TPCH_Q1_hor_seq") {
-    val in = scala.io.Source.fromFile("/home/knizhnik/tpch-data/sf1/lineitem-small.tbl").getLines().map(s => s.split("\\|")).toArray
+    val in = scala.io.Source.fromFile(tpch_data).getLines().map(s => s.split("\\|")).toArray
     compareOutputWithSequential(progStaged)(progSeq.TPCH_Q1_hor_seq, progStaged.TPCH_Q1_hor_seq, "TPCH_Q1_hor_seq", in)
   }
 
   test("TPCH_Q1_ver_seq") {
-    val in = scala.io.Source.fromFile("/home/knizhnik/tpch-data/sf1/lineitem-small.tbl").getLines().map(s => s.split("\\|")).toArray
+    val in = scala.io.Source.fromFile(tpch_data).getLines().map(s => s.split("\\|")).toArray
     compareOutputWithSequential(progStaged)(progSeq.TPCH_Q1_ver_seq, progStaged.TPCH_Q1_ver_seq, "TPCH_Q1_ver_seq", in)
   }
 
   test("TPCH_Q1_hor_par") {
-    val in = scala.io.Source.fromFile("/home/knizhnik/tpch-data/sf1/lineitem-small.tbl").getLines().map(s => s.split("\\|")).toArray
+    val in = scala.io.Source.fromFile(tpch_data).getLines().map(s => s.split("\\|")).toArray
     compareOutputWithSequential(progStaged)(progSeq.TPCH_Q1_hor_par, progStaged.TPCH_Q1_hor_par, "TPCH_Q1_hor_par", in)
   }
 
   test("TPCH_Q1_ver_par") {
-    val in = scala.io.Source.fromFile("/home/knizhnik/tpch-data/sf1/lineitem-small.tbl").getLines().map(s => s.split("\\|")).toArray
+    val in = scala.io.Source.fromFile(tpch_data).getLines().map(s => s.split("\\|")).toArray
     compareOutputWithSequential(progStaged)(progSeq.TPCH_Q1_ver_par, progStaged.TPCH_Q1_ver_par, "TPCH_Q1_ver_par", in)
   }
 

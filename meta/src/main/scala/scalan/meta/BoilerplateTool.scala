@@ -1,15 +1,14 @@
 package scalan.meta
 
 object StarterBoilerplateTool extends BoilerplateTool {
-  val starterTypeSynonims = Set(
-    "My"
-    // declare your type synonims for User Defined types here (see type PA[A] = Rep[PArray[A]])
+  val starterTypeSynonims = Map(
+    "RThrow" -> "Throwable"
   )
   lazy val starterConfig = CodegenConfig(
-    srcPath = "src/main/scala",
+    srcPath = "../community-edition/src/main/scala",
     entityFiles = List(
-      "scalan/examples/MyArrays.scala"
-    ),
+     "scalan/sql/Sql.scala",
+      "scalan/sql/Tables.scala"),
     seqContextTrait = "ScalanSeq",
     stagedContextTrait = "ScalanExp",
     extraImports = List(
