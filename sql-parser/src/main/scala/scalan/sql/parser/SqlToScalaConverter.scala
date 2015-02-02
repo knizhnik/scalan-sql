@@ -6,7 +6,7 @@ import scalan.util.FileUtil
  * Created by knizhnik on 1/17/15.
  */
 object SqlToScalaConverter extends  SqlCompiler {
-  val defaultTargets = Array("../community-edition/src/main/scala/scalan/sql/Schema.sql")
+  val defaultTargets = Array("community-edition/src/main/scala/scalan/sql/Schema.sql")
   val packageName = "scalan.sql"
 
   def main(args: Array[String]): Unit = {
