@@ -109,7 +109,7 @@ trait Sql extends Base { sql: SqlDsl =>
     override def insert(record: Rep[R]): Rep[Table[R]] = {
       val key = getKey(record) 
 //      ((IF (map.contains(key)) THEN THROW("Unique constraint violation") ELSE map.update(key, record)) | table.insert(record) | self)
-      (map.applyIf(key, x => THROW("Unique constraint violation"), Unit => map.update(key, record)) | table.insert(record) | self)
+      (map.applyIf(key, x => THROW("Unique constraint violation"), () => map.update(key, record)) | table.insert(record) | self)
     }
 
     override def Join[I:Elem, K:Elem](inner: Rep[Table[I]])(outKey: Rep[R=>K], inKey: Rep[I=>K]): Rep[Table[(R,I)]] = table.Join(inner)(outKey, inKey)
@@ -555,10 +555,10 @@ trait SqlDslExp extends SqlDsl with impl.SqlExp with ScalanExp with MultiMapsDsl
       excludeKey(predicate, keyPath) match {
         case Some(refinement) =>
           //          ReadOnlyTable(IF (index.map.contains(key)) THEN ArrayBuffer(index.map.apply(key)).toArray.filterBy(refinement.asInstanceOf[Exp[R=>Boolean]]) ELSE ArrayBuffer.empty[R].toArray)
-          ReadOnlyTable(index.map.applyIf(key, ArrayBuffer(_).toArray.filterBy(refinement.asInstanceOf[Exp[R => Boolean]]), Unit => ArrayBuffer.empty[R].toArray))
+          ReadOnlyTable(index.map.applyIf(key, ArrayBuffer(_).toArray.filterBy(refinement.asInstanceOf[Exp[R => Boolean]]), () => ArrayBuffer.empty[R].toArray))
         case None =>
           //          ReadOnlyTable(IF (index.map.contains(key)) THEN ArrayBuffer(index.map.apply(key)).toArray ELSE ArrayBuffer.empty[R].toArray)
-          ReadOnlyTable(index.map.applyIf(key, ArrayBuffer(_).toArray, Unit => ArrayBuffer.empty[R].toArray))
+          ReadOnlyTable(index.map.applyIf(key, ArrayBuffer(_).toArray, () => ArrayBuffer.empty[R].toArray))
       }
     } else {
       //      println("Failed to find path '" + keyPath + "' in unique index")
@@ -574,10 +574,10 @@ trait SqlDslExp extends SqlDsl with impl.SqlExp with ScalanExp with MultiMapsDsl
       excludeKey(predicate, keyPath) match {
         case Some(refinement) =>
           //          ReadOnlyTable(IF (index.map.contains(key)) THEN index.map.apply(key).toArray.filterBy(refinement.asInstanceOf[Exp[R=>Boolean]]) ELSE ArrayBuffer.empty[R].toArray)
-          ReadOnlyTable(index.map.applyIf[Array[R]](key, _.toArray.filterBy(refinement.asInstanceOf[Exp[R => Boolean]]), Unit => ArrayBuffer.empty[R].toArray))
+          ReadOnlyTable(index.map.applyIf[Array[R]](key, _.toArray.filterBy(refinement.asInstanceOf[Exp[R => Boolean]]), () => ArrayBuffer.empty[R].toArray))
         case None =>
           //          ReadOnlyTable(IF (index.map.contains(key)) THEN index.map.apply(key).toArray ELSE ArrayBuffer.empty[R].toArray)
-          ReadOnlyTable(index.map.applyIf[Array[R]](key, _.toArray, Unit => ArrayBuffer.empty[R].toArray))
+          ReadOnlyTable(index.map.applyIf[Array[R]](key, _.toArray, () => ArrayBuffer.empty[R].toArray))
       }
     } else {
       //     println("Failed to find path '" + keyPath + "' in non-unique index")

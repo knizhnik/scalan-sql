@@ -21,8 +21,7 @@ trait SqlAbs extends Scalan with Sql
   trait TableCompanionElem extends CompanionElem[TableCompanionAbs]
   implicit lazy val TableCompanionElem: TableCompanionElem = new TableCompanionElem {
     lazy val tag = typeTag[TableCompanionAbs]
-    lazy val getDefaultRep = Default.defaultVal(Table)
-    //def getDefaultRep = defaultRep
+    protected def getDefaultRep = Table
   }
 
   abstract class TableCompanionAbs extends CompanionBase[TableCompanionAbs] with TableCompanion {
@@ -75,8 +74,7 @@ trait SqlAbs extends Scalan with Sql
 
   class BaseTableCompanionElem extends CompanionElem[BaseTableCompanionAbs] {
     lazy val tag = typeTag[BaseTableCompanionAbs]
-    lazy val getDefaultRep = Default.defaultVal(BaseTable)
-    //def getDefaultRep = defaultRep
+    protected def getDefaultRep = BaseTable
   }
   implicit lazy val BaseTableCompanionElem: BaseTableCompanionElem = new BaseTableCompanionElem
 
@@ -137,8 +135,7 @@ trait SqlAbs extends Scalan with Sql
 
   class UniqueIndexCompanionElem extends CompanionElem[UniqueIndexCompanionAbs] {
     lazy val tag = typeTag[UniqueIndexCompanionAbs]
-    lazy val getDefaultRep = Default.defaultVal(UniqueIndex)
-    //def getDefaultRep = defaultRep
+    protected def getDefaultRep = UniqueIndex
   }
   implicit lazy val UniqueIndexCompanionElem: UniqueIndexCompanionElem = new UniqueIndexCompanionElem
 
@@ -199,8 +196,7 @@ trait SqlAbs extends Scalan with Sql
 
   class NonUniqueIndexCompanionElem extends CompanionElem[NonUniqueIndexCompanionAbs] {
     lazy val tag = typeTag[NonUniqueIndexCompanionAbs]
-    lazy val getDefaultRep = Default.defaultVal(NonUniqueIndex)
-    //def getDefaultRep = defaultRep
+    protected def getDefaultRep = NonUniqueIndex
   }
   implicit lazy val NonUniqueIndexCompanionElem: NonUniqueIndexCompanionElem = new NonUniqueIndexCompanionElem
 
@@ -261,8 +257,7 @@ trait SqlAbs extends Scalan with Sql
 
   class ReadWriteTableCompanionElem extends CompanionElem[ReadWriteTableCompanionAbs] {
     lazy val tag = typeTag[ReadWriteTableCompanionAbs]
-    lazy val getDefaultRep = Default.defaultVal(ReadWriteTable)
-    //def getDefaultRep = defaultRep
+    protected def getDefaultRep = ReadWriteTable
   }
   implicit lazy val ReadWriteTableCompanionElem: ReadWriteTableCompanionElem = new ReadWriteTableCompanionElem
 
@@ -322,8 +317,7 @@ trait SqlAbs extends Scalan with Sql
 
   class ReadOnlyTableCompanionElem extends CompanionElem[ReadOnlyTableCompanionAbs] {
     lazy val tag = typeTag[ReadOnlyTableCompanionAbs]
-    lazy val getDefaultRep = Default.defaultVal(ReadOnlyTable)
-    //def getDefaultRep = defaultRep
+    protected def getDefaultRep = ReadOnlyTable
   }
   implicit lazy val ReadOnlyTableCompanionElem: ReadOnlyTableCompanionElem = new ReadOnlyTableCompanionElem
 
@@ -384,8 +378,7 @@ trait SqlAbs extends Scalan with Sql
 
   class PairTableCompanionElem extends CompanionElem[PairTableCompanionAbs] {
     lazy val tag = typeTag[PairTableCompanionAbs]
-    lazy val getDefaultRep = Default.defaultVal(PairTable)
-    //def getDefaultRep = defaultRep
+    protected def getDefaultRep = PairTable
   }
   implicit lazy val PairTableCompanionElem: PairTableCompanionElem = new PairTableCompanionElem
 
@@ -446,8 +439,7 @@ trait SqlAbs extends Scalan with Sql
 
   class ShardedTableCompanionElem extends CompanionElem[ShardedTableCompanionAbs] {
     lazy val tag = typeTag[ShardedTableCompanionAbs]
-    lazy val getDefaultRep = Default.defaultVal(ShardedTable)
-    //def getDefaultRep = defaultRep
+    protected def getDefaultRep = ShardedTable
   }
   implicit lazy val ShardedTableCompanionElem: ShardedTableCompanionElem = new ShardedTableCompanionElem
 
@@ -508,8 +500,7 @@ trait SqlAbs extends Scalan with Sql
 
   class ShardedViewCompanionElem extends CompanionElem[ShardedViewCompanionAbs] {
     lazy val tag = typeTag[ShardedViewCompanionAbs]
-    lazy val getDefaultRep = Default.defaultVal(ShardedView)
-    //def getDefaultRep = defaultRep
+    protected def getDefaultRep = ShardedView
   }
   implicit lazy val ShardedViewCompanionElem: ShardedViewCompanionElem = new ShardedViewCompanionElem
 
@@ -712,7 +703,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
   object BaseTableMethods {
     object PrimaryKey {
       def unapply(d: Def[_]): Option[(Rep[BaseTable[R]], Rep[R => K]) forSome {type R; type K}] = d match {
-        case MethodCall(receiver, method, Seq(key, _*)) if receiver.elem.isInstanceOf[BaseTableElem[R] forSome {type R}] && method.getName == "PrimaryKey" =>
+        case MethodCall(receiver, method, Seq(key, _*)) if receiver.elem.isInstanceOf[BaseTableElem[_]] && method.getName == "PrimaryKey" =>
           Some((receiver, key)).asInstanceOf[Option[(Rep[BaseTable[R]], Rep[R => K]) forSome {type R; type K}]]
         case _ => None
       }
@@ -724,7 +715,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object SecondaryKey {
       def unapply(d: Def[_]): Option[(Rep[BaseTable[R]], Rep[R => K]) forSome {type R; type K}] = d match {
-        case MethodCall(receiver, method, Seq(key, _*)) if receiver.elem.isInstanceOf[BaseTableElem[R] forSome {type R}] && method.getName == "SecondaryKey" =>
+        case MethodCall(receiver, method, Seq(key, _*)) if receiver.elem.isInstanceOf[BaseTableElem[_]] && method.getName == "SecondaryKey" =>
           Some((receiver, key)).asInstanceOf[Option[(Rep[BaseTable[R]], Rep[R => K]) forSome {type R; type K}]]
         case _ => None
       }
@@ -734,11 +725,21 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
       }
     }
 
-    // WARNING: Cannot generate matcher for method `toArray`: Method's return type Arr[R] is not a Rep
+    object toArray {
+      def unapply(d: Def[_]): Option[Rep[BaseTable[R]] forSome {type R}] = d match {
+        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[BaseTableElem[_]] && method.getName == "toArray" =>
+          Some(receiver).asInstanceOf[Option[Rep[BaseTable[R]] forSome {type R}]]
+        case _ => None
+      }
+      def unapply(exp: Exp[_]): Option[Rep[BaseTable[R]] forSome {type R}] = exp match {
+        case Def(d) => unapply(d)
+        case _ => None
+      }
+    }
 
     object insert {
       def unapply(d: Def[_]): Option[(Rep[BaseTable[R]], Rep[R]) forSome {type R}] = d match {
-        case MethodCall(receiver, method, Seq(record, _*)) if receiver.elem.isInstanceOf[BaseTableElem[R] forSome {type R}] && method.getName == "insert" =>
+        case MethodCall(receiver, method, Seq(record, _*)) if receiver.elem.isInstanceOf[BaseTableElem[_]] && method.getName == "insert" =>
           Some((receiver, record)).asInstanceOf[Option[(Rep[BaseTable[R]], Rep[R]) forSome {type R}]]
         case _ => None
       }
@@ -785,7 +786,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
   object UniqueIndexMethods {
     object filter {
       def unapply(d: Def[_]): Option[(Rep[UniqueIndex[K, R]], Rep[R => Boolean]) forSome {type K; type R}] = d match {
-        case MethodCall(receiver, method, Seq(predicate, _*)) if receiver.elem.isInstanceOf[UniqueIndexElem[K, R] forSome {type K; type R}] && method.getName == "filter" =>
+        case MethodCall(receiver, method, Seq(predicate, _*)) if receiver.elem.isInstanceOf[UniqueIndexElem[_, _]] && method.getName == "filter" =>
           Some((receiver, predicate)).asInstanceOf[Option[(Rep[UniqueIndex[K, R]], Rep[R => Boolean]) forSome {type K; type R}]]
         case _ => None
       }
@@ -797,7 +798,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object count {
       def unapply(d: Def[_]): Option[Rep[UniqueIndex[K, R]] forSome {type K; type R}] = d match {
-        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[UniqueIndexElem[K, R] forSome {type K; type R}] && method.getName == "count" =>
+        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[UniqueIndexElem[_, _]] && method.getName == "count" =>
           Some(receiver).asInstanceOf[Option[Rep[UniqueIndex[K, R]] forSome {type K; type R}]]
         case _ => None
       }
@@ -809,7 +810,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object insert {
       def unapply(d: Def[_]): Option[(Rep[UniqueIndex[K, R]], Rep[R]) forSome {type K; type R}] = d match {
-        case MethodCall(receiver, method, Seq(record, _*)) if receiver.elem.isInstanceOf[UniqueIndexElem[K, R] forSome {type K; type R}] && method.getName == "insert" =>
+        case MethodCall(receiver, method, Seq(record, _*)) if receiver.elem.isInstanceOf[UniqueIndexElem[_, _]] && method.getName == "insert" =>
           Some((receiver, record)).asInstanceOf[Option[(Rep[UniqueIndex[K, R]], Rep[R]) forSome {type K; type R}]]
         case _ => None
       }
@@ -821,7 +822,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object Join {
       def unapply(d: Def[_]): Option[(Rep[UniqueIndex[K, R]], Rep[Table[I]], Rep[R => K], Rep[I => K]) forSome {type K; type R; type I}] = d match {
-        case MethodCall(receiver, method, Seq(inner, outKey, inKey, _*)) if receiver.elem.isInstanceOf[UniqueIndexElem[K, R] forSome {type K; type R}] && method.getName == "Join" =>
+        case MethodCall(receiver, method, Seq(inner, outKey, inKey, _*)) if receiver.elem.isInstanceOf[UniqueIndexElem[_, _]] && method.getName == "Join" =>
           Some((receiver, inner, outKey, inKey)).asInstanceOf[Option[(Rep[UniqueIndex[K, R]], Rep[Table[I]], Rep[R => K], Rep[I => K]) forSome {type K; type R; type I}]]
         case _ => None
       }
@@ -831,7 +832,17 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
       }
     }
 
-    // WARNING: Cannot generate matcher for method `toArray`: Method's return type Arr[R] is not a Rep
+    object toArray {
+      def unapply(d: Def[_]): Option[Rep[UniqueIndex[K, R]] forSome {type K; type R}] = d match {
+        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[UniqueIndexElem[_, _]] && method.getName == "toArray" =>
+          Some(receiver).asInstanceOf[Option[Rep[UniqueIndex[K, R]] forSome {type K; type R}]]
+        case _ => None
+      }
+      def unapply(exp: Exp[_]): Option[Rep[UniqueIndex[K, R]] forSome {type K; type R}] = exp match {
+        case Def(d) => unapply(d)
+        case _ => None
+      }
+    }
   }
 
   object UniqueIndexCompanionMethods {
@@ -882,7 +893,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
   object NonUniqueIndexMethods {
     object filter {
       def unapply(d: Def[_]): Option[(Rep[NonUniqueIndex[K, R]], Rep[R => Boolean]) forSome {type K; type R}] = d match {
-        case MethodCall(receiver, method, Seq(predicate, _*)) if receiver.elem.isInstanceOf[NonUniqueIndexElem[K, R] forSome {type K; type R}] && method.getName == "filter" =>
+        case MethodCall(receiver, method, Seq(predicate, _*)) if receiver.elem.isInstanceOf[NonUniqueIndexElem[_, _]] && method.getName == "filter" =>
           Some((receiver, predicate)).asInstanceOf[Option[(Rep[NonUniqueIndex[K, R]], Rep[R => Boolean]) forSome {type K; type R}]]
         case _ => None
       }
@@ -894,7 +905,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object count {
       def unapply(d: Def[_]): Option[Rep[NonUniqueIndex[K, R]] forSome {type K; type R}] = d match {
-        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[NonUniqueIndexElem[K, R] forSome {type K; type R}] && method.getName == "count" =>
+        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[NonUniqueIndexElem[_, _]] && method.getName == "count" =>
           Some(receiver).asInstanceOf[Option[Rep[NonUniqueIndex[K, R]] forSome {type K; type R}]]
         case _ => None
       }
@@ -906,7 +917,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object insert {
       def unapply(d: Def[_]): Option[(Rep[NonUniqueIndex[K, R]], Rep[R]) forSome {type K; type R}] = d match {
-        case MethodCall(receiver, method, Seq(record, _*)) if receiver.elem.isInstanceOf[NonUniqueIndexElem[K, R] forSome {type K; type R}] && method.getName == "insert" =>
+        case MethodCall(receiver, method, Seq(record, _*)) if receiver.elem.isInstanceOf[NonUniqueIndexElem[_, _]] && method.getName == "insert" =>
           Some((receiver, record)).asInstanceOf[Option[(Rep[NonUniqueIndex[K, R]], Rep[R]) forSome {type K; type R}]]
         case _ => None
       }
@@ -918,7 +929,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object Join {
       def unapply(d: Def[_]): Option[(Rep[NonUniqueIndex[K, R]], Rep[Table[I]], Rep[R => K], Rep[I => K]) forSome {type K; type R; type I}] = d match {
-        case MethodCall(receiver, method, Seq(inner, outKey, inKey, _*)) if receiver.elem.isInstanceOf[NonUniqueIndexElem[K, R] forSome {type K; type R}] && method.getName == "Join" =>
+        case MethodCall(receiver, method, Seq(inner, outKey, inKey, _*)) if receiver.elem.isInstanceOf[NonUniqueIndexElem[_, _]] && method.getName == "Join" =>
           Some((receiver, inner, outKey, inKey)).asInstanceOf[Option[(Rep[NonUniqueIndex[K, R]], Rep[Table[I]], Rep[R => K], Rep[I => K]) forSome {type K; type R; type I}]]
         case _ => None
       }
@@ -928,7 +939,17 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
       }
     }
 
-    // WARNING: Cannot generate matcher for method `toArray`: Method's return type Arr[R] is not a Rep
+    object toArray {
+      def unapply(d: Def[_]): Option[Rep[NonUniqueIndex[K, R]] forSome {type K; type R}] = d match {
+        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[NonUniqueIndexElem[_, _]] && method.getName == "toArray" =>
+          Some(receiver).asInstanceOf[Option[Rep[NonUniqueIndex[K, R]] forSome {type K; type R}]]
+        case _ => None
+      }
+      def unapply(exp: Exp[_]): Option[Rep[NonUniqueIndex[K, R]] forSome {type K; type R}] = exp match {
+        case Def(d) => unapply(d)
+        case _ => None
+      }
+    }
   }
 
   object NonUniqueIndexCompanionMethods {
@@ -979,7 +1000,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
   object ReadWriteTableMethods {
     object count {
       def unapply(d: Def[_]): Option[Rep[ReadWriteTable[R]] forSome {type R}] = d match {
-        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[ReadWriteTableElem[R] forSome {type R}] && method.getName == "count" =>
+        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[ReadWriteTableElem[_]] && method.getName == "count" =>
           Some(receiver).asInstanceOf[Option[Rep[ReadWriteTable[R]] forSome {type R}]]
         case _ => None
       }
@@ -991,7 +1012,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object insert {
       def unapply(d: Def[_]): Option[(Rep[ReadWriteTable[R]], Rep[R]) forSome {type R}] = d match {
-        case MethodCall(receiver, method, Seq(record, _*)) if receiver.elem.isInstanceOf[ReadWriteTableElem[R] forSome {type R}] && method.getName == "insert" =>
+        case MethodCall(receiver, method, Seq(record, _*)) if receiver.elem.isInstanceOf[ReadWriteTableElem[_]] && method.getName == "insert" =>
           Some((receiver, record)).asInstanceOf[Option[(Rep[ReadWriteTable[R]], Rep[R]) forSome {type R}]]
         case _ => None
       }
@@ -1003,7 +1024,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object toArray {
       def unapply(d: Def[_]): Option[Rep[ReadWriteTable[R]] forSome {type R}] = d match {
-        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[ReadWriteTableElem[R] forSome {type R}] && method.getName == "toArray" =>
+        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[ReadWriteTableElem[_]] && method.getName == "toArray" =>
           Some(receiver).asInstanceOf[Option[Rep[ReadWriteTable[R]] forSome {type R}]]
         case _ => None
       }
@@ -1074,7 +1095,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
   object ReadOnlyTableMethods {
     object count {
       def unapply(d: Def[_]): Option[Rep[ReadOnlyTable[R]] forSome {type R}] = d match {
-        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[ReadOnlyTableElem[R] forSome {type R}] && method.getName == "count" =>
+        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[ReadOnlyTableElem[_]] && method.getName == "count" =>
           Some(receiver).asInstanceOf[Option[Rep[ReadOnlyTable[R]] forSome {type R}]]
         case _ => None
       }
@@ -1086,7 +1107,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object insert {
       def unapply(d: Def[_]): Option[(Rep[ReadOnlyTable[R]], Rep[R]) forSome {type R}] = d match {
-        case MethodCall(receiver, method, Seq(record, _*)) if receiver.elem.isInstanceOf[ReadOnlyTableElem[R] forSome {type R}] && method.getName == "insert" =>
+        case MethodCall(receiver, method, Seq(record, _*)) if receiver.elem.isInstanceOf[ReadOnlyTableElem[_]] && method.getName == "insert" =>
           Some((receiver, record)).asInstanceOf[Option[(Rep[ReadOnlyTable[R]], Rep[R]) forSome {type R}]]
         case _ => None
       }
@@ -1098,7 +1119,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object PrimaryKey {
       def unapply(d: Def[_]): Option[(Rep[ReadOnlyTable[R]], Rep[R => K]) forSome {type R; type K}] = d match {
-        case MethodCall(receiver, method, Seq(key, _*)) if receiver.elem.isInstanceOf[ReadOnlyTableElem[R] forSome {type R}] && method.getName == "PrimaryKey" =>
+        case MethodCall(receiver, method, Seq(key, _*)) if receiver.elem.isInstanceOf[ReadOnlyTableElem[_]] && method.getName == "PrimaryKey" =>
           Some((receiver, key)).asInstanceOf[Option[(Rep[ReadOnlyTable[R]], Rep[R => K]) forSome {type R; type K}]]
         case _ => None
       }
@@ -1110,7 +1131,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object SecondaryKey {
       def unapply(d: Def[_]): Option[(Rep[ReadOnlyTable[R]], Rep[R => K]) forSome {type R; type K}] = d match {
-        case MethodCall(receiver, method, Seq(key, _*)) if receiver.elem.isInstanceOf[ReadOnlyTableElem[R] forSome {type R}] && method.getName == "SecondaryKey" =>
+        case MethodCall(receiver, method, Seq(key, _*)) if receiver.elem.isInstanceOf[ReadOnlyTableElem[_]] && method.getName == "SecondaryKey" =>
           Some((receiver, key)).asInstanceOf[Option[(Rep[ReadOnlyTable[R]], Rep[R => K]) forSome {type R; type K}]]
         case _ => None
       }
@@ -1122,7 +1143,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object toArray {
       def unapply(d: Def[_]): Option[Rep[ReadOnlyTable[R]] forSome {type R}] = d match {
-        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[ReadOnlyTableElem[R] forSome {type R}] && method.getName == "toArray" =>
+        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[ReadOnlyTableElem[_]] && method.getName == "toArray" =>
           Some(receiver).asInstanceOf[Option[Rep[ReadOnlyTable[R]] forSome {type R}]]
         case _ => None
       }
@@ -1169,7 +1190,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
   object PairTableMethods {
     object count {
       def unapply(d: Def[_]): Option[Rep[PairTable[R1, R2]] forSome {type R1; type R2}] = d match {
-        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[PairTableElem[R1, R2] forSome {type R1; type R2}] && method.getName == "count" =>
+        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[PairTableElem[_, _]] && method.getName == "count" =>
           Some(receiver).asInstanceOf[Option[Rep[PairTable[R1, R2]] forSome {type R1; type R2}]]
         case _ => None
       }
@@ -1181,7 +1202,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object insert {
       def unapply(d: Def[_]): Option[(Rep[PairTable[R1, R2]], Rep[(R1,R2)]) forSome {type R1; type R2}] = d match {
-        case MethodCall(receiver, method, Seq(record, _*)) if receiver.elem.isInstanceOf[PairTableElem[R1, R2] forSome {type R1; type R2}] && method.getName == "insert" =>
+        case MethodCall(receiver, method, Seq(record, _*)) if receiver.elem.isInstanceOf[PairTableElem[_, _]] && method.getName == "insert" =>
           Some((receiver, record)).asInstanceOf[Option[(Rep[PairTable[R1, R2]], Rep[(R1,R2)]) forSome {type R1; type R2}]]
         case _ => None
       }
@@ -1193,7 +1214,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object insertFrom {
       def unapply(d: Def[_]): Option[(Rep[PairTable[R1, R2]], Arr[(R1,R2)]) forSome {type R1; type R2}] = d match {
-        case MethodCall(receiver, method, Seq(arr, _*)) if receiver.elem.isInstanceOf[PairTableElem[R1, R2] forSome {type R1; type R2}] && method.getName == "insertFrom" =>
+        case MethodCall(receiver, method, Seq(arr, _*)) if receiver.elem.isInstanceOf[PairTableElem[_, _]] && method.getName == "insertFrom" =>
           Some((receiver, arr)).asInstanceOf[Option[(Rep[PairTable[R1, R2]], Arr[(R1,R2)]) forSome {type R1; type R2}]]
         case _ => None
       }
@@ -1205,7 +1226,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object toArray {
       def unapply(d: Def[_]): Option[Rep[PairTable[R1, R2]] forSome {type R1; type R2}] = d match {
-        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[PairTableElem[R1, R2] forSome {type R1; type R2}] && method.getName == "toArray" =>
+        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[PairTableElem[_, _]] && method.getName == "toArray" =>
           Some(receiver).asInstanceOf[Option[Rep[PairTable[R1, R2]] forSome {type R1; type R2}]]
         case _ => None
       }
@@ -1264,7 +1285,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
   object ShardedTableMethods {
     object count {
       def unapply(d: Def[_]): Option[Rep[ShardedTable[R]] forSome {type R}] = d match {
-        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[ShardedTableElem[R] forSome {type R}] && method.getName == "count" =>
+        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[ShardedTableElem[_]] && method.getName == "count" =>
           Some(receiver).asInstanceOf[Option[Rep[ShardedTable[R]] forSome {type R}]]
         case _ => None
       }
@@ -1276,7 +1297,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object insert {
       def unapply(d: Def[_]): Option[(Rep[ShardedTable[R]], Rep[R]) forSome {type R}] = d match {
-        case MethodCall(receiver, method, Seq(record, _*)) if receiver.elem.isInstanceOf[ShardedTableElem[R] forSome {type R}] && method.getName == "insert" =>
+        case MethodCall(receiver, method, Seq(record, _*)) if receiver.elem.isInstanceOf[ShardedTableElem[_]] && method.getName == "insert" =>
           Some((receiver, record)).asInstanceOf[Option[(Rep[ShardedTable[R]], Rep[R]) forSome {type R}]]
         case _ => None
       }
@@ -1288,7 +1309,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object insertFrom {
       def unapply(d: Def[_]): Option[(Rep[ShardedTable[R]], Arr[R]) forSome {type R}] = d match {
-        case MethodCall(receiver, method, Seq(arr, _*)) if receiver.elem.isInstanceOf[ShardedTableElem[R] forSome {type R}] && method.getName == "insertFrom" =>
+        case MethodCall(receiver, method, Seq(arr, _*)) if receiver.elem.isInstanceOf[ShardedTableElem[_]] && method.getName == "insertFrom" =>
           Some((receiver, arr)).asInstanceOf[Option[(Rep[ShardedTable[R]], Arr[R]) forSome {type R}]]
         case _ => None
       }
@@ -1300,7 +1321,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object filter {
       def unapply(d: Def[_]): Option[(Rep[ShardedTable[R]], Rep[R => Boolean]) forSome {type R}] = d match {
-        case MethodCall(receiver, method, Seq(predicate, _*)) if receiver.elem.isInstanceOf[ShardedTableElem[R] forSome {type R}] && method.getName == "filter" =>
+        case MethodCall(receiver, method, Seq(predicate, _*)) if receiver.elem.isInstanceOf[ShardedTableElem[_]] && method.getName == "filter" =>
           Some((receiver, predicate)).asInstanceOf[Option[(Rep[ShardedTable[R]], Rep[R => Boolean]) forSome {type R}]]
         case _ => None
       }
@@ -1312,7 +1333,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object Sum {
       def unapply(d: Def[_]): Option[(Rep[ShardedTable[R]], Rep[R => E], Numeric[E]) forSome {type R; type E}] = d match {
-        case MethodCall(receiver, method, Seq(agg, n, _*)) if receiver.elem.isInstanceOf[ShardedTableElem[R] forSome {type R}] && method.getName == "Sum" =>
+        case MethodCall(receiver, method, Seq(agg, n, _*)) if receiver.elem.isInstanceOf[ShardedTableElem[_]] && method.getName == "Sum" =>
           Some((receiver, agg, n)).asInstanceOf[Option[(Rep[ShardedTable[R]], Rep[R => E], Numeric[E]) forSome {type R; type E}]]
         case _ => None
       }
@@ -1324,7 +1345,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object Max {
       def unapply(d: Def[_]): Option[(Rep[ShardedTable[R]], Rep[R => E], Ordering[E]) forSome {type R; type E}] = d match {
-        case MethodCall(receiver, method, Seq(agg, o, _*)) if receiver.elem.isInstanceOf[ShardedTableElem[R] forSome {type R}] && method.getName == "Max" =>
+        case MethodCall(receiver, method, Seq(agg, o, _*)) if receiver.elem.isInstanceOf[ShardedTableElem[_]] && method.getName == "Max" =>
           Some((receiver, agg, o)).asInstanceOf[Option[(Rep[ShardedTable[R]], Rep[R => E], Ordering[E]) forSome {type R; type E}]]
         case _ => None
       }
@@ -1336,7 +1357,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object Min {
       def unapply(d: Def[_]): Option[(Rep[ShardedTable[R]], Rep[R => E], Ordering[E]) forSome {type R; type E}] = d match {
-        case MethodCall(receiver, method, Seq(agg, o, _*)) if receiver.elem.isInstanceOf[ShardedTableElem[R] forSome {type R}] && method.getName == "Min" =>
+        case MethodCall(receiver, method, Seq(agg, o, _*)) if receiver.elem.isInstanceOf[ShardedTableElem[_]] && method.getName == "Min" =>
           Some((receiver, agg, o)).asInstanceOf[Option[(Rep[ShardedTable[R]], Rep[R => E], Ordering[E]) forSome {type R; type E}]]
         case _ => None
       }
@@ -1348,7 +1369,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object MapReduce {
       def unapply(d: Def[_]): Option[(Rep[ShardedTable[R]], Rep[R => (K,V)], Rep[((V,V)) => V]) forSome {type R; type K; type V}] = d match {
-        case MethodCall(receiver, method, Seq(map, reduce, _*)) if receiver.elem.isInstanceOf[ShardedTableElem[R] forSome {type R}] && method.getName == "MapReduce" =>
+        case MethodCall(receiver, method, Seq(map, reduce, _*)) if receiver.elem.isInstanceOf[ShardedTableElem[_]] && method.getName == "MapReduce" =>
           Some((receiver, map, reduce)).asInstanceOf[Option[(Rep[ShardedTable[R]], Rep[R => (K,V)], Rep[((V,V)) => V]) forSome {type R; type K; type V}]]
         case _ => None
       }
@@ -1360,7 +1381,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object GroupBy {
       def unapply(d: Def[_]): Option[(Rep[ShardedTable[R]], Rep[R => G]) forSome {type R; type G}] = d match {
-        case MethodCall(receiver, method, Seq(by, _*)) if receiver.elem.isInstanceOf[ShardedTableElem[R] forSome {type R}] && method.getName == "GroupBy" =>
+        case MethodCall(receiver, method, Seq(by, _*)) if receiver.elem.isInstanceOf[ShardedTableElem[_]] && method.getName == "GroupBy" =>
           Some((receiver, by)).asInstanceOf[Option[(Rep[ShardedTable[R]], Rep[R => G]) forSome {type R; type G}]]
         case _ => None
       }
@@ -1372,7 +1393,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object Join {
       def unapply(d: Def[_]): Option[(Rep[ShardedTable[R]], Rep[Table[I]], Rep[R => K], Rep[I => K]) forSome {type R; type I; type K}] = d match {
-        case MethodCall(receiver, method, Seq(inner, outKey, inKey, _*)) if receiver.elem.isInstanceOf[ShardedTableElem[R] forSome {type R}] && method.getName == "Join" =>
+        case MethodCall(receiver, method, Seq(inner, outKey, inKey, _*)) if receiver.elem.isInstanceOf[ShardedTableElem[_]] && method.getName == "Join" =>
           Some((receiver, inner, outKey, inKey)).asInstanceOf[Option[(Rep[ShardedTable[R]], Rep[Table[I]], Rep[R => K], Rep[I => K]) forSome {type R; type I; type K}]]
         case _ => None
       }
@@ -1384,7 +1405,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object gather {
       def unapply(d: Def[_]): Option[Rep[ShardedTable[R]] forSome {type R}] = d match {
-        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[ShardedTableElem[R] forSome {type R}] && method.getName == "gather" =>
+        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[ShardedTableElem[_]] && method.getName == "gather" =>
           Some(receiver).asInstanceOf[Option[Rep[ShardedTable[R]] forSome {type R}]]
         case _ => None
       }
@@ -1396,7 +1417,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object toArray {
       def unapply(d: Def[_]): Option[Rep[ShardedTable[R]] forSome {type R}] = d match {
-        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[ShardedTableElem[R] forSome {type R}] && method.getName == "toArray" =>
+        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[ShardedTableElem[_]] && method.getName == "toArray" =>
           Some(receiver).asInstanceOf[Option[Rep[ShardedTable[R]] forSome {type R}]]
         case _ => None
       }
@@ -1455,7 +1476,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
   object ShardedViewMethods {
     object count {
       def unapply(d: Def[_]): Option[Rep[ShardedView[R]] forSome {type R}] = d match {
-        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[ShardedViewElem[R] forSome {type R}] && method.getName == "count" =>
+        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[ShardedViewElem[_]] && method.getName == "count" =>
           Some(receiver).asInstanceOf[Option[Rep[ShardedView[R]] forSome {type R}]]
         case _ => None
       }
@@ -1467,7 +1488,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object insert {
       def unapply(d: Def[_]): Option[(Rep[ShardedView[R]], Rep[R]) forSome {type R}] = d match {
-        case MethodCall(receiver, method, Seq(record, _*)) if receiver.elem.isInstanceOf[ShardedViewElem[R] forSome {type R}] && method.getName == "insert" =>
+        case MethodCall(receiver, method, Seq(record, _*)) if receiver.elem.isInstanceOf[ShardedViewElem[_]] && method.getName == "insert" =>
           Some((receiver, record)).asInstanceOf[Option[(Rep[ShardedView[R]], Rep[R]) forSome {type R}]]
         case _ => None
       }
@@ -1479,7 +1500,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object insertFrom {
       def unapply(d: Def[_]): Option[(Rep[ShardedView[R]], Arr[R]) forSome {type R}] = d match {
-        case MethodCall(receiver, method, Seq(arr, _*)) if receiver.elem.isInstanceOf[ShardedViewElem[R] forSome {type R}] && method.getName == "insertFrom" =>
+        case MethodCall(receiver, method, Seq(arr, _*)) if receiver.elem.isInstanceOf[ShardedViewElem[_]] && method.getName == "insertFrom" =>
           Some((receiver, arr)).asInstanceOf[Option[(Rep[ShardedView[R]], Arr[R]) forSome {type R}]]
         case _ => None
       }
@@ -1491,7 +1512,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object filter {
       def unapply(d: Def[_]): Option[(Rep[ShardedView[R]], Rep[R => Boolean]) forSome {type R}] = d match {
-        case MethodCall(receiver, method, Seq(predicate, _*)) if receiver.elem.isInstanceOf[ShardedViewElem[R] forSome {type R}] && method.getName == "filter" =>
+        case MethodCall(receiver, method, Seq(predicate, _*)) if receiver.elem.isInstanceOf[ShardedViewElem[_]] && method.getName == "filter" =>
           Some((receiver, predicate)).asInstanceOf[Option[(Rep[ShardedView[R]], Rep[R => Boolean]) forSome {type R}]]
         case _ => None
       }
@@ -1503,7 +1524,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object Sum {
       def unapply(d: Def[_]): Option[(Rep[ShardedView[R]], Rep[R => E], Numeric[E]) forSome {type R; type E}] = d match {
-        case MethodCall(receiver, method, Seq(agg, n, _*)) if receiver.elem.isInstanceOf[ShardedViewElem[R] forSome {type R}] && method.getName == "Sum" =>
+        case MethodCall(receiver, method, Seq(agg, n, _*)) if receiver.elem.isInstanceOf[ShardedViewElem[_]] && method.getName == "Sum" =>
           Some((receiver, agg, n)).asInstanceOf[Option[(Rep[ShardedView[R]], Rep[R => E], Numeric[E]) forSome {type R; type E}]]
         case _ => None
       }
@@ -1515,7 +1536,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object Max {
       def unapply(d: Def[_]): Option[(Rep[ShardedView[R]], Rep[R => E], Ordering[E]) forSome {type R; type E}] = d match {
-        case MethodCall(receiver, method, Seq(agg, o, _*)) if receiver.elem.isInstanceOf[ShardedViewElem[R] forSome {type R}] && method.getName == "Max" =>
+        case MethodCall(receiver, method, Seq(agg, o, _*)) if receiver.elem.isInstanceOf[ShardedViewElem[_]] && method.getName == "Max" =>
           Some((receiver, agg, o)).asInstanceOf[Option[(Rep[ShardedView[R]], Rep[R => E], Ordering[E]) forSome {type R; type E}]]
         case _ => None
       }
@@ -1527,7 +1548,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object Min {
       def unapply(d: Def[_]): Option[(Rep[ShardedView[R]], Rep[R => E], Ordering[E]) forSome {type R; type E}] = d match {
-        case MethodCall(receiver, method, Seq(agg, o, _*)) if receiver.elem.isInstanceOf[ShardedViewElem[R] forSome {type R}] && method.getName == "Min" =>
+        case MethodCall(receiver, method, Seq(agg, o, _*)) if receiver.elem.isInstanceOf[ShardedViewElem[_]] && method.getName == "Min" =>
           Some((receiver, agg, o)).asInstanceOf[Option[(Rep[ShardedView[R]], Rep[R => E], Ordering[E]) forSome {type R; type E}]]
         case _ => None
       }
@@ -1539,7 +1560,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object MapReduce {
       def unapply(d: Def[_]): Option[(Rep[ShardedView[R]], Rep[R => (K,V)], Rep[((V,V)) => V]) forSome {type R; type K; type V}] = d match {
-        case MethodCall(receiver, method, Seq(map, reduce, _*)) if receiver.elem.isInstanceOf[ShardedViewElem[R] forSome {type R}] && method.getName == "MapReduce" =>
+        case MethodCall(receiver, method, Seq(map, reduce, _*)) if receiver.elem.isInstanceOf[ShardedViewElem[_]] && method.getName == "MapReduce" =>
           Some((receiver, map, reduce)).asInstanceOf[Option[(Rep[ShardedView[R]], Rep[R => (K,V)], Rep[((V,V)) => V]) forSome {type R; type K; type V}]]
         case _ => None
       }
@@ -1551,7 +1572,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object GroupBy {
       def unapply(d: Def[_]): Option[(Rep[ShardedView[R]], Rep[R => G]) forSome {type R; type G}] = d match {
-        case MethodCall(receiver, method, Seq(by, _*)) if receiver.elem.isInstanceOf[ShardedViewElem[R] forSome {type R}] && method.getName == "GroupBy" =>
+        case MethodCall(receiver, method, Seq(by, _*)) if receiver.elem.isInstanceOf[ShardedViewElem[_]] && method.getName == "GroupBy" =>
           Some((receiver, by)).asInstanceOf[Option[(Rep[ShardedView[R]], Rep[R => G]) forSome {type R; type G}]]
         case _ => None
       }
@@ -1563,7 +1584,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object Join {
       def unapply(d: Def[_]): Option[(Rep[ShardedView[R]], Rep[Table[I]], Rep[R => K], Rep[I => K]) forSome {type R; type I; type K}] = d match {
-        case MethodCall(receiver, method, Seq(inner, outKey, inKey, _*)) if receiver.elem.isInstanceOf[ShardedViewElem[R] forSome {type R}] && method.getName == "Join" =>
+        case MethodCall(receiver, method, Seq(inner, outKey, inKey, _*)) if receiver.elem.isInstanceOf[ShardedViewElem[_]] && method.getName == "Join" =>
           Some((receiver, inner, outKey, inKey)).asInstanceOf[Option[(Rep[ShardedView[R]], Rep[Table[I]], Rep[R => K], Rep[I => K]) forSome {type R; type I; type K}]]
         case _ => None
       }
@@ -1575,7 +1596,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object gather {
       def unapply(d: Def[_]): Option[Rep[ShardedView[R]] forSome {type R}] = d match {
-        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[ShardedViewElem[R] forSome {type R}] && method.getName == "gather" =>
+        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[ShardedViewElem[_]] && method.getName == "gather" =>
           Some(receiver).asInstanceOf[Option[Rep[ShardedView[R]] forSome {type R}]]
         case _ => None
       }
@@ -1587,7 +1608,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object toArray {
       def unapply(d: Def[_]): Option[Rep[ShardedView[R]] forSome {type R}] = d match {
-        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[ShardedViewElem[R] forSome {type R}] && method.getName == "toArray" =>
+        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[ShardedViewElem[_]] && method.getName == "toArray" =>
           Some(receiver).asInstanceOf[Option[Rep[ShardedView[R]] forSome {type R}]]
         case _ => None
       }
@@ -1633,7 +1654,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
   object TableMethods {
     object tableName {
       def unapply(d: Def[_]): Option[Rep[Table[R]] forSome {type R}] = d match {
-        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[TableElem[R, _, _] forSome {type R}] && method.getName == "tableName" =>
+        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[TableElem[_, _, _]] && method.getName == "tableName" =>
           Some(receiver).asInstanceOf[Option[Rep[Table[R]] forSome {type R}]]
         case _ => None
       }
@@ -1645,7 +1666,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object Select {
       def unapply(d: Def[_]): Option[(Rep[Table[R]], Rep[R => P]) forSome {type R; type P}] = d match {
-        case MethodCall(receiver, method, Seq(projection, _*)) if receiver.elem.isInstanceOf[TableElem[R, _, _] forSome {type R}] && method.getName == "Select" =>
+        case MethodCall(receiver, method, Seq(projection, _*)) if receiver.elem.isInstanceOf[TableElem[_, _, _]] && method.getName == "Select" =>
           Some((receiver, projection)).asInstanceOf[Option[(Rep[Table[R]], Rep[R => P]) forSome {type R; type P}]]
         case _ => None
       }
@@ -1657,7 +1678,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object filter {
       def unapply(d: Def[_]): Option[(Rep[Table[R]], Rep[R => Boolean]) forSome {type R}] = d match {
-        case MethodCall(receiver, method, Seq(predicate, _*)) if receiver.elem.isInstanceOf[TableElem[R, _, _] forSome {type R}] && method.getName == "filter" =>
+        case MethodCall(receiver, method, Seq(predicate, _*)) if receiver.elem.isInstanceOf[TableElem[_, _, _]] && method.getName == "filter" =>
           Some((receiver, predicate)).asInstanceOf[Option[(Rep[Table[R]], Rep[R => Boolean]) forSome {type R}]]
         case _ => None
       }
@@ -1669,7 +1690,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object singleton {
       def unapply(d: Def[_]): Option[Rep[Table[R]] forSome {type R}] = d match {
-        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[TableElem[R, _, _] forSome {type R}] && method.getName == "singleton" =>
+        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[TableElem[_, _, _]] && method.getName == "singleton" =>
           Some(receiver).asInstanceOf[Option[Rep[Table[R]] forSome {type R}]]
         case _ => None
       }
@@ -1681,7 +1702,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object Sum {
       def unapply(d: Def[_]): Option[(Rep[Table[R]], Rep[R => E], Numeric[E]) forSome {type R; type E}] = d match {
-        case MethodCall(receiver, method, Seq(agg, n, _*)) if receiver.elem.isInstanceOf[TableElem[R, _, _] forSome {type R}] && method.getName == "Sum" =>
+        case MethodCall(receiver, method, Seq(agg, n, _*)) if receiver.elem.isInstanceOf[TableElem[_, _, _]] && method.getName == "Sum" =>
           Some((receiver, agg, n)).asInstanceOf[Option[(Rep[Table[R]], Rep[R => E], Numeric[E]) forSome {type R; type E}]]
         case _ => None
       }
@@ -1693,7 +1714,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object Max {
       def unapply(d: Def[_]): Option[(Rep[Table[R]], Rep[R => E], Ordering[E]) forSome {type R; type E}] = d match {
-        case MethodCall(receiver, method, Seq(agg, o, _*)) if receiver.elem.isInstanceOf[TableElem[R, _, _] forSome {type R}] && method.getName == "Max" =>
+        case MethodCall(receiver, method, Seq(agg, o, _*)) if receiver.elem.isInstanceOf[TableElem[_, _, _]] && method.getName == "Max" =>
           Some((receiver, agg, o)).asInstanceOf[Option[(Rep[Table[R]], Rep[R => E], Ordering[E]) forSome {type R; type E}]]
         case _ => None
       }
@@ -1705,7 +1726,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object Min {
       def unapply(d: Def[_]): Option[(Rep[Table[R]], Rep[R => E], Ordering[E]) forSome {type R; type E}] = d match {
-        case MethodCall(receiver, method, Seq(agg, o, _*)) if receiver.elem.isInstanceOf[TableElem[R, _, _] forSome {type R}] && method.getName == "Min" =>
+        case MethodCall(receiver, method, Seq(agg, o, _*)) if receiver.elem.isInstanceOf[TableElem[_, _, _]] && method.getName == "Min" =>
           Some((receiver, agg, o)).asInstanceOf[Option[(Rep[Table[R]], Rep[R => E], Ordering[E]) forSome {type R; type E}]]
         case _ => None
       }
@@ -1717,7 +1738,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object Avg {
       def unapply(d: Def[_]): Option[(Rep[Table[R]], Rep[R => E], Numeric[E]) forSome {type R; type E}] = d match {
-        case MethodCall(receiver, method, Seq(agg, n, _*)) if receiver.elem.isInstanceOf[TableElem[R, _, _] forSome {type R}] && method.getName == "Avg" =>
+        case MethodCall(receiver, method, Seq(agg, n, _*)) if receiver.elem.isInstanceOf[TableElem[_, _, _]] && method.getName == "Avg" =>
           Some((receiver, agg, n)).asInstanceOf[Option[(Rep[Table[R]], Rep[R => E], Numeric[E]) forSome {type R; type E}]]
         case _ => None
       }
@@ -1729,7 +1750,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object count {
       def unapply(d: Def[_]): Option[Rep[Table[R]] forSome {type R}] = d match {
-        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[TableElem[R, _, _] forSome {type R}] && method.getName == "count" =>
+        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[TableElem[_, _, _]] && method.getName == "count" =>
           Some(receiver).asInstanceOf[Option[Rep[Table[R]] forSome {type R}]]
         case _ => None
       }
@@ -1741,7 +1762,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object MapReduce {
       def unapply(d: Def[_]): Option[(Rep[Table[R]], Rep[R => (K,V)], Rep[((V,V)) => V]) forSome {type R; type K; type V}] = d match {
-        case MethodCall(receiver, method, Seq(map, reduce, _*)) if receiver.elem.isInstanceOf[TableElem[R, _, _] forSome {type R}] && method.getName == "MapReduce" =>
+        case MethodCall(receiver, method, Seq(map, reduce, _*)) if receiver.elem.isInstanceOf[TableElem[_, _, _]] && method.getName == "MapReduce" =>
           Some((receiver, map, reduce)).asInstanceOf[Option[(Rep[Table[R]], Rep[R => (K,V)], Rep[((V,V)) => V]) forSome {type R; type K; type V}]]
         case _ => None
       }
@@ -1751,11 +1772,21 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
       }
     }
 
-    // WARNING: Cannot generate matcher for method `OrderBy`: Method's return type Arr[R] is not a Rep
+    object OrderBy {
+      def unapply(d: Def[_]): Option[(Rep[Table[R]], Rep[R => O], Ordering[O]) forSome {type R; type O}] = d match {
+        case MethodCall(receiver, method, Seq(by, o, _*)) if receiver.elem.isInstanceOf[TableElem[_, _, _]] && method.getName == "OrderBy" =>
+          Some((receiver, by, o)).asInstanceOf[Option[(Rep[Table[R]], Rep[R => O], Ordering[O]) forSome {type R; type O}]]
+        case _ => None
+      }
+      def unapply(exp: Exp[_]): Option[(Rep[Table[R]], Rep[R => O], Ordering[O]) forSome {type R; type O}] = exp match {
+        case Def(d) => unapply(d)
+        case _ => None
+      }
+    }
 
     object GroupBy {
       def unapply(d: Def[_]): Option[(Rep[Table[R]], Rep[R => G]) forSome {type R; type G}] = d match {
-        case MethodCall(receiver, method, Seq(by, _*)) if receiver.elem.isInstanceOf[TableElem[R, _, _] forSome {type R}] && method.getName == "GroupBy" =>
+        case MethodCall(receiver, method, Seq(by, _*)) if receiver.elem.isInstanceOf[TableElem[_, _, _]] && method.getName == "GroupBy" =>
           Some((receiver, by)).asInstanceOf[Option[(Rep[Table[R]], Rep[R => G]) forSome {type R; type G}]]
         case _ => None
       }
@@ -1767,7 +1798,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object Join {
       def unapply(d: Def[_]): Option[(Rep[Table[R]], Rep[Table[I]], Rep[R => K], Rep[I => K]) forSome {type R; type I; type K}] = d match {
-        case MethodCall(receiver, method, Seq(inner, outKey, inKey, _*)) if receiver.elem.isInstanceOf[TableElem[R, _, _] forSome {type R}] && method.getName == "Join" =>
+        case MethodCall(receiver, method, Seq(inner, outKey, inKey, _*)) if receiver.elem.isInstanceOf[TableElem[_, _, _]] && method.getName == "Join" =>
           Some((receiver, inner, outKey, inKey)).asInstanceOf[Option[(Rep[Table[R]], Rep[Table[I]], Rep[R => K], Rep[I => K]) forSome {type R; type I; type K}]]
         case _ => None
       }
@@ -1779,7 +1810,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object insert {
       def unapply(d: Def[_]): Option[(Rep[Table[R]], Rep[R]) forSome {type R}] = d match {
-        case MethodCall(receiver, method, Seq(record, _*)) if receiver.elem.isInstanceOf[TableElem[R, _, _] forSome {type R}] && method.getName == "insert" =>
+        case MethodCall(receiver, method, Seq(record, _*)) if receiver.elem.isInstanceOf[TableElem[_, _, _]] && method.getName == "insert" =>
           Some((receiver, record)).asInstanceOf[Option[(Rep[Table[R]], Rep[R]) forSome {type R}]]
         case _ => None
       }
@@ -1791,7 +1822,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object insertFrom {
       def unapply(d: Def[_]): Option[(Rep[Table[R]], Arr[R]) forSome {type R}] = d match {
-        case MethodCall(receiver, method, Seq(arr, _*)) if receiver.elem.isInstanceOf[TableElem[R, _, _] forSome {type R}] && method.getName == "insertFrom" =>
+        case MethodCall(receiver, method, Seq(arr, _*)) if receiver.elem.isInstanceOf[TableElem[_, _, _]] && method.getName == "insertFrom" =>
           Some((receiver, arr)).asInstanceOf[Option[(Rep[Table[R]], Arr[R]) forSome {type R}]]
         case _ => None
       }
@@ -1803,7 +1834,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object Delete {
       def unapply(d: Def[_]): Option[(Rep[Table[R]], Rep[R => Boolean]) forSome {type R}] = d match {
-        case MethodCall(receiver, method, Seq(predicate, _*)) if receiver.elem.isInstanceOf[TableElem[R, _, _] forSome {type R}] && method.getName == "Delete" =>
+        case MethodCall(receiver, method, Seq(predicate, _*)) if receiver.elem.isInstanceOf[TableElem[_, _, _]] && method.getName == "Delete" =>
           Some((receiver, predicate)).asInstanceOf[Option[(Rep[Table[R]], Rep[R => Boolean]) forSome {type R}]]
         case _ => None
       }
@@ -1815,7 +1846,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object drop {
       def unapply(d: Def[_]): Option[Rep[Table[R]] forSome {type R}] = d match {
-        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[TableElem[R, _, _] forSome {type R}] && method.getName == "drop" =>
+        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[TableElem[_, _, _]] && method.getName == "drop" =>
           Some(receiver).asInstanceOf[Option[Rep[Table[R]] forSome {type R}]]
         case _ => None
       }
@@ -1827,7 +1858,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object PrimaryKey {
       def unapply(d: Def[_]): Option[(Rep[Table[R]], Rep[R => K]) forSome {type R; type K}] = d match {
-        case MethodCall(receiver, method, Seq(key, _*)) if receiver.elem.isInstanceOf[TableElem[R, _, _] forSome {type R}] && method.getName == "PrimaryKey" =>
+        case MethodCall(receiver, method, Seq(key, _*)) if receiver.elem.isInstanceOf[TableElem[_, _, _]] && method.getName == "PrimaryKey" =>
           Some((receiver, key)).asInstanceOf[Option[(Rep[Table[R]], Rep[R => K]) forSome {type R; type K}]]
         case _ => None
       }
@@ -1839,7 +1870,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object SecondaryKey {
       def unapply(d: Def[_]): Option[(Rep[Table[R]], Rep[R => K]) forSome {type R; type K}] = d match {
-        case MethodCall(receiver, method, Seq(key, _*)) if receiver.elem.isInstanceOf[TableElem[R, _, _] forSome {type R}] && method.getName == "SecondaryKey" =>
+        case MethodCall(receiver, method, Seq(key, _*)) if receiver.elem.isInstanceOf[TableElem[_, _, _]] && method.getName == "SecondaryKey" =>
           Some((receiver, key)).asInstanceOf[Option[(Rep[Table[R]], Rep[R => K]) forSome {type R; type K}]]
         case _ => None
       }
@@ -1851,7 +1882,7 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
 
     object gather {
       def unapply(d: Def[_]): Option[Rep[Table[R]] forSome {type R}] = d match {
-        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[TableElem[R, _, _] forSome {type R}] && method.getName == "gather" =>
+        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[TableElem[_, _, _]] && method.getName == "gather" =>
           Some(receiver).asInstanceOf[Option[Rep[Table[R]] forSome {type R}]]
         case _ => None
       }
@@ -1861,7 +1892,17 @@ trait SqlExp extends SqlAbs with SqlDsl with ScalanExp
       }
     }
 
-    // WARNING: Cannot generate matcher for method `toArray`: Method's return type Arr[R] is not a Rep
+    object toArray {
+      def unapply(d: Def[_]): Option[Rep[Table[R]] forSome {type R}] = d match {
+        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[TableElem[_, _, _]] && method.getName == "toArray" =>
+          Some(receiver).asInstanceOf[Option[Rep[Table[R]] forSome {type R}]]
+        case _ => None
+      }
+      def unapply(exp: Exp[_]): Option[Rep[Table[R]] forSome {type R}] = exp match {
+        case Def(d) => unapply(d)
+        case _ => None
+      }
+    }
   }
 
   object TableCompanionMethods {

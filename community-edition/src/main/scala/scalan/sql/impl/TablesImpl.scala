@@ -21,8 +21,7 @@ trait TablesAbs extends Scalan with Tables
   trait TableRecordCompanionElem extends CompanionElem[TableRecordCompanionAbs]
   implicit lazy val TableRecordCompanionElem: TableRecordCompanionElem = new TableRecordCompanionElem {
     lazy val tag = typeTag[TableRecordCompanionAbs]
-    lazy val getDefaultRep = Default.defaultVal(TableRecord)
-    //def getDefaultRep = defaultRep
+    protected def getDefaultRep = TableRecord
   }
 
   abstract class TableRecordCompanionAbs extends CompanionBase[TableRecordCompanionAbs] with TableRecordCompanion {
@@ -76,8 +75,7 @@ trait TablesAbs extends Scalan with Tables
 
   class DetailCompanionElem extends CompanionElem[DetailCompanionAbs] {
     lazy val tag = typeTag[DetailCompanionAbs]
-    lazy val getDefaultRep = Default.defaultVal(Detail)
-    //def getDefaultRep = defaultRep
+    protected def getDefaultRep = Detail
   }
   implicit lazy val DetailCompanionElem: DetailCompanionElem = new DetailCompanionElem
 
@@ -138,8 +136,7 @@ trait TablesAbs extends Scalan with Tables
 
   class SupplierCompanionElem extends CompanionElem[SupplierCompanionAbs] {
     lazy val tag = typeTag[SupplierCompanionAbs]
-    lazy val getDefaultRep = Default.defaultVal(Supplier)
-    //def getDefaultRep = defaultRep
+    protected def getDefaultRep = Supplier
   }
   implicit lazy val SupplierCompanionElem: SupplierCompanionElem = new SupplierCompanionElem
 
@@ -200,8 +197,7 @@ trait TablesAbs extends Scalan with Tables
 
   class OrderCompanionElem extends CompanionElem[OrderCompanionAbs] {
     lazy val tag = typeTag[OrderCompanionAbs]
-    lazy val getDefaultRep = Default.defaultVal(Order)
-    //def getDefaultRep = defaultRep
+    protected def getDefaultRep = Order
   }
   implicit lazy val OrderCompanionElem: OrderCompanionElem = new OrderCompanionElem
 
@@ -262,8 +258,7 @@ trait TablesAbs extends Scalan with Tables
 
   class LINEITEMCompanionElem extends CompanionElem[LINEITEMCompanionAbs] {
     lazy val tag = typeTag[LINEITEMCompanionAbs]
-    lazy val getDefaultRep = Default.defaultVal(LINEITEM)
-    //def getDefaultRep = defaultRep
+    protected def getDefaultRep = LINEITEM
   }
   implicit lazy val LINEITEMCompanionElem: LINEITEMCompanionElem = new LINEITEMCompanionElem
 
@@ -324,8 +319,7 @@ trait TablesAbs extends Scalan with Tables
 
   class ORDERSCompanionElem extends CompanionElem[ORDERSCompanionAbs] {
     lazy val tag = typeTag[ORDERSCompanionAbs]
-    lazy val getDefaultRep = Default.defaultVal(ORDERS)
-    //def getDefaultRep = defaultRep
+    protected def getDefaultRep = ORDERS
   }
   implicit lazy val ORDERSCompanionElem: ORDERSCompanionElem = new ORDERSCompanionElem
 
@@ -386,8 +380,7 @@ trait TablesAbs extends Scalan with Tables
 
   class CUSTOMERCompanionElem extends CompanionElem[CUSTOMERCompanionAbs] {
     lazy val tag = typeTag[CUSTOMERCompanionAbs]
-    lazy val getDefaultRep = Default.defaultVal(CUSTOMER)
-    //def getDefaultRep = defaultRep
+    protected def getDefaultRep = CUSTOMER
   }
   implicit lazy val CUSTOMERCompanionElem: CUSTOMERCompanionElem = new CUSTOMERCompanionElem
 
@@ -448,8 +441,7 @@ trait TablesAbs extends Scalan with Tables
 
   class SUPPLIERCompanionElem extends CompanionElem[SUPPLIERCompanionAbs] {
     lazy val tag = typeTag[SUPPLIERCompanionAbs]
-    lazy val getDefaultRep = Default.defaultVal(SUPPLIER)
-    //def getDefaultRep = defaultRep
+    protected def getDefaultRep = SUPPLIER
   }
   implicit lazy val SUPPLIERCompanionElem: SUPPLIERCompanionElem = new SUPPLIERCompanionElem
 
@@ -510,8 +502,7 @@ trait TablesAbs extends Scalan with Tables
 
   class PARTSUPPCompanionElem extends CompanionElem[PARTSUPPCompanionAbs] {
     lazy val tag = typeTag[PARTSUPPCompanionAbs]
-    lazy val getDefaultRep = Default.defaultVal(PARTSUPP)
-    //def getDefaultRep = defaultRep
+    protected def getDefaultRep = PARTSUPP
   }
   implicit lazy val PARTSUPPCompanionElem: PARTSUPPCompanionElem = new PARTSUPPCompanionElem
 
@@ -572,8 +563,7 @@ trait TablesAbs extends Scalan with Tables
 
   class REGIONCompanionElem extends CompanionElem[REGIONCompanionAbs] {
     lazy val tag = typeTag[REGIONCompanionAbs]
-    lazy val getDefaultRep = Default.defaultVal(REGION)
-    //def getDefaultRep = defaultRep
+    protected def getDefaultRep = REGION
   }
   implicit lazy val REGIONCompanionElem: REGIONCompanionElem = new REGIONCompanionElem
 
@@ -634,8 +624,7 @@ trait TablesAbs extends Scalan with Tables
 
   class NATIONCompanionElem extends CompanionElem[NATIONCompanionAbs] {
     lazy val tag = typeTag[NATIONCompanionAbs]
-    lazy val getDefaultRep = Default.defaultVal(NATION)
-    //def getDefaultRep = defaultRep
+    protected def getDefaultRep = NATION
   }
   implicit lazy val NATIONCompanionElem: NATIONCompanionElem = new NATIONCompanionElem
 
@@ -696,8 +685,7 @@ trait TablesAbs extends Scalan with Tables
 
   class PARTCompanionElem extends CompanionElem[PARTCompanionAbs] {
     lazy val tag = typeTag[PARTCompanionAbs]
-    lazy val getDefaultRep = Default.defaultVal(PART)
-    //def getDefaultRep = defaultRep
+    protected def getDefaultRep = PART
   }
   implicit lazy val PARTCompanionElem: PARTCompanionElem = new PARTCompanionElem
 

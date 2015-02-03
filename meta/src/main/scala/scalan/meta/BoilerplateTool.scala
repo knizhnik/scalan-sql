@@ -2,12 +2,13 @@ package scalan.meta
 
 object StarterBoilerplateTool extends BoilerplateTool {
   val starterTypeSynonims = Map(
-    "RThrow" -> "Throwable"
+    "RThrow" -> "Throwable",
+    "Arr" -> "Array"
   )
   lazy val starterConfig = CodegenConfig(
-    srcPath = "../community-edition/src/main/scala",
+    srcPath = "community-edition/src/main/scala",
     entityFiles = List(
-     "scalan/sql/Sql.scala",
+      "scalan/sql/Sql.scala",
       "scalan/sql/Tables.scala"),
     seqContextTrait = "ScalanSeq",
     stagedContextTrait = "ScalanExp",

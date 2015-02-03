@@ -338,6 +338,8 @@ trait SqlParser extends SqlAST {
         | termExpression <~ IS ~ NULL ^^ { case e => IsNullExpr(e)}
         | termExpression <~ IS ~ NOT ~ NULL ^^ { case e => NotExpr(IsNullExpr(e))}
         | NOT ~> termExpression ^^ { e => NotExpr(e)}
+        | EXISTS ~> termExpression ^^ { e => ExistsExpr(e) }
+        | NOT ~ EXISTS ~> termExpression ^^ { e => NotExpr(ExistsExpr(e)) }
         | termExpression
         )
 
@@ -362,7 +364,6 @@ trait SqlParser extends SqlAST {
         | AVG ~ "(" ~> expression <~ ")" ^^ { case exp => AvgExpr(exp)}
         | MIN ~ "(" ~> expression <~ ")" ^^ { case exp => MinExpr(exp)}
         | MAX ~ "(" ~> expression <~ ")" ^^ { case exp => MaxExpr(exp)}
-        | EXISTS ~> expression ^^ { case exp => ExistsExpr(exp)}
         | CASE ~> expression.? ~ (WHEN ~> expression ~ (THEN ~> expression)).* ~
         ( ELSE ~> expression).? <~ END ^^ {
         case casePart ~ altPart ~ elsePart =>

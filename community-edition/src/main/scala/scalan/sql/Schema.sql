@@ -20,7 +20,7 @@ create table lineitem(
 create table orders(
     o_orderkey integer,
     o_custkey integer,
-    O_ORDERSTATUS char,
+    o_orderstatus char,
     o_totalprice real,
     o_orderdate integer,
     o_orderpriority varchar,
@@ -256,30 +256,35 @@ order by
 -- Q8
 select
     o_year,
-sum(case
-    when nation = 'INDONESIA'
-    then volume
-    else 0 end) / sum(volume) as mkt_share
-from (
-    select
-        o_orderdate/10000 as o_year,
-        l_extendedprice * (1-l_discount) as volume,
-        n2.n_name as nation
-    from
-        part join lineitem on p_partkey = l_partkey
-        join supplier on s_suppkey = l_suppkey
-        join orders on l_orderkey = o_orderkey
-        join customer on o_custkey = c_custkey
-        join nation n1 on c_nationkey = n1.n_nationkey
-        join nation n2 on s_nationkey = n2.n_nationkey
-        join region on n1.n_regionkey = r_regionkey
-    where
-        r_name = 'ASIA'
-        and o_orderdate between 19950101 and 19961231
-        and p_type = 'MEDIUM ANODIZED NICKEL'
-    ) as all_nations
-group by
-    o_year
+    nation_volume / total_volume as mkt_share
+from
+    (select
+        o_year,
+        sum(case
+            when nation = 'INDONESIA'
+            then volume
+            else 0 end) as nation_volume,
+        sum(volume) as total_volume
+    from (
+        select
+            o_orderdate/10000 as o_year,
+            l_extendedprice * (1-l_discount) as volume,
+            n2.n_name as nation
+        from
+            part join lineitem on p_partkey = l_partkey
+            join supplier on s_suppkey = l_suppkey
+            join orders on l_orderkey = o_orderkey
+            join customer on o_custkey = c_custkey
+            join nation n1 on c_nationkey = n1.n_nationkey
+            join nation n2 on s_nationkey = n2.n_nationkey
+            join region on n1.n_regionkey = r_regionkey
+        where
+            r_name = 'ASIA'
+            and o_orderdate between 19950101 and 19961231
+            and p_type = 'MEDIUM ANODIZED NICKEL'
+        ) as all_nations
+    group by
+        o_year) as mkt
 order by
     o_year;
 
@@ -349,9 +354,9 @@ where
 group by
     ps_partkey
 having
-    value > (
+    value > 0.0001 * (
         select
-            sum(ps_supplycost * ps_availqty) * 0.0001
+            sum(ps_supplycost * ps_availqty)
         from
             partsupp join supplier on ps_suppkey = s_suppkey
             join nation on s_nationkey = n_nationkey
@@ -414,14 +419,15 @@ order by
 -- Q14
 select
     100.00 * sum(case
-                when p_type like 'PROMO%'
-                then l_extendedprice*(1-l_discount)
-                else 0 end) / sum(l_extendedprice * (1 - l_discount)) as promo_revenue
-from
-    lineitem join part on l_partkey = p_partkey
-where
-    l_shipdate >= 19940301
-    and l_shipdate < 19940401;
+              when p_type like 'PROMO%'
+              then l_extendedprice*(1-l_discount)
+              else 0 end)
+        / sum(l_extendedprice * (1 - l_discount)) as promo_revenue
+    from
+        lineitem join part on l_partkey = p_partkey
+    where
+        l_shipdate >= 19940301
+        and l_shipdate < 19940401;
 
 -- Q15: views are not supported
 select
@@ -461,7 +467,7 @@ order by
     s_suppkey;
 
 
--- Q16: count distinct is not supported
+-- Q16: count distinct is not supported,
 select
     p_brand,
     p_type,
@@ -498,9 +504,9 @@ from
 where
     p_brand = 'Brand#15'
     and p_container = 'MED BAG'
-    and l_quantity < (
+    and l_quantity < 0.2 * (
         select
-            0.2 * avg(l_quantity)
+            avg(l_quantity)
         from
             lineitem
         where
@@ -544,7 +550,7 @@ order by
 
 -- Q19
 select
-    sum(l_extendedprice * (1 - l_discount) ) as revenue
+    sum(l_extendedprice * (1 - l_discount)) as revenue
 from
     lineitem join part on p_partkey = l_partkey
 where
@@ -589,9 +595,9 @@ where
                     part
                 where
                     p_name like 'azure%')
-            and ps_availqty > (
+            and ps_availqty > 0.5 * (
                 select
-                    0.5 * sum(l_quantity)
+                    sum(l_quantity)
                 from
                     lineitem
                 where
