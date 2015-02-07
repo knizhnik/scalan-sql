@@ -449,13 +449,98 @@ trait SqlCompiler extends SqlAST with SqlParser {
     !columns.exists(e => !isAggregate(e))
   }
 
+  def and(left: Expression, right: Expression) = {
+    (left, right) match { 
+      case (l:Literal, r:Expression) => r
+      case (l:Expression, r:Literal) => l
+      case (l:Expression, r:Expression) => AndExpr(l, r)
+    }
+  }
+
+  def depends(on: Operator, subquery: Operator): Boolean = {
+    subquery match { 
+      case Join(outer, inner, cond) => depends(on, outer) || depends(on, inner)
+      case Scan(t) => false
+      case OrderBy(p, by) => depends(on, p) || using(on, by)
+      case GroupBy(p, by) => depends(on, p) || using(on, by)
+      case Filter(p, predicate) => depends(on, p) || using(on, predicate)
+      case Project(p, columns) => depends(on, p) || using(on, columns)
+      case TableAlias(t, a) =>  depends(on, t)
+      case SubSelect(p) => depends(on, p)
+      case _ => false
+    }
+  }
+
+  def using(op: Operator, list: ExprList): Boolean = list.exists(e => using(op, e))
+
+  def using(op: Operator, predicate: Expression): Boolean = {
+    predicate match {
+      case AndExpr(l, r) => using(op, l) || using(op, r)
+      case OrExpr(l, r) =>  using(op, l) || using(op, r)
+      case AddExpr(l, r) => using(op, l) || using(op, r)
+      case SubExpr(l, r) => using(op, l) || using(op, r)
+      case MulExpr(l, r) => using(op, l) || using(op, r)
+      case DivExpr(l, r) => using(op, l) || using(op, r)
+      case EqExpr(l, r) => using(op, l) || using(op, r)
+      case NeExpr(l, r) => using(op, l) || using(op, r)
+      case LeExpr(l, r) => using(op, l) || using(op, r)
+      case LtExpr(l, r) => using(op, l) || using(op, r)
+      case GtExpr(l, r) => using(op, l) || using(op, r)
+      case GeExpr(l, r) => using(op, l) || using(op, r)
+      case ExistsExpr(q) => using(op, q)
+      case LikeExpr(l, r) => using(op, l) || using(op, r)
+      case NegExpr(opd) => using(op, opd)
+      case NotExpr(opd) => using(op, opd)
+      case Literal(v, t) => false
+      case CastExpr(exp, typ) => using(op, exp)
+      case ColumnRef(table, name) => buildContext(op).resolve(table, name).isDefined
+      case SelectExpr(s) => depends(op, s.operator)
+      case CountExpr() => false
+      case CountDistinctExpr(opd) => using(op, opd)
+      case CountNotNullExpr(opd) => using(op, opd)
+      case AvgExpr(opd) => using(op, opd)
+      case SumExpr(opd) => using(op, opd)
+      case MaxExpr(opd) => using(op, opd)
+      case MinExpr(opd) => using(op, opd)
+      case SubstrExpr(str, from, len) => using(op, str) || using(op, from) || using(op, len)
+      case CaseWhenExpr(list) => using(op, list)
+      case InListExpr(sel, lst) => using(op, sel) || using(op, lst)
+      case InExpr(sel, query) => using(op, sel) || depends(op, query.operator)
+      case FuncExpr(name, args) => using(op, args)
+      case _ => false
+    }
+  }
+
+
+  def optimize(op: Operator, predicate: Expression): (Operator,Expression) = {
+    op match { 
+      case Join(outer, inner, on) => {
+        if (!using(inner, predicate)) (Join(Filter(outer, predicate), inner, on), Literal(true, BoolType))
+        else predicate match {
+          case AndExpr(l, r) => {
+            val (jr, cr) = optimize(op, r) 
+            val (jl, cl) = optimize(jr, l) 
+            (jl, and(cl, cr))
+          }
+        }
+      }
+      case _ => (op, predicate)      
+    }
+  }
+ 
   def generateOperator(op:Operator): String = {
     op match {
       case Join(outer, inner, on) => generateOperator(outer) + ".join(" + generateOperator(inner) + ")(" + generateJoinKey(outer, on) + ", " + generateJoinKey(inner, on) + ")"
       case Scan(t) => t.name.toLowerCase
       case OrderBy(p, by) => generateOperator(p) + ".orderBy(" + generateLambdaExprList(p, by) + ")"
       case GroupBy(p, by) => groupBy(p, by)
-      case Filter(p, predicate) => generateOperator(p) + ".where(" + generateLambdaExpr(p, predicate) + ")"
+      case Filter(p, predicate) => {
+        val (joins, conjuncts) = optimize(p, predicate)  
+        conjuncts match {
+          case Literal(_,_) => generateOperator(joins)
+          case _ => generateOperator(joins) + ".where(" + generateLambdaExpr(p, conjuncts) + ")"
+        }
+      }
       case Project(p, columns) =>
         if (isGrandAggregate(columns)) {
           pushContext(p)
