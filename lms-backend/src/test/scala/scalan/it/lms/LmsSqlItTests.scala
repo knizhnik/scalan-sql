@@ -3,11 +3,12 @@ package it.lms
 
 import scalan.community.ScalanCommunityDslExp
 import scalan.compilation.lms._
+import scalan.compilation.lms.scalac.LmsCompilerScala
 import scalan.it.smoke.CommunitySqlItTests
 import scalan.sql._
 
 class LmsSqlItTests extends CommunitySqlItTests {
-  class ProgExp extends ProgCommunity with ScalanCommunityDslExp with SqlDslExp with TablesDslExp with LmsCompiler { self =>
+  class ProgExp extends ProgCommunity with ScalanCommunityDslExp with SqlDslExp with TablesDslExp with LmsCompilerScala { self =>
     def makeBridge[A, B] = new CoreBridge[A, B] {
       val scalan = self
       val lms = new CommunityLmsBackend

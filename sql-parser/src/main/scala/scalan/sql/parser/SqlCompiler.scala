@@ -522,6 +522,7 @@ trait SqlCompiler extends SqlAST with SqlParser {
             val (jl, cl) = optimize(jr, l) 
             (jl, and(cl, cr))
           }
+          case _ => (op, predicate)
         }
       }
       case _ => (op, predicate)      

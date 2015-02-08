@@ -31,10 +31,10 @@ trait Sql extends Base { sql: SqlDsl =>
     def Avg[E:Elem](agg: Rep[R=>E])(implicit n:Numeric[E]): Rep[Double] = toArray.mapBy(agg).avg
     def count: Rep[Int] = toArray.length
 
-    def MapReduce[K: Elem, V: Elem](map: Rep[R => (K, V)], reduce: Rep[((V, V)) => V]): Rep[PMap[K,V]] = toArray.mapReduceBy[K,V](map, reduce)
+    def MapReduce[K: Elem, V: Elem](map: Rep[R => (K, V)], reduce: Rep[((V, V)) => V]): Rep[MMap[K,V]] = toArray.mapReduceBy[K,V](map, reduce)
 
     def OrderBy[O: Elem](by: Rep[R=>O])(implicit o:Ordering[O]): Arr[R] = toArray.sortBy(by)
-    def GroupBy[G: Elem](by: Rep[R=>G]): Rep[MultiMap[G, R]] = MultiMap.fromMap[G, R](toArray.groupBy(by))
+    def GroupBy[G: Elem](by: Rep[R=>G]): Rep[MMultiMap[G, R]] = MMultiMap.fromMap[G, R](toArray.groupBy(by))
 
     def Join[I:Elem, K:Elem](inner: Rep[Table[I]])(outKey: Rep[R=>K], inKey: Rep[I=>K]): Rep[Table[(R,I)]] = {
       joinTables[R,I,K](self, inner, outKey, inKey)
@@ -98,7 +98,7 @@ trait Sql extends Base { sql: SqlDsl =>
     override def defaultOf[R:Elem] = Default.defaultVal(BaseTable(""))
   }
 
-  abstract class UniqueIndex[K,R](tableName: Rep[String], val table:Rep[Table[R]], val map:Rep[PMap[K,R]], val getKey: Rep[R=>K])
+  abstract class UniqueIndex[K,R](tableName: Rep[String], val table:Rep[Table[R]], val map:Rep[MMap[K,R]], val getKey: Rep[R=>K])
     (implicit schema:Elem[R], val index:Elem[K], val keyPath: String)
     extends BaseTable[R](tableName)
   {
@@ -121,16 +121,16 @@ trait Sql extends Base { sql: SqlDsl =>
   trait UniqueIndexCompanion extends ConcreteClass2[UniqueIndex] with TableCompanion {
     def defaultOf[K:Elem,R:Elem] = {
       implicit val keyPath = ""
-      Default.defaultVal(UniqueIndex("", super.defaultOf[R].value, element[PMap[K, R]].defaultRepValue, element[R=>K].defaultRepValue))
+      Default.defaultVal(UniqueIndex("", super.defaultOf[R].value, element[MMap[K, R]].defaultRepValue, element[R=>K].defaultRepValue))
     }
     def create[K:Elem,R:Elem](tableName: Rep[String], table: Rep[Table[R]], key: Rep[R=>K]) = {
       implicit val keyPath = getKeyPath(key)
-      UniqueIndex(tableName, table, PMap.make[K,R](tableName), key)
+      UniqueIndex(tableName, table, MMap.make[K,R](tableName), key)
     }
   }
 
 
-  abstract class NonUniqueIndex[K,R](tableName: Rep[String], val table:Rep[Table[R]], val map:Rep[MultiMap[K,R]], val getKey: Rep[R=>K])
+  abstract class NonUniqueIndex[K,R](tableName: Rep[String], val table:Rep[Table[R]], val map:Rep[MMultiMap[K,R]], val getKey: Rep[R=>K])
     (implicit schema:Elem[R], val index:Elem[K], val keyPath: String)
     extends BaseTable[R](tableName)
   {
@@ -150,11 +150,11 @@ trait Sql extends Base { sql: SqlDsl =>
   trait NonUniqueIndexCompanion extends ConcreteClass2[NonUniqueIndex] with TableCompanion {
     def defaultOf[K:Elem,R:Elem] = {
       implicit val keyPath = ""
-      Default.defaultVal(NonUniqueIndex("", super.defaultOf[R].value, MultiMap.defaultOf[K,R].value, element[R=>K].defaultRepValue))
+      Default.defaultVal(NonUniqueIndex("", super.defaultOf[R].value, MMultiMap.defaultOf[K,R].value, element[R=>K].defaultRepValue))
     }
     def create[K:Elem,R:Elem](tableName: Rep[String], table: Rep[Table[R]], key: Rep[R=>K]) = {
       implicit val keyPath = getKeyPath(key)
-      NonUniqueIndex(tableName, table, MultiMap.make[K, R](tableName), key)
+      NonUniqueIndex(tableName, table, MMultiMap.make[K, R](tableName), key)
     }
   }
 
@@ -190,12 +190,12 @@ trait Sql extends Base { sql: SqlDsl =>
 
     override def PrimaryKey[K:Elem](key: Rep[R=>K]): Rep[Table[R]] = {
       implicit val keyPath = getKeyPath(key)
-      UniqueIndex[K,R](tableName + ".pk", self, PMap.create[K,R](records.length, fun { i => (key(records(i)), records(i))}), key)
+      UniqueIndex[K,R](tableName + ".pk", self, MMap.create[K,R](records.length, fun { i => (key(records(i)), records(i))}), key)
     }
 
     override def SecondaryKey[K:Elem](key: Rep[R=>K]): Rep[Table[R]] = {
       implicit val keyPath = getKeyPath(key)
-      NonUniqueIndex[K,R](tableName + ".sk", self, MultiMap.fromArray[K,R](Array.tabulate[(K,R)](records.length)(i => (key(records(i)), records(i)))), key)
+      NonUniqueIndex[K,R](tableName + ".sk", self, MMultiMap.fromArray[K,R](SArray.tabulate[(K,R)](records.length)(i => (key(records(i)), records(i)))), key)
     }
 
     override def toArray = records
@@ -271,12 +271,12 @@ trait Sql extends Base { sql: SqlDsl =>
     }
 
 
-    override def MapReduce[K: Elem, V: Elem](map: Rep[R => (K, V)], reduce: Rep[((V, V)) => V]): Rep[PMap[K,V]] = {
-      par(nShards, (node: Rep[Int]) => shards(node).MapReduce[K,V](map, reduce)).fold[PMap[K,V]](PMap.empty[K,V], fun { p => p._1.reduce(p._2, reduce) })
+    override def MapReduce[K: Elem, V: Elem](map: Rep[R => (K, V)], reduce: Rep[((V, V)) => V]): Rep[MMap[K,V]] = {
+      par(nShards, (node: Rep[Int]) => shards(node).MapReduce[K,V](map, reduce)).fold[MMap[K,V]](MMap.empty[K,V], fun { p => p._1.reduce(p._2, reduce) })
     }
 
-    override def GroupBy[G: Elem](by: Rep[R=>G]): Rep[MultiMap[G, R]] = {
-      par(nShards, (node: Rep[Int]) => shards(node).GroupBy[G](by)).fold[MultiMap[G, R]](MultiMap.empty[G, R], fun { p => p._1.union(p._2) })
+    override def GroupBy[G: Elem](by: Rep[R=>G]): Rep[MMultiMap[G, R]] = {
+      par(nShards, (node: Rep[Int]) => shards(node).GroupBy[G](by)).fold[MMultiMap[G, R]](MMultiMap.empty[G, R], fun { p => p._1.union(p._2) })
     }
 
     override def Join[I:Elem, K:Elem](inner: Rep[Table[I]])(outKey: Rep[R=>K], inKey: Rep[I=>K]): Rep[Table[(R,I)]] = {
@@ -295,7 +295,7 @@ trait Sql extends Base { sql: SqlDsl =>
     }
     def create[R:Elem](tableName: Rep[String], nShards: Rep[Int], createShard:Rep[Int=>Table[R]], distrib: Rep[R=>Int]) = {
       implicit val shardKeyPath = getKeyPath(distrib)
-      ShardedTable(tableName, nShards, distrib, Array.repeat[Table[R]](nShards)(createShard))
+      ShardedTable(tableName, nShards, distrib, SArray.repeat[Table[R]](nShards)(createShard))
     }
   }
 
@@ -329,12 +329,12 @@ trait Sql extends Base { sql: SqlDsl =>
       par(nShards, (node: Rep[Int]) => view(node).Min(agg)).min
     }
 
-    override def MapReduce[K: Elem, V: Elem](map: Rep[R => (K, V)], reduce: Rep[((V, V)) => V]): Rep[PMap[K,V]] = {
-      par(nShards, (node: Rep[Int]) => view(node).MapReduce[K,V](map, reduce)).fold[PMap[K,V]](PMap.empty[K,V], fun { p => p._1.reduce(p._2, reduce) })
+    override def MapReduce[K: Elem, V: Elem](map: Rep[R => (K, V)], reduce: Rep[((V, V)) => V]): Rep[MMap[K,V]] = {
+      par(nShards, (node: Rep[Int]) => view(node).MapReduce[K,V](map, reduce)).fold[MMap[K,V]](MMap.empty[K,V], fun { p => p._1.reduce(p._2, reduce) })
     }
 
-    override def GroupBy[G: Elem](by: Rep[R=>G]): Rep[MultiMap[G, R]] = {
-      par(nShards, (node: Rep[Int]) => view(node).GroupBy[G](by)).fold[MultiMap[G, R]](MultiMap.empty[G, R], fun { p => p._1.union(p._2) })
+    override def GroupBy[G: Elem](by: Rep[R=>G]): Rep[MMultiMap[G, R]] = {
+      par(nShards, (node: Rep[Int]) => view(node).GroupBy[G](by)).fold[MMultiMap[G, R]](MMultiMap.empty[G, R], fun { p => p._1.union(p._2) })
     }
 
     override def Join[I:Elem, K:Elem](inner: Rep[Table[I]])(outKey: Rep[R=>K], inKey: Rep[I=>K]): Rep[Table[(R,I)]] = {
@@ -375,7 +375,7 @@ trait SqlDsl extends ScalanDsl with impl.SqlAbs with Sql with MultiMapsDsl {
 
     def orderBy[O: Elem](by: Rep[R] => Rep[O])(implicit o: Ordering[O]): Arr[R] = table.OrderBy(fun(by))
 
-    def groupBy[G: Elem](by: Rep[R] => Rep[G]): Rep[MultiMap[G, R]] = table.GroupBy(by)
+    def groupBy[G: Elem](by: Rep[R] => Rep[G]): Rep[MMultiMap[G, R]] = table.GroupBy(by)
 
     def join[I: Elem, K: Elem](inner: Rep[Table[I]])(outKey: Rep[R] => Rep[K], inKey: Rep[I] => Rep[K]): Rep[Table[(R, I)]] = table.Join(inner)(outKey, inKey)
 
@@ -385,7 +385,7 @@ trait SqlDsl extends ScalanDsl with impl.SqlAbs with Sql with MultiMapsDsl {
 
     def secondaryKey[K: Elem](key: Rep[R] => Rep[K]): Rep[Table[R]] = table.SecondaryKey(fun(key))
 
-    def mapReduce[K: Elem, V: Elem](map: Rep[R] => Rep[(K, V)], reduce: (Rep[V], Rep[V]) => Rep[V]): Rep[PMap[K,V]] = table.MapReduce[K,V](fun(map), fun2(reduce))
+    def mapReduce[K: Elem, V: Elem](map: Rep[R] => Rep[(K, V)], reduce: (Rep[V], Rep[V]) => Rep[V]): Rep[MMap[K,V]] = table.MapReduce[K,V](fun(map), fun2(reduce))
   }
 
 }
@@ -401,7 +401,7 @@ trait SqlDslSeq extends SqlDsl with impl.SqlSeq with ScalanCtxSeq with MultiMaps
 
   // Right now supports only join on primary keys (unique index should exist)       
   def joinTables[O:Elem, I:Elem, K:Elem](outer: Rep[Table[O]], inner: Rep[Table[I]], outKey: Rep[O=>K], inKey: Rep[I=>K]): Rep[Table[(O,I)]] = {
-    val map = MultiMap.fromArray[K,I](genericArrayOps(inner.toArray).map(i => (inKey(i), i)))
+    val map = MMultiMap.fromArray[K,I](genericArrayOps(inner.toArray).map(i => (inKey(i), i)))
     ReadOnlyTable[(O,I)](genericArrayOps(outer.toArray).flatMap(o => genericArrayOps(map(outKey(o)).toArray).map(i => (o, i))))
   }
   def joinShardedTable[O:Elem, I:Elem, K:Elem](outer: ShardedTable[O], inner: Rep[Table[I]], outKey: Rep[O=>K], inKey: Rep[I=>K]): Rep[Table[(O,I)]] = {
@@ -606,7 +606,7 @@ trait SqlDslExp extends SqlDsl with impl.SqlExp with ScalanExp with MultiMapsDsl
         }
       }
       case _ => {
-        val map = MultiMap.fromArray[K,I](inner.toArray.map(i => (inKey(i), i)))
+        val map = MMultiMap.fromArray[K,I](inner.toArray.map(i => (inKey(i), i)))
         ReadOnlyTable[(O, I)](outer.toArray.flatMap(o => map(outKey(o)).toArray.map(i => (o, i))))
       }
     }

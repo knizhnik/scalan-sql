@@ -54,7 +54,7 @@ abstract class CommunitySqlItTests extends SmokeItTests {
     }
 */
     lazy val tpchQ1 =  fun { in: Arr[Array[String]]  =>
-      val data = Array.tabulate(in.length)(i => LINEITEM.create(in(i)))
+      val data = SArray.tabulate(in.length)(i => LINEITEM.create(in(i)))
       val lineitem = ReadOnlyTable(data)
       lineitem.where(r => r.l_shipdate <= 19980811).mapReduce(
         r => Pair(Pair(r.l_returnflag,r.l_linestatus),
@@ -99,14 +99,14 @@ abstract class CommunitySqlItTests extends SmokeItTests {
 
 
     lazy val sqlDsl = fun { n: Rep[Int] =>
-      val input = Array.tabulate(n)(i => Detail.create(i, "Some detail", 1.0))
+      val input = SArray.tabulate(n)(i => Detail.create(i, "Some detail", 1.0))
       val table = ReadOnlyTable(input).primaryKey(_.id)
       table.where(r => r.id === 1).select(r => r.desc).toArray
     }
 
     // Doesn't work: wrong transformation
     lazy val sqlDsl2 = fun { n: Rep[Int] =>
-      val input = Array.tabulate(n)(i => Detail.create(i, "Some detail", 1.0))
+      val input = SArray.tabulate(n)(i => Detail.create(i, "Some detail", 1.0))
       val table = Table.create[Detail]("detail").insertFrom(input)
 //      val table = Table.create[Detail]("detail").primaryKey(_.id).insertFrom(input)
       table.where(r => r.id === 1).select(r => r.desc).toArray
@@ -120,7 +120,7 @@ abstract class CommunitySqlItTests extends SmokeItTests {
 
     // Doesn't work: generates wrong code
     lazy val sqlDsl4 = fun { n: Rep[Int] =>
-      val input = Array.tabulate(n)(i => Detail.create(i, "Some detail", 1.0))
+      val input = SArray.tabulate(n)(i => Detail.create(i, "Some detail", 1.0))
       input.update(1, Detail.create(1, "Another detail", 2.0)).map(_.desc)
     }
 

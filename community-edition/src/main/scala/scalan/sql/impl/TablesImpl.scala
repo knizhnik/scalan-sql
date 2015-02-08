@@ -8,33 +8,28 @@ import scala.reflect.runtime.universe._
 import scalan.common.Default
 
 // Abs -----------------------------------
-trait TablesAbs extends Scalan with Tables
-{ self: TablesDsl =>
+trait TablesAbs extends Scalan with Tables {
+  self: TablesDsl =>
   // single proxy for each type family
   implicit def proxyTableRecord(p: Rep[TableRecord]): TableRecord =
     proxyOps[TableRecord](p)
-
-
 
   abstract class TableRecordElem[From, To <: TableRecord](iso: Iso[From, To]) extends ViewElem[From, To]()(iso)
 
   trait TableRecordCompanionElem extends CompanionElem[TableRecordCompanionAbs]
   implicit lazy val TableRecordCompanionElem: TableRecordCompanionElem = new TableRecordCompanionElem {
-    lazy val tag = typeTag[TableRecordCompanionAbs]
+    lazy val tag = weakTypeTag[TableRecordCompanionAbs]
     protected def getDefaultRep = TableRecord
   }
 
   abstract class TableRecordCompanionAbs extends CompanionBase[TableRecordCompanionAbs] with TableRecordCompanion {
     override def toString = "TableRecord"
-    
   }
   def TableRecord: Rep[TableRecordCompanionAbs]
   implicit def proxyTableRecordCompanion(p: Rep[TableRecordCompanion]): TableRecordCompanion = {
     proxyOps[TableRecordCompanion](p)
   }
 
-  //default wrapper implementation
-  
   // elem for concrete class
   class DetailElem(iso: Iso[DetailData, Detail]) extends TableRecordElem[DetailData, Detail](iso)
 
@@ -74,7 +69,7 @@ trait TablesAbs extends Scalan with Tables
   }
 
   class DetailCompanionElem extends CompanionElem[DetailCompanionAbs] {
-    lazy val tag = typeTag[DetailCompanionAbs]
+    lazy val tag = weakTypeTag[DetailCompanionAbs]
     protected def getDefaultRep = Detail
   }
   implicit lazy val DetailCompanionElem: DetailCompanionElem = new DetailCompanionElem
@@ -94,8 +89,6 @@ trait TablesAbs extends Scalan with Tables
   def mkDetail(id: Rep[Int], desc: Rep[String], weight: Rep[Double]): Rep[Detail]
   def unmkDetail(p: Rep[Detail]): Option[(Rep[Int], Rep[String], Rep[Double])]
 
-  //default wrapper implementation
-  
   // elem for concrete class
   class SupplierElem(iso: Iso[SupplierData, Supplier]) extends TableRecordElem[SupplierData, Supplier](iso)
 
@@ -135,7 +128,7 @@ trait TablesAbs extends Scalan with Tables
   }
 
   class SupplierCompanionElem extends CompanionElem[SupplierCompanionAbs] {
-    lazy val tag = typeTag[SupplierCompanionAbs]
+    lazy val tag = weakTypeTag[SupplierCompanionAbs]
     protected def getDefaultRep = Supplier
   }
   implicit lazy val SupplierCompanionElem: SupplierCompanionElem = new SupplierCompanionElem
@@ -155,8 +148,6 @@ trait TablesAbs extends Scalan with Tables
   def mkSupplier(id: Rep[Int], company: Rep[String], address: Rep[String]): Rep[Supplier]
   def unmkSupplier(p: Rep[Supplier]): Option[(Rep[Int], Rep[String], Rep[String])]
 
-  //default wrapper implementation
-  
   // elem for concrete class
   class OrderElem(iso: Iso[OrderData, Order]) extends TableRecordElem[OrderData, Order](iso)
 
@@ -196,7 +187,7 @@ trait TablesAbs extends Scalan with Tables
   }
 
   class OrderCompanionElem extends CompanionElem[OrderCompanionAbs] {
-    lazy val tag = typeTag[OrderCompanionAbs]
+    lazy val tag = weakTypeTag[OrderCompanionAbs]
     protected def getDefaultRep = Order
   }
   implicit lazy val OrderCompanionElem: OrderCompanionElem = new OrderCompanionElem
@@ -216,8 +207,6 @@ trait TablesAbs extends Scalan with Tables
   def mkOrder(detail: Rep[Int], supplier: Rep[Int], amount: Rep[Int], price: Rep[Double], delivery: Rep[Int]): Rep[Order]
   def unmkOrder(p: Rep[Order]): Option[(Rep[Int], Rep[Int], Rep[Int], Rep[Double], Rep[Int])]
 
-  //default wrapper implementation
-  
   // elem for concrete class
   class LINEITEMElem(iso: Iso[LINEITEMData, LINEITEM]) extends TableRecordElem[LINEITEMData, LINEITEM](iso)
 
@@ -257,7 +246,7 @@ trait TablesAbs extends Scalan with Tables
   }
 
   class LINEITEMCompanionElem extends CompanionElem[LINEITEMCompanionAbs] {
-    lazy val tag = typeTag[LINEITEMCompanionAbs]
+    lazy val tag = weakTypeTag[LINEITEMCompanionAbs]
     protected def getDefaultRep = LINEITEM
   }
   implicit lazy val LINEITEMCompanionElem: LINEITEMCompanionElem = new LINEITEMCompanionElem
@@ -277,8 +266,6 @@ trait TablesAbs extends Scalan with Tables
   def mkLINEITEM(l_orderkey: Rep[Int], l_partkey: Rep[Int], l_suppkey: Rep[Int], l_linenumber: Rep[Int], l_quantity: Rep[Double], l_extendedprice: Rep[Double], l_discount: Rep[Double], l_tax: Rep[Double], l_returnflag: Rep[Char], l_linestatus: Rep[Char], l_shipdate: Rep[Int], l_commitdate: Rep[Int], l_receiptdate: Rep[Int], l_shipinstruct: Rep[String], l_shipmode: Rep[String], l_comment: Rep[String]): Rep[LINEITEM]
   def unmkLINEITEM(p: Rep[LINEITEM]): Option[(Rep[Int], Rep[Int], Rep[Int], Rep[Int], Rep[Double], Rep[Double], Rep[Double], Rep[Double], Rep[Char], Rep[Char], Rep[Int], Rep[Int], Rep[Int], Rep[String], Rep[String], Rep[String])]
 
-  //default wrapper implementation
-  
   // elem for concrete class
   class ORDERSElem(iso: Iso[ORDERSData, ORDERS]) extends TableRecordElem[ORDERSData, ORDERS](iso)
 
@@ -318,7 +305,7 @@ trait TablesAbs extends Scalan with Tables
   }
 
   class ORDERSCompanionElem extends CompanionElem[ORDERSCompanionAbs] {
-    lazy val tag = typeTag[ORDERSCompanionAbs]
+    lazy val tag = weakTypeTag[ORDERSCompanionAbs]
     protected def getDefaultRep = ORDERS
   }
   implicit lazy val ORDERSCompanionElem: ORDERSCompanionElem = new ORDERSCompanionElem
@@ -338,8 +325,6 @@ trait TablesAbs extends Scalan with Tables
   def mkORDERS(o_orderkey: Rep[Int], o_custkey: Rep[Int], o_orderstatus: Rep[Char], o_totalprice: Rep[Double], o_orderdate: Rep[Int], o_orderpriority: Rep[String], o_clerk: Rep[String], o_shippriority: Rep[Int], o_comment: Rep[String]): Rep[ORDERS]
   def unmkORDERS(p: Rep[ORDERS]): Option[(Rep[Int], Rep[Int], Rep[Char], Rep[Double], Rep[Int], Rep[String], Rep[String], Rep[Int], Rep[String])]
 
-  //default wrapper implementation
-  
   // elem for concrete class
   class CUSTOMERElem(iso: Iso[CUSTOMERData, CUSTOMER]) extends TableRecordElem[CUSTOMERData, CUSTOMER](iso)
 
@@ -379,7 +364,7 @@ trait TablesAbs extends Scalan with Tables
   }
 
   class CUSTOMERCompanionElem extends CompanionElem[CUSTOMERCompanionAbs] {
-    lazy val tag = typeTag[CUSTOMERCompanionAbs]
+    lazy val tag = weakTypeTag[CUSTOMERCompanionAbs]
     protected def getDefaultRep = CUSTOMER
   }
   implicit lazy val CUSTOMERCompanionElem: CUSTOMERCompanionElem = new CUSTOMERCompanionElem
@@ -399,8 +384,6 @@ trait TablesAbs extends Scalan with Tables
   def mkCUSTOMER(c_custkey: Rep[Int], c_name: Rep[String], c_address: Rep[String], c_nationkey: Rep[Int], c_phone: Rep[String], c_acctbal: Rep[Double], c_mktsegment: Rep[String], c_comment: Rep[String]): Rep[CUSTOMER]
   def unmkCUSTOMER(p: Rep[CUSTOMER]): Option[(Rep[Int], Rep[String], Rep[String], Rep[Int], Rep[String], Rep[Double], Rep[String], Rep[String])]
 
-  //default wrapper implementation
-  
   // elem for concrete class
   class SUPPLIERElem(iso: Iso[SUPPLIERData, SUPPLIER]) extends TableRecordElem[SUPPLIERData, SUPPLIER](iso)
 
@@ -440,7 +423,7 @@ trait TablesAbs extends Scalan with Tables
   }
 
   class SUPPLIERCompanionElem extends CompanionElem[SUPPLIERCompanionAbs] {
-    lazy val tag = typeTag[SUPPLIERCompanionAbs]
+    lazy val tag = weakTypeTag[SUPPLIERCompanionAbs]
     protected def getDefaultRep = SUPPLIER
   }
   implicit lazy val SUPPLIERCompanionElem: SUPPLIERCompanionElem = new SUPPLIERCompanionElem
@@ -460,8 +443,6 @@ trait TablesAbs extends Scalan with Tables
   def mkSUPPLIER(s_suppkey: Rep[Int], s_name: Rep[String], s_address: Rep[String], s_nationkey: Rep[Int], s_phone: Rep[String], s_acctbal: Rep[Double], s_comment: Rep[String]): Rep[SUPPLIER]
   def unmkSUPPLIER(p: Rep[SUPPLIER]): Option[(Rep[Int], Rep[String], Rep[String], Rep[Int], Rep[String], Rep[Double], Rep[String])]
 
-  //default wrapper implementation
-  
   // elem for concrete class
   class PARTSUPPElem(iso: Iso[PARTSUPPData, PARTSUPP]) extends TableRecordElem[PARTSUPPData, PARTSUPP](iso)
 
@@ -501,7 +482,7 @@ trait TablesAbs extends Scalan with Tables
   }
 
   class PARTSUPPCompanionElem extends CompanionElem[PARTSUPPCompanionAbs] {
-    lazy val tag = typeTag[PARTSUPPCompanionAbs]
+    lazy val tag = weakTypeTag[PARTSUPPCompanionAbs]
     protected def getDefaultRep = PARTSUPP
   }
   implicit lazy val PARTSUPPCompanionElem: PARTSUPPCompanionElem = new PARTSUPPCompanionElem
@@ -521,8 +502,6 @@ trait TablesAbs extends Scalan with Tables
   def mkPARTSUPP(ps_partkey: Rep[Int], ps_suppkey: Rep[Int], ps_availqty: Rep[Int], ps_supplycost: Rep[Double], ps_comment: Rep[String]): Rep[PARTSUPP]
   def unmkPARTSUPP(p: Rep[PARTSUPP]): Option[(Rep[Int], Rep[Int], Rep[Int], Rep[Double], Rep[String])]
 
-  //default wrapper implementation
-  
   // elem for concrete class
   class REGIONElem(iso: Iso[REGIONData, REGION]) extends TableRecordElem[REGIONData, REGION](iso)
 
@@ -562,7 +541,7 @@ trait TablesAbs extends Scalan with Tables
   }
 
   class REGIONCompanionElem extends CompanionElem[REGIONCompanionAbs] {
-    lazy val tag = typeTag[REGIONCompanionAbs]
+    lazy val tag = weakTypeTag[REGIONCompanionAbs]
     protected def getDefaultRep = REGION
   }
   implicit lazy val REGIONCompanionElem: REGIONCompanionElem = new REGIONCompanionElem
@@ -582,8 +561,6 @@ trait TablesAbs extends Scalan with Tables
   def mkREGION(r_regionkey: Rep[Int], r_name: Rep[String], r_comment: Rep[String]): Rep[REGION]
   def unmkREGION(p: Rep[REGION]): Option[(Rep[Int], Rep[String], Rep[String])]
 
-  //default wrapper implementation
-  
   // elem for concrete class
   class NATIONElem(iso: Iso[NATIONData, NATION]) extends TableRecordElem[NATIONData, NATION](iso)
 
@@ -623,7 +600,7 @@ trait TablesAbs extends Scalan with Tables
   }
 
   class NATIONCompanionElem extends CompanionElem[NATIONCompanionAbs] {
-    lazy val tag = typeTag[NATIONCompanionAbs]
+    lazy val tag = weakTypeTag[NATIONCompanionAbs]
     protected def getDefaultRep = NATION
   }
   implicit lazy val NATIONCompanionElem: NATIONCompanionElem = new NATIONCompanionElem
@@ -643,8 +620,6 @@ trait TablesAbs extends Scalan with Tables
   def mkNATION(n_nationkey: Rep[Int], n_name: Rep[String], n_regionkey: Rep[Int], n_comment: Rep[String]): Rep[NATION]
   def unmkNATION(p: Rep[NATION]): Option[(Rep[Int], Rep[String], Rep[Int], Rep[String])]
 
-  //default wrapper implementation
-  
   // elem for concrete class
   class PARTElem(iso: Iso[PARTData, PART]) extends TableRecordElem[PARTData, PART](iso)
 
@@ -684,7 +659,7 @@ trait TablesAbs extends Scalan with Tables
   }
 
   class PARTCompanionElem extends CompanionElem[PARTCompanionAbs] {
-    lazy val tag = typeTag[PARTCompanionAbs]
+    lazy val tag = weakTypeTag[PARTCompanionAbs]
     protected def getDefaultRep = PART
   }
   implicit lazy val PARTCompanionElem: PARTCompanionElem = new PARTCompanionElem
@@ -706,24 +681,18 @@ trait TablesAbs extends Scalan with Tables
 }
 
 // Seq -----------------------------------
-trait TablesSeq extends TablesAbs with TablesDsl with ScalanSeq
-{ self: TablesDslSeq =>
+trait TablesSeq extends TablesDsl with ScalanSeq {
+  self: TablesDslSeq =>
   lazy val TableRecord: Rep[TableRecordCompanionAbs] = new TableRecordCompanionAbs with UserTypeSeq[TableRecordCompanionAbs, TableRecordCompanionAbs] {
     lazy val selfType = element[TableRecordCompanionAbs]
-    
   }
-
-  
-
-  
 
   case class SeqDetail
       (override val id: Rep[Int], override val desc: Rep[String], override val weight: Rep[Double])
-      
+
     extends Detail(id, desc, weight)
         with UserTypeSeq[TableRecord, Detail] {
     lazy val selfType = element[Detail].asInstanceOf[Elem[TableRecord]]
-    
   }
   lazy val Detail = new DetailCompanionAbs with UserTypeSeq[DetailCompanionAbs, DetailCompanionAbs] {
     lazy val selfType = element[DetailCompanionAbs]
@@ -737,11 +706,10 @@ trait TablesSeq extends TablesAbs with TablesDsl with ScalanSeq
 
   case class SeqSupplier
       (override val id: Rep[Int], override val company: Rep[String], override val address: Rep[String])
-      
+
     extends Supplier(id, company, address)
         with UserTypeSeq[TableRecord, Supplier] {
     lazy val selfType = element[Supplier].asInstanceOf[Elem[TableRecord]]
-    
   }
   lazy val Supplier = new SupplierCompanionAbs with UserTypeSeq[SupplierCompanionAbs, SupplierCompanionAbs] {
     lazy val selfType = element[SupplierCompanionAbs]
@@ -755,11 +723,10 @@ trait TablesSeq extends TablesAbs with TablesDsl with ScalanSeq
 
   case class SeqOrder
       (override val detail: Rep[Int], override val supplier: Rep[Int], override val amount: Rep[Int], override val price: Rep[Double], override val delivery: Rep[Int])
-      
+
     extends Order(detail, supplier, amount, price, delivery)
         with UserTypeSeq[TableRecord, Order] {
     lazy val selfType = element[Order].asInstanceOf[Elem[TableRecord]]
-    
   }
   lazy val Order = new OrderCompanionAbs with UserTypeSeq[OrderCompanionAbs, OrderCompanionAbs] {
     lazy val selfType = element[OrderCompanionAbs]
@@ -773,11 +740,10 @@ trait TablesSeq extends TablesAbs with TablesDsl with ScalanSeq
 
   case class SeqLINEITEM
       (override val l_orderkey: Rep[Int], override val l_partkey: Rep[Int], override val l_suppkey: Rep[Int], override val l_linenumber: Rep[Int], override val l_quantity: Rep[Double], override val l_extendedprice: Rep[Double], override val l_discount: Rep[Double], override val l_tax: Rep[Double], override val l_returnflag: Rep[Char], override val l_linestatus: Rep[Char], override val l_shipdate: Rep[Int], override val l_commitdate: Rep[Int], override val l_receiptdate: Rep[Int], override val l_shipinstruct: Rep[String], override val l_shipmode: Rep[String], override val l_comment: Rep[String])
-      
+
     extends LINEITEM(l_orderkey, l_partkey, l_suppkey, l_linenumber, l_quantity, l_extendedprice, l_discount, l_tax, l_returnflag, l_linestatus, l_shipdate, l_commitdate, l_receiptdate, l_shipinstruct, l_shipmode, l_comment)
         with UserTypeSeq[TableRecord, LINEITEM] {
     lazy val selfType = element[LINEITEM].asInstanceOf[Elem[TableRecord]]
-    
   }
   lazy val LINEITEM = new LINEITEMCompanionAbs with UserTypeSeq[LINEITEMCompanionAbs, LINEITEMCompanionAbs] {
     lazy val selfType = element[LINEITEMCompanionAbs]
@@ -791,11 +757,10 @@ trait TablesSeq extends TablesAbs with TablesDsl with ScalanSeq
 
   case class SeqORDERS
       (override val o_orderkey: Rep[Int], override val o_custkey: Rep[Int], override val o_orderstatus: Rep[Char], override val o_totalprice: Rep[Double], override val o_orderdate: Rep[Int], override val o_orderpriority: Rep[String], override val o_clerk: Rep[String], override val o_shippriority: Rep[Int], override val o_comment: Rep[String])
-      
+
     extends ORDERS(o_orderkey, o_custkey, o_orderstatus, o_totalprice, o_orderdate, o_orderpriority, o_clerk, o_shippriority, o_comment)
         with UserTypeSeq[TableRecord, ORDERS] {
     lazy val selfType = element[ORDERS].asInstanceOf[Elem[TableRecord]]
-    
   }
   lazy val ORDERS = new ORDERSCompanionAbs with UserTypeSeq[ORDERSCompanionAbs, ORDERSCompanionAbs] {
     lazy val selfType = element[ORDERSCompanionAbs]
@@ -809,11 +774,10 @@ trait TablesSeq extends TablesAbs with TablesDsl with ScalanSeq
 
   case class SeqCUSTOMER
       (override val c_custkey: Rep[Int], override val c_name: Rep[String], override val c_address: Rep[String], override val c_nationkey: Rep[Int], override val c_phone: Rep[String], override val c_acctbal: Rep[Double], override val c_mktsegment: Rep[String], override val c_comment: Rep[String])
-      
+
     extends CUSTOMER(c_custkey, c_name, c_address, c_nationkey, c_phone, c_acctbal, c_mktsegment, c_comment)
         with UserTypeSeq[TableRecord, CUSTOMER] {
     lazy val selfType = element[CUSTOMER].asInstanceOf[Elem[TableRecord]]
-    
   }
   lazy val CUSTOMER = new CUSTOMERCompanionAbs with UserTypeSeq[CUSTOMERCompanionAbs, CUSTOMERCompanionAbs] {
     lazy val selfType = element[CUSTOMERCompanionAbs]
@@ -827,11 +791,10 @@ trait TablesSeq extends TablesAbs with TablesDsl with ScalanSeq
 
   case class SeqSUPPLIER
       (override val s_suppkey: Rep[Int], override val s_name: Rep[String], override val s_address: Rep[String], override val s_nationkey: Rep[Int], override val s_phone: Rep[String], override val s_acctbal: Rep[Double], override val s_comment: Rep[String])
-      
+
     extends SUPPLIER(s_suppkey, s_name, s_address, s_nationkey, s_phone, s_acctbal, s_comment)
         with UserTypeSeq[TableRecord, SUPPLIER] {
     lazy val selfType = element[SUPPLIER].asInstanceOf[Elem[TableRecord]]
-    
   }
   lazy val SUPPLIER = new SUPPLIERCompanionAbs with UserTypeSeq[SUPPLIERCompanionAbs, SUPPLIERCompanionAbs] {
     lazy val selfType = element[SUPPLIERCompanionAbs]
@@ -845,11 +808,10 @@ trait TablesSeq extends TablesAbs with TablesDsl with ScalanSeq
 
   case class SeqPARTSUPP
       (override val ps_partkey: Rep[Int], override val ps_suppkey: Rep[Int], override val ps_availqty: Rep[Int], override val ps_supplycost: Rep[Double], override val ps_comment: Rep[String])
-      
+
     extends PARTSUPP(ps_partkey, ps_suppkey, ps_availqty, ps_supplycost, ps_comment)
         with UserTypeSeq[TableRecord, PARTSUPP] {
     lazy val selfType = element[PARTSUPP].asInstanceOf[Elem[TableRecord]]
-    
   }
   lazy val PARTSUPP = new PARTSUPPCompanionAbs with UserTypeSeq[PARTSUPPCompanionAbs, PARTSUPPCompanionAbs] {
     lazy val selfType = element[PARTSUPPCompanionAbs]
@@ -863,11 +825,10 @@ trait TablesSeq extends TablesAbs with TablesDsl with ScalanSeq
 
   case class SeqREGION
       (override val r_regionkey: Rep[Int], override val r_name: Rep[String], override val r_comment: Rep[String])
-      
+
     extends REGION(r_regionkey, r_name, r_comment)
         with UserTypeSeq[TableRecord, REGION] {
     lazy val selfType = element[REGION].asInstanceOf[Elem[TableRecord]]
-    
   }
   lazy val REGION = new REGIONCompanionAbs with UserTypeSeq[REGIONCompanionAbs, REGIONCompanionAbs] {
     lazy val selfType = element[REGIONCompanionAbs]
@@ -881,11 +842,10 @@ trait TablesSeq extends TablesAbs with TablesDsl with ScalanSeq
 
   case class SeqNATION
       (override val n_nationkey: Rep[Int], override val n_name: Rep[String], override val n_regionkey: Rep[Int], override val n_comment: Rep[String])
-      
+
     extends NATION(n_nationkey, n_name, n_regionkey, n_comment)
         with UserTypeSeq[TableRecord, NATION] {
     lazy val selfType = element[NATION].asInstanceOf[Elem[TableRecord]]
-    
   }
   lazy val NATION = new NATIONCompanionAbs with UserTypeSeq[NATIONCompanionAbs, NATIONCompanionAbs] {
     lazy val selfType = element[NATIONCompanionAbs]
@@ -899,11 +859,10 @@ trait TablesSeq extends TablesAbs with TablesDsl with ScalanSeq
 
   case class SeqPART
       (override val p_partkey: Rep[Int], override val p_name: Rep[String], override val p_mfgr: Rep[String], override val p_brand: Rep[String], override val p_type: Rep[String], override val p_size: Rep[Int], override val p_container: Rep[String], override val p_retailprice: Rep[Double], override val p_comment: Rep[String])
-      
+
     extends PART(p_partkey, p_name, p_mfgr, p_brand, p_type, p_size, p_container, p_retailprice, p_comment)
         with UserTypeSeq[TableRecord, PART] {
     lazy val selfType = element[PART].asInstanceOf[Elem[TableRecord]]
-    
   }
   lazy val PART = new PARTCompanionAbs with UserTypeSeq[PARTCompanionAbs, PARTCompanionAbs] {
     lazy val selfType = element[PARTCompanionAbs]
@@ -917,18 +876,16 @@ trait TablesSeq extends TablesAbs with TablesDsl with ScalanSeq
 }
 
 // Exp -----------------------------------
-trait TablesExp extends TablesAbs with TablesDsl with ScalanExp
-{ self: TablesDslExp =>
+trait TablesExp extends TablesDsl with ScalanExp {
+  self: TablesDslExp =>
   lazy val TableRecord: Rep[TableRecordCompanionAbs] = new TableRecordCompanionAbs with UserTypeDef[TableRecordCompanionAbs, TableRecordCompanionAbs] {
     lazy val selfType = element[TableRecordCompanionAbs]
     override def mirror(t: Transformer) = this
   }
 
-
-
   case class ExpDetail
       (override val id: Rep[Int], override val desc: Rep[String], override val weight: Rep[Double])
-      
+
     extends Detail(id, desc, weight) with UserTypeDef[TableRecord, Detail] {
     lazy val selfType = element[Detail].asInstanceOf[Elem[TableRecord]]
     override def mirror(t: Transformer) = ExpDetail(t(id), t(desc), t(weight))
@@ -940,13 +897,12 @@ trait TablesExp extends TablesAbs with TablesDsl with ScalanExp
   }
 
   object DetailMethods {
-
   }
 
   object DetailCompanionMethods {
     object defaultOf {
       def unapply(d: Def[_]): Option[Unit] = d match {
-        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[DetailCompanionElem] && method.getName == "defaultOf" =>
+        case MethodCall(receiver, method, _, _) if receiver.elem.isInstanceOf[DetailCompanionElem] && method.getName == "defaultOf" =>
           Some(()).asInstanceOf[Option[Unit]]
         case _ => None
       }
@@ -958,7 +914,7 @@ trait TablesExp extends TablesAbs with TablesDsl with ScalanExp
 
     object create {
       def unapply(d: Def[_]): Option[(Rep[Int], Rep[String], Rep[Double])] = d match {
-        case MethodCall(receiver, method, Seq(id, desc, weight, _*)) if receiver.elem.isInstanceOf[DetailCompanionElem] && method.getName == "create" =>
+        case MethodCall(receiver, method, Seq(id, desc, weight, _*), _) if receiver.elem.isInstanceOf[DetailCompanionElem] && method.getName == "create" =>
           Some((id, desc, weight)).asInstanceOf[Option[(Rep[Int], Rep[String], Rep[Double])]]
         case _ => None
       }
@@ -977,7 +933,7 @@ trait TablesExp extends TablesAbs with TablesDsl with ScalanExp
 
   case class ExpSupplier
       (override val id: Rep[Int], override val company: Rep[String], override val address: Rep[String])
-      
+
     extends Supplier(id, company, address) with UserTypeDef[TableRecord, Supplier] {
     lazy val selfType = element[Supplier].asInstanceOf[Elem[TableRecord]]
     override def mirror(t: Transformer) = ExpSupplier(t(id), t(company), t(address))
@@ -989,13 +945,12 @@ trait TablesExp extends TablesAbs with TablesDsl with ScalanExp
   }
 
   object SupplierMethods {
-
   }
 
   object SupplierCompanionMethods {
     object defaultOf {
       def unapply(d: Def[_]): Option[Unit] = d match {
-        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[SupplierCompanionElem] && method.getName == "defaultOf" =>
+        case MethodCall(receiver, method, _, _) if receiver.elem.isInstanceOf[SupplierCompanionElem] && method.getName == "defaultOf" =>
           Some(()).asInstanceOf[Option[Unit]]
         case _ => None
       }
@@ -1007,7 +962,7 @@ trait TablesExp extends TablesAbs with TablesDsl with ScalanExp
 
     object create {
       def unapply(d: Def[_]): Option[(Rep[Int], Rep[String], Rep[String])] = d match {
-        case MethodCall(receiver, method, Seq(id, company, address, _*)) if receiver.elem.isInstanceOf[SupplierCompanionElem] && method.getName == "create" =>
+        case MethodCall(receiver, method, Seq(id, company, address, _*), _) if receiver.elem.isInstanceOf[SupplierCompanionElem] && method.getName == "create" =>
           Some((id, company, address)).asInstanceOf[Option[(Rep[Int], Rep[String], Rep[String])]]
         case _ => None
       }
@@ -1026,7 +981,7 @@ trait TablesExp extends TablesAbs with TablesDsl with ScalanExp
 
   case class ExpOrder
       (override val detail: Rep[Int], override val supplier: Rep[Int], override val amount: Rep[Int], override val price: Rep[Double], override val delivery: Rep[Int])
-      
+
     extends Order(detail, supplier, amount, price, delivery) with UserTypeDef[TableRecord, Order] {
     lazy val selfType = element[Order].asInstanceOf[Elem[TableRecord]]
     override def mirror(t: Transformer) = ExpOrder(t(detail), t(supplier), t(amount), t(price), t(delivery))
@@ -1038,13 +993,12 @@ trait TablesExp extends TablesAbs with TablesDsl with ScalanExp
   }
 
   object OrderMethods {
-
   }
 
   object OrderCompanionMethods {
     object defaultOf {
       def unapply(d: Def[_]): Option[Unit] = d match {
-        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[OrderCompanionElem] && method.getName == "defaultOf" =>
+        case MethodCall(receiver, method, _, _) if receiver.elem.isInstanceOf[OrderCompanionElem] && method.getName == "defaultOf" =>
           Some(()).asInstanceOf[Option[Unit]]
         case _ => None
       }
@@ -1056,7 +1010,7 @@ trait TablesExp extends TablesAbs with TablesDsl with ScalanExp
 
     object create {
       def unapply(d: Def[_]): Option[(Rep[Int], Rep[Int], Rep[Int], Rep[Double], Rep[Int])] = d match {
-        case MethodCall(receiver, method, Seq(detail, supplier, amount, price, delivery, _*)) if receiver.elem.isInstanceOf[OrderCompanionElem] && method.getName == "create" =>
+        case MethodCall(receiver, method, Seq(detail, supplier, amount, price, delivery, _*), _) if receiver.elem.isInstanceOf[OrderCompanionElem] && method.getName == "create" =>
           Some((detail, supplier, amount, price, delivery)).asInstanceOf[Option[(Rep[Int], Rep[Int], Rep[Int], Rep[Double], Rep[Int])]]
         case _ => None
       }
@@ -1075,7 +1029,7 @@ trait TablesExp extends TablesAbs with TablesDsl with ScalanExp
 
   case class ExpLINEITEM
       (override val l_orderkey: Rep[Int], override val l_partkey: Rep[Int], override val l_suppkey: Rep[Int], override val l_linenumber: Rep[Int], override val l_quantity: Rep[Double], override val l_extendedprice: Rep[Double], override val l_discount: Rep[Double], override val l_tax: Rep[Double], override val l_returnflag: Rep[Char], override val l_linestatus: Rep[Char], override val l_shipdate: Rep[Int], override val l_commitdate: Rep[Int], override val l_receiptdate: Rep[Int], override val l_shipinstruct: Rep[String], override val l_shipmode: Rep[String], override val l_comment: Rep[String])
-      
+
     extends LINEITEM(l_orderkey, l_partkey, l_suppkey, l_linenumber, l_quantity, l_extendedprice, l_discount, l_tax, l_returnflag, l_linestatus, l_shipdate, l_commitdate, l_receiptdate, l_shipinstruct, l_shipmode, l_comment) with UserTypeDef[TableRecord, LINEITEM] {
     lazy val selfType = element[LINEITEM].asInstanceOf[Elem[TableRecord]]
     override def mirror(t: Transformer) = ExpLINEITEM(t(l_orderkey), t(l_partkey), t(l_suppkey), t(l_linenumber), t(l_quantity), t(l_extendedprice), t(l_discount), t(l_tax), t(l_returnflag), t(l_linestatus), t(l_shipdate), t(l_commitdate), t(l_receiptdate), t(l_shipinstruct), t(l_shipmode), t(l_comment))
@@ -1087,13 +1041,12 @@ trait TablesExp extends TablesAbs with TablesDsl with ScalanExp
   }
 
   object LINEITEMMethods {
-
   }
 
   object LINEITEMCompanionMethods {
     object defaultOf {
       def unapply(d: Def[_]): Option[Unit] = d match {
-        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[LINEITEMCompanionElem] && method.getName == "defaultOf" =>
+        case MethodCall(receiver, method, _, _) if receiver.elem.isInstanceOf[LINEITEMCompanionElem] && method.getName == "defaultOf" =>
           Some(()).asInstanceOf[Option[Unit]]
         case _ => None
       }
@@ -1105,7 +1058,7 @@ trait TablesExp extends TablesAbs with TablesDsl with ScalanExp
 
     object create {
       def unapply(d: Def[_]): Option[Arr[String]] = d match {
-        case MethodCall(receiver, method, Seq(in, _*)) if receiver.elem.isInstanceOf[LINEITEMCompanionElem] && method.getName == "create" =>
+        case MethodCall(receiver, method, Seq(in, _*), _) if receiver.elem.isInstanceOf[LINEITEMCompanionElem] && method.getName == "create" =>
           Some(in).asInstanceOf[Option[Arr[String]]]
         case _ => None
       }
@@ -1124,7 +1077,7 @@ trait TablesExp extends TablesAbs with TablesDsl with ScalanExp
 
   case class ExpORDERS
       (override val o_orderkey: Rep[Int], override val o_custkey: Rep[Int], override val o_orderstatus: Rep[Char], override val o_totalprice: Rep[Double], override val o_orderdate: Rep[Int], override val o_orderpriority: Rep[String], override val o_clerk: Rep[String], override val o_shippriority: Rep[Int], override val o_comment: Rep[String])
-      
+
     extends ORDERS(o_orderkey, o_custkey, o_orderstatus, o_totalprice, o_orderdate, o_orderpriority, o_clerk, o_shippriority, o_comment) with UserTypeDef[TableRecord, ORDERS] {
     lazy val selfType = element[ORDERS].asInstanceOf[Elem[TableRecord]]
     override def mirror(t: Transformer) = ExpORDERS(t(o_orderkey), t(o_custkey), t(o_orderstatus), t(o_totalprice), t(o_orderdate), t(o_orderpriority), t(o_clerk), t(o_shippriority), t(o_comment))
@@ -1136,13 +1089,12 @@ trait TablesExp extends TablesAbs with TablesDsl with ScalanExp
   }
 
   object ORDERSMethods {
-
   }
 
   object ORDERSCompanionMethods {
     object defaultOf {
       def unapply(d: Def[_]): Option[Unit] = d match {
-        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[ORDERSCompanionElem] && method.getName == "defaultOf" =>
+        case MethodCall(receiver, method, _, _) if receiver.elem.isInstanceOf[ORDERSCompanionElem] && method.getName == "defaultOf" =>
           Some(()).asInstanceOf[Option[Unit]]
         case _ => None
       }
@@ -1161,7 +1113,7 @@ trait TablesExp extends TablesAbs with TablesDsl with ScalanExp
 
   case class ExpCUSTOMER
       (override val c_custkey: Rep[Int], override val c_name: Rep[String], override val c_address: Rep[String], override val c_nationkey: Rep[Int], override val c_phone: Rep[String], override val c_acctbal: Rep[Double], override val c_mktsegment: Rep[String], override val c_comment: Rep[String])
-      
+
     extends CUSTOMER(c_custkey, c_name, c_address, c_nationkey, c_phone, c_acctbal, c_mktsegment, c_comment) with UserTypeDef[TableRecord, CUSTOMER] {
     lazy val selfType = element[CUSTOMER].asInstanceOf[Elem[TableRecord]]
     override def mirror(t: Transformer) = ExpCUSTOMER(t(c_custkey), t(c_name), t(c_address), t(c_nationkey), t(c_phone), t(c_acctbal), t(c_mktsegment), t(c_comment))
@@ -1173,13 +1125,12 @@ trait TablesExp extends TablesAbs with TablesDsl with ScalanExp
   }
 
   object CUSTOMERMethods {
-
   }
 
   object CUSTOMERCompanionMethods {
     object defaultOf {
       def unapply(d: Def[_]): Option[Unit] = d match {
-        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[CUSTOMERCompanionElem] && method.getName == "defaultOf" =>
+        case MethodCall(receiver, method, _, _) if receiver.elem.isInstanceOf[CUSTOMERCompanionElem] && method.getName == "defaultOf" =>
           Some(()).asInstanceOf[Option[Unit]]
         case _ => None
       }
@@ -1198,7 +1149,7 @@ trait TablesExp extends TablesAbs with TablesDsl with ScalanExp
 
   case class ExpSUPPLIER
       (override val s_suppkey: Rep[Int], override val s_name: Rep[String], override val s_address: Rep[String], override val s_nationkey: Rep[Int], override val s_phone: Rep[String], override val s_acctbal: Rep[Double], override val s_comment: Rep[String])
-      
+
     extends SUPPLIER(s_suppkey, s_name, s_address, s_nationkey, s_phone, s_acctbal, s_comment) with UserTypeDef[TableRecord, SUPPLIER] {
     lazy val selfType = element[SUPPLIER].asInstanceOf[Elem[TableRecord]]
     override def mirror(t: Transformer) = ExpSUPPLIER(t(s_suppkey), t(s_name), t(s_address), t(s_nationkey), t(s_phone), t(s_acctbal), t(s_comment))
@@ -1210,13 +1161,12 @@ trait TablesExp extends TablesAbs with TablesDsl with ScalanExp
   }
 
   object SUPPLIERMethods {
-
   }
 
   object SUPPLIERCompanionMethods {
     object defaultOf {
       def unapply(d: Def[_]): Option[Unit] = d match {
-        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[SUPPLIERCompanionElem] && method.getName == "defaultOf" =>
+        case MethodCall(receiver, method, _, _) if receiver.elem.isInstanceOf[SUPPLIERCompanionElem] && method.getName == "defaultOf" =>
           Some(()).asInstanceOf[Option[Unit]]
         case _ => None
       }
@@ -1235,7 +1185,7 @@ trait TablesExp extends TablesAbs with TablesDsl with ScalanExp
 
   case class ExpPARTSUPP
       (override val ps_partkey: Rep[Int], override val ps_suppkey: Rep[Int], override val ps_availqty: Rep[Int], override val ps_supplycost: Rep[Double], override val ps_comment: Rep[String])
-      
+
     extends PARTSUPP(ps_partkey, ps_suppkey, ps_availqty, ps_supplycost, ps_comment) with UserTypeDef[TableRecord, PARTSUPP] {
     lazy val selfType = element[PARTSUPP].asInstanceOf[Elem[TableRecord]]
     override def mirror(t: Transformer) = ExpPARTSUPP(t(ps_partkey), t(ps_suppkey), t(ps_availqty), t(ps_supplycost), t(ps_comment))
@@ -1247,13 +1197,12 @@ trait TablesExp extends TablesAbs with TablesDsl with ScalanExp
   }
 
   object PARTSUPPMethods {
-
   }
 
   object PARTSUPPCompanionMethods {
     object defaultOf {
       def unapply(d: Def[_]): Option[Unit] = d match {
-        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[PARTSUPPCompanionElem] && method.getName == "defaultOf" =>
+        case MethodCall(receiver, method, _, _) if receiver.elem.isInstanceOf[PARTSUPPCompanionElem] && method.getName == "defaultOf" =>
           Some(()).asInstanceOf[Option[Unit]]
         case _ => None
       }
@@ -1272,7 +1221,7 @@ trait TablesExp extends TablesAbs with TablesDsl with ScalanExp
 
   case class ExpREGION
       (override val r_regionkey: Rep[Int], override val r_name: Rep[String], override val r_comment: Rep[String])
-      
+
     extends REGION(r_regionkey, r_name, r_comment) with UserTypeDef[TableRecord, REGION] {
     lazy val selfType = element[REGION].asInstanceOf[Elem[TableRecord]]
     override def mirror(t: Transformer) = ExpREGION(t(r_regionkey), t(r_name), t(r_comment))
@@ -1284,13 +1233,12 @@ trait TablesExp extends TablesAbs with TablesDsl with ScalanExp
   }
 
   object REGIONMethods {
-
   }
 
   object REGIONCompanionMethods {
     object defaultOf {
       def unapply(d: Def[_]): Option[Unit] = d match {
-        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[REGIONCompanionElem] && method.getName == "defaultOf" =>
+        case MethodCall(receiver, method, _, _) if receiver.elem.isInstanceOf[REGIONCompanionElem] && method.getName == "defaultOf" =>
           Some(()).asInstanceOf[Option[Unit]]
         case _ => None
       }
@@ -1309,7 +1257,7 @@ trait TablesExp extends TablesAbs with TablesDsl with ScalanExp
 
   case class ExpNATION
       (override val n_nationkey: Rep[Int], override val n_name: Rep[String], override val n_regionkey: Rep[Int], override val n_comment: Rep[String])
-      
+
     extends NATION(n_nationkey, n_name, n_regionkey, n_comment) with UserTypeDef[TableRecord, NATION] {
     lazy val selfType = element[NATION].asInstanceOf[Elem[TableRecord]]
     override def mirror(t: Transformer) = ExpNATION(t(n_nationkey), t(n_name), t(n_regionkey), t(n_comment))
@@ -1321,13 +1269,12 @@ trait TablesExp extends TablesAbs with TablesDsl with ScalanExp
   }
 
   object NATIONMethods {
-
   }
 
   object NATIONCompanionMethods {
     object defaultOf {
       def unapply(d: Def[_]): Option[Unit] = d match {
-        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[NATIONCompanionElem] && method.getName == "defaultOf" =>
+        case MethodCall(receiver, method, _, _) if receiver.elem.isInstanceOf[NATIONCompanionElem] && method.getName == "defaultOf" =>
           Some(()).asInstanceOf[Option[Unit]]
         case _ => None
       }
@@ -1346,7 +1293,7 @@ trait TablesExp extends TablesAbs with TablesDsl with ScalanExp
 
   case class ExpPART
       (override val p_partkey: Rep[Int], override val p_name: Rep[String], override val p_mfgr: Rep[String], override val p_brand: Rep[String], override val p_type: Rep[String], override val p_size: Rep[Int], override val p_container: Rep[String], override val p_retailprice: Rep[Double], override val p_comment: Rep[String])
-      
+
     extends PART(p_partkey, p_name, p_mfgr, p_brand, p_type, p_size, p_container, p_retailprice, p_comment) with UserTypeDef[TableRecord, PART] {
     lazy val selfType = element[PART].asInstanceOf[Elem[TableRecord]]
     override def mirror(t: Transformer) = ExpPART(t(p_partkey), t(p_name), t(p_mfgr), t(p_brand), t(p_type), t(p_size), t(p_container), t(p_retailprice), t(p_comment))
@@ -1358,13 +1305,12 @@ trait TablesExp extends TablesAbs with TablesDsl with ScalanExp
   }
 
   object PARTMethods {
-
   }
 
   object PARTCompanionMethods {
     object defaultOf {
       def unapply(d: Def[_]): Option[Unit] = d match {
-        case MethodCall(receiver, method, _) if receiver.elem.isInstanceOf[PARTCompanionElem] && method.getName == "defaultOf" =>
+        case MethodCall(receiver, method, _, _) if receiver.elem.isInstanceOf[PARTCompanionElem] && method.getName == "defaultOf" =>
           Some(()).asInstanceOf[Option[Unit]]
         case _ => None
       }
@@ -1382,10 +1328,8 @@ trait TablesExp extends TablesAbs with TablesDsl with ScalanExp
     Some((p.p_partkey, p.p_name, p.p_mfgr, p.p_brand, p.p_type, p.p_size, p.p_container, p.p_retailprice, p.p_comment))
 
   object TableRecordMethods {
-
   }
 
   object TableRecordCompanionMethods {
-
   }
 }

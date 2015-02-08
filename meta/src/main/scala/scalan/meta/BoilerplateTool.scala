@@ -10,6 +10,7 @@ object StarterBoilerplateTool extends BoilerplateTool {
     entityFiles = List(
       "scalan/sql/Sql.scala",
       "scalan/sql/Tables.scala"),
+    baseContextTrait = "Scalan",
     seqContextTrait = "ScalanSeq",
     stagedContextTrait = "ScalanExp",
     extraImports = List(
