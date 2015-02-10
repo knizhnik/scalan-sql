@@ -102,8 +102,10 @@ object ScalanStartRootBuild extends Build {
     .settings(libraryDependencies ++= Seq(coreDeps, coreDeps % "test" classifier "tests", ceDeps, ceDeps % "test" classifier "tests", lmsDeps, lmsDeps % "test" classifier "tests",
        "org.scala-lang.virtualized" % "scala-library" % virtScala,
        "org.scala-lang.virtualized" % "scala-compiler" % virtScala),
-     scalaOrganization := "org.scala-lang.virtualized",  
-     scalaVersion := virtScala)
+      scalaOrganization := "org.scala-lang.virtualized",  
+      scalaVersion := virtScala,
+      fork in Test := true,
+      fork in ItTest := true)
 
   def itFilter(name: String): Boolean =
     name endsWith "ItTests"

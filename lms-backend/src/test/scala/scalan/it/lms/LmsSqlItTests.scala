@@ -102,7 +102,7 @@ class LmsSqlItTests extends CommunitySqlItTests {
     compareOutputWithSequential(progStaged)(progSeq.sqlDsl, progStaged.sqlDsl, "sqlDsl", in)
   }
 
-  val tpch_data = "benchmarks/sql/lineitem-small.tbl"
+  val tpch_data = "../benchmarks/sql/lineitem-small.tbl"
   
   test("tpchQ1") {
     val in = scala.io.Source.fromFile(tpch_data).getLines().map(s => s.split("\\|")).toArray
