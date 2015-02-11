@@ -95,6 +95,48 @@ abstract class CommunitySqlItTests extends SmokeItTests {
       Q1(lineitem)
     }
 
+   lazy val TPCH_Q3_hor_seq = fun { in: Arr[Array[Array[String]]] =>
+      val customerData = in(0).map(r => parseCustomer(r))
+      val ordersData = in(1).map(r => parseOrders(r))
+      val lineitemData = in(2).map(r => parseLineitem(r))
+      val customer = ReadOnlyTable(customerData).primaryKey(customer_pk)
+      val orders = ReadOnlyTable(ordersData).primaryKey(orders_pk).secondaryKey(orders_cust_fk)
+      val lineitem = ReadOnlyTable(lineitemData).primaryKey(lineitem_pk).secondaryKey(lineitem_order_fk)
+      Q3(customer, orders, lineitem)
+    }
+
+    lazy val TPCH_Q3_ver_seq = fun { in: Arr[Array[Array[String]]] =>
+      val customerData = in(0).map(r => parseCustomer(r))
+      val ordersData = in(1).map(r => parseOrders(r))
+      val lineitemData = in(2).map(r => parseLineitem(r))
+      val customer = createCustomer("Customer").primaryKey(customer_pk).insertFrom(customerData)
+      val orders = createOrders("Orders").primaryKey(orders_pk).secondaryKey(orders_cust_fk).insertFrom(ordersData)
+      val lineitem = createLineitem("Lineitem").primaryKey(lineitem_pk).secondaryKey(lineitem_order_fk).insertFrom(lineitemData)
+      Q3(customer, orders, lineitem)
+   }
+
+    lazy val TPCH_Q3_hor_par = fun { in: Arr[Array[Array[String]]] =>
+      val customerData = in(0).map(r => parseCustomer(r))
+      val ordersData = in(1).map(r => parseOrders(r))
+      val lineitemData = in(2).map(r => parseLineitem(r))
+      val nJobs = 8
+      val customer = ShardedTable.create[Customer]("CustomerHDist", nJobs, (node: Rep[Int]) => Table.createShard[Customer](node).primaryKey(customer_pk), (r: Rep[Customer]) => r._1.hashcode).insertFrom(customerData)
+      val orders = ShardedTable.create[Orders]("OrdersHDist", nJobs, (node: Rep[Int]) => Table.createShard[Orders](node).primaryKey(orders_pk).secondaryKey(orders_cust_fk), (r: Rep[Orders]) => r._1.hashcode).insertFrom(ordersData)
+      val lineitem = ShardedTable.create[Lineitem]("LineitemHDist", nJobs, (node: Rep[Int]) => Table.createShard[Lineitem](node).primaryKey(lineitem_pk).secondaryKey(lineitem_order_fk), (r: Rep[Lineitem]) => r._1.hashcode).insertFrom(lineitemData)
+      Q3(customer, orders, lineitem)
+    }
+
+    lazy val TPCH_Q3_ver_par = fun { in: Arr[Array[Array[String]]] =>
+      val customerData = in(0).map(r => parseCustomer(r))
+      val ordersData = in(1).map(r => parseOrders(r))
+      val lineitemData = in(2).map(r => parseLineitem(r))
+      val nJobs = 8
+      val customer = ShardedTable.create[Customer]("CustomerVDist", nJobs, (node: Rep[Int]) => createCustomer(node.toStr).primaryKey(customer_pk), (r: Rep[Customer]) => r._1.hashcode).insertFrom(customerData)
+      val orders = ShardedTable.create[Orders]("OrdersVDist", nJobs, (node: Rep[Int]) => createOrders(node.toStr).primaryKey(orders_pk).secondaryKey(orders_cust_fk), (r: Rep[Orders]) => r._1.hashcode).insertFrom(ordersData)
+      val lineitem = ShardedTable.create[Lineitem]("LineitemVDist", nJobs, (node: Rep[Int]) => createLineitem(node.toStr).primaryKey(lineitem_pk).secondaryKey(lineitem_order_fk), (r: Rep[Lineitem]) => r._1.hashcode).insertFrom(lineitemData)
+      Q3(customer, orders, lineitem)
+    }
+
     type Record = (Int, String)
 
 

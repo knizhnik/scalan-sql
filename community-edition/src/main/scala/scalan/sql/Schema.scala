@@ -19,7 +19,7 @@ type Orders = (Int, (Int, (Char, (Double, (Int, (String, (String, (Int, String))
 
 def createOrders(tableName: Rep[String]) = PairTable.create(Table.create[Int](tableName + ".o_orderkey"), PairTable.create(Table.create[Int](tableName + ".o_custkey"), PairTable.create(Table.create[Char](tableName + ".o_orderstatus"), PairTable.create(Table.create[Double](tableName + ".o_totalprice"), PairTable.create(Table.create[Int](tableName + ".o_orderdate"), PairTable.create(Table.create[String](tableName + ".o_orderpriority"), PairTable.create(Table.create[String](tableName + ".o_clerk"), PairTable.create(Table.create[Int](tableName + ".o_shippriority"), Table.create[String](tableName + ".o_comment")))))))))
 
-def parseOrders(c: Arr[String]): Rep[Orders] = Pair(c(0).toInt, Pair(c(1).toInt, Pair(c(2).toChar, Pair(c(3).toDouble, Pair(c(4).toInt, Pair(c(5), Pair(c(6), Pair(c(7).toInt, c(8)))))))))
+def parseOrders(c: Arr[String]): Rep[Orders] = Pair(c(0).toInt, Pair(c(1).toInt, Pair(c(2).toChar, Pair(c(3).toDouble, Pair(c(4).toDate, Pair(c(5), Pair(c(6), Pair(c(7).toInt, c(8)))))))))
 
 
 type Customer = (Int, (String, (String, (Int, (String, (Double, (String, String)))))))

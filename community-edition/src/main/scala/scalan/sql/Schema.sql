@@ -22,7 +22,7 @@ create table orders(
     o_custkey integer,
     o_orderstatus char,
     o_totalprice real,
-    o_orderdate integer,
+    o_orderdate date,
     o_orderpriority varchar,
     o_clerk varchar,
     o_shippriority integer,

@@ -102,31 +102,59 @@ class LmsSqlItTests extends CommunitySqlItTests {
     compareOutputWithSequential(progStaged)(progSeq.sqlDsl, progStaged.sqlDsl, "sqlDsl", in)
   }
 
-  val tpch_data = "../benchmarks/sql/lineitem-small.tbl"
+  val tpch_data_dir = "../benchmarks/sql/"
   
   test("tpchQ1") {
-    val in = scala.io.Source.fromFile(tpch_data).getLines().map(s => s.split("\\|")).toArray
+    val in = scala.io.Source.fromFile(tpch_data_dir + "lineitem-small.tbl").getLines().map(s => s.split("\\|")).toArray
     compareOutputWithSequential(progStaged)(progSeq.tpchQ1, progStaged.tpchQ1, "tpchQ1", in)
   }
 
   test("TPCH_Q1_hor_seq") {
-    val in = scala.io.Source.fromFile(tpch_data).getLines().map(s => s.split("\\|")).toArray
+    val in = scala.io.Source.fromFile(tpch_data_dir + "lineitem-small.tbl").getLines().map(s => s.split("\\|")).toArray
     compareOutputWithSequential(progStaged)(progSeq.TPCH_Q1_hor_seq, progStaged.TPCH_Q1_hor_seq, "TPCH_Q1_hor_seq", in)
   }
 
   test("TPCH_Q1_ver_seq") {
-    val in = scala.io.Source.fromFile(tpch_data).getLines().map(s => s.split("\\|")).toArray
+    val in = scala.io.Source.fromFile(tpch_data_dir + "lineitem-small.tbl").getLines().map(s => s.split("\\|")).toArray
     compareOutputWithSequential(progStaged)(progSeq.TPCH_Q1_ver_seq, progStaged.TPCH_Q1_ver_seq, "TPCH_Q1_ver_seq", in)
   }
 
   test("TPCH_Q1_hor_par") {
-    val in = scala.io.Source.fromFile(tpch_data).getLines().map(s => s.split("\\|")).toArray
+    val in = scala.io.Source.fromFile(tpch_data_dir + "lineitem-small.tbl").getLines().map(s => s.split("\\|")).toArray
     compareOutputWithSequential(progStaged)(progSeq.TPCH_Q1_hor_par, progStaged.TPCH_Q1_hor_par, "TPCH_Q1_hor_par", in)
   }
 
   test("TPCH_Q1_ver_par") {
-    val in = scala.io.Source.fromFile(tpch_data).getLines().map(s => s.split("\\|")).toArray
+    val in = scala.io.Source.fromFile(tpch_data_dir + "lineitem-small.tbl").getLines().map(s => s.split("\\|")).toArray
     compareOutputWithSequential(progStaged)(progSeq.TPCH_Q1_ver_par, progStaged.TPCH_Q1_ver_par, "TPCH_Q1_ver_par", in)
+  }
+
+  test("TPCH_Q3_hor_seq") {
+    val in = Array(scala.io.Source.fromFile(tpch_data_dir + "customer-small.tbl").getLines().map(s => s.split("\\|")).toArray,
+      scala.io.Source.fromFile(tpch_data_dir + "orders-small.tbl").getLines().map(s => s.split("\\|")).toArray,
+      scala.io.Source.fromFile(tpch_data_dir + "lineitem-small.tbl").getLines().map(s => s.split("\\|")).toArray)
+    compareOutputWithSequential(progStaged)(progSeq.TPCH_Q3_hor_seq, progStaged.TPCH_Q3_hor_seq, "TPCH_Q3_hor_seq", in)
+  }
+
+  test("TPCH_Q3_ver_seq") {
+    val in = Array(scala.io.Source.fromFile(tpch_data_dir + "customer-small.tbl").getLines().map(s => s.split("\\|")).toArray,
+      scala.io.Source.fromFile(tpch_data_dir + "orders-small.tbl").getLines().map(s => s.split("\\|")).toArray,
+      scala.io.Source.fromFile(tpch_data_dir + "lineitem-small.tbl").getLines().map(s => s.split("\\|")).toArray)
+    compareOutputWithSequential(progStaged)(progSeq.TPCH_Q3_ver_seq, progStaged.TPCH_Q3_ver_seq, "TPCH_Q3_ver_seq", in)
+  }
+
+  test("TPCH_Q3_hor_par") {
+    val in = Array(scala.io.Source.fromFile(tpch_data_dir + "customer-small.tbl").getLines().map(s => s.split("\\|")).toArray,
+      scala.io.Source.fromFile(tpch_data_dir + "orders-small.tbl").getLines().map(s => s.split("\\|")).toArray,
+      scala.io.Source.fromFile(tpch_data_dir + "lineitem-small.tbl").getLines().map(s => s.split("\\|")).toArray)
+    compareOutputWithSequential(progStaged)(progSeq.TPCH_Q3_hor_par, progStaged.TPCH_Q3_hor_par, "TPCH_Q3_hor_par", in)
+  }
+
+  test("TPCH_Q3_ver_par") {
+    val in = Array(scala.io.Source.fromFile(tpch_data_dir + "customer-small.tbl").getLines().map(s => s.split("\\|")).toArray,
+      scala.io.Source.fromFile(tpch_data_dir + "orders-small.tbl").getLines().map(s => s.split("\\|")).toArray,
+      scala.io.Source.fromFile(tpch_data_dir + "lineitem-small.tbl").getLines().map(s => s.split("\\|")).toArray)
+    compareOutputWithSequential(progStaged)(progSeq.TPCH_Q3_ver_par, progStaged.TPCH_Q3_ver_par, "TPCH_Q3_ver_par", in)
   }
 
   test("test42Tuple") {
