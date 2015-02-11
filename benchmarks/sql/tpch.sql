@@ -124,14 +124,24 @@ create table customer(
     c_comment varchar,
     c_dummy char(1));
 
+create table nation(
+    n_nationkey integer,
+    n_name varchar,
+    n_regionkey integer,
+    n_comment varchar,
+    c_dummy char(1));
+
+
 create index lineitem_order_fk on lineitem(l_orderkey);
 create index customer_pk on customer(c_custkey);
 create index orders_pk on orders(o_orderkey);
 create index orders_cust_fk on orders(o_custkey);
+create index nation_pk on nation(n_nationkey);
 
 copy lineitem from '/home/postgres/lineitem.tbl' delimiter '|' csv;
 copy customer from '/home/postgres/customer.tbl' delimiter '|' csv;
 copy orders from '/home/postgres/orders.tbl' delimiter '|' csv;
+copy nation from '/home/postgres/nation.tbl' delimiter '|' csv;
 
 select
     l_orderkey,
@@ -152,6 +162,34 @@ group by
 order by
     revenue desc,
     o_orderdate;
+
+select
+    c_custkey,
+    c_name,
+    sum(l_extendedprice * (1 - l_discount)) as revenue,
+    c_acctbal,
+    n_name,
+    c_address,
+    c_phone,
+    c_comment
+from
+    orders join customer on c_custkey = o_custkey
+    join lineitem on l_orderkey = o_orderkey
+    join nation on c_nationkey = n_nationkey
+where
+    o_orderdate >= cast('1994-11-01' as date) and o_orderdate < cast('1995-02-01' as date)
+    and l_returnflag = 'R'
+group by
+    c_custkey,
+    c_name,
+    c_acctbal,
+    c_phone,
+    n_name,
+    c_address,
+    c_comment
+order by
+    revenue desc;
+
 
 eXtremeDB:
 insert into lineitem select * from foreign table (path='/home/knizhnik/tpch-data/sf1/lineitem.tbl', delimiter='|') as lineitem;

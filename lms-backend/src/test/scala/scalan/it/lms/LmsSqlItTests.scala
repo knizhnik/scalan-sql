@@ -157,6 +157,39 @@ class LmsSqlItTests extends CommunitySqlItTests {
     compareOutputWithSequential(progStaged)(progSeq.TPCH_Q3_ver_par, progStaged.TPCH_Q3_ver_par, "TPCH_Q3_ver_par", in)
   }
 
+  test("TPCH_Q10_hor_seq") {
+    val in = Array(scala.io.Source.fromFile(tpch_data_dir + "customer-small.tbl").getLines().map(s => s.split("\\|")).toArray,
+      scala.io.Source.fromFile(tpch_data_dir + "orders-small.tbl").getLines().map(s => s.split("\\|")).toArray,
+      scala.io.Source.fromFile(tpch_data_dir + "lineitem-small.tbl").getLines().map(s => s.split("\\|")).toArray,
+      scala.io.Source.fromFile(tpch_data_dir + "nation-small.tbl").getLines().map(s => s.split("\\|")).toArray)
+    compareOutputWithSequential(progStaged)(progSeq.TPCH_Q10_hor_seq, progStaged.TPCH_Q10_hor_seq, "TPCH_Q10_hor_seq", in)
+  }
+
+  test("TPCH_Q10_ver_seq") {
+    val in = Array(scala.io.Source.fromFile(tpch_data_dir + "customer-small.tbl").getLines().map(s => s.split("\\|")).toArray,
+      scala.io.Source.fromFile(tpch_data_dir + "orders-small.tbl").getLines().map(s => s.split("\\|")).toArray,
+      scala.io.Source.fromFile(tpch_data_dir + "lineitem-small.tbl").getLines().map(s => s.split("\\|")).toArray,
+      scala.io.Source.fromFile(tpch_data_dir + "nation-small.tbl").getLines().map(s => s.split("\\|")).toArray)
+    compareOutputWithSequential(progStaged)(progSeq.TPCH_Q10_ver_seq, progStaged.TPCH_Q10_ver_seq, "TPCH_Q10_ver_seq", in)
+  }
+
+  test("TPCH_Q10_hor_par") {
+    val in = Array(scala.io.Source.fromFile(tpch_data_dir + "customer-small.tbl").getLines().map(s => s.split("\\|")).toArray,
+      scala.io.Source.fromFile(tpch_data_dir + "orders-small.tbl").getLines().map(s => s.split("\\|")).toArray,
+      scala.io.Source.fromFile(tpch_data_dir + "lineitem-small.tbl").getLines().map(s => s.split("\\|")).toArray,
+      scala.io.Source.fromFile(tpch_data_dir + "nation-small.tbl").getLines().map(s => s.split("\\|")).toArray)
+    compareOutputWithSequential(progStaged)(progSeq.TPCH_Q10_hor_par, progStaged.TPCH_Q10_hor_par, "TPCH_Q10_hor_par", in)
+  }
+
+  test("TPCH_Q10_ver_par") {
+    val in = Array(scala.io.Source.fromFile(tpch_data_dir + "customer-small.tbl").getLines().map(s => s.split("\\|")).toArray,
+      scala.io.Source.fromFile(tpch_data_dir + "orders-small.tbl").getLines().map(s => s.split("\\|")).toArray,
+      scala.io.Source.fromFile(tpch_data_dir + "lineitem-small.tbl").getLines().map(s => s.split("\\|")).toArray,
+      scala.io.Source.fromFile(tpch_data_dir + "nation-small.tbl").getLines().map(s => s.split("\\|")).toArray,
+      scala.io.Source.fromFile(tpch_data_dir + "nation-small.tbl").getLines().map(s => s.split("\\|")).toArray)
+    compareOutputWithSequential(progStaged)(progSeq.TPCH_Q10_ver_par, progStaged.TPCH_Q10_ver_par, "TPCH_Q10_ver_par", in)
+  }
+
   test("test42Tuple") {
     val in = (Array((1, "red"), (2, "green"), (3, "blue")), Array((1, "one"), (2, "two"), (3, "three")))
     compareOutputWithSequential(progStaged)(progSeq.testTuple, progStaged.testTuple, "testTuple", in)

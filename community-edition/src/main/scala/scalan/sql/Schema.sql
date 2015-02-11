@@ -325,7 +325,7 @@ select
     c_phone,
     c_comment
 from
-    customer join orders on c_custkey = o_custkey
+    orders join customer on c_custkey = o_custkey
     join lineitem on l_orderkey = o_orderkey
     join nation on c_nationkey = n_nationkey
 where
