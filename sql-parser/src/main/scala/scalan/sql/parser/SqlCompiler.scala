@@ -20,6 +20,7 @@ trait SqlCompiler extends SqlAST with SqlParser {
   }
 
   var currScope: Scope = Scope(new GlobalContext, None, 0, "scalan")
+  var indent = "\t"
 
   def pushContext(opd: Operator) = {
     currScope = Scope(currScope.ctx, Some(currScope), currScope.nesting + 1, if (currScope.nesting == 0) "r" else "r" + currScope.nesting.toString)
@@ -87,8 +88,11 @@ trait SqlCompiler extends SqlAST with SqlParser {
   }
 
   def indexToPath(i: Int, n: Int) = {
-    val path = ".tail" * i
-    if (i == n - 1) path else path + ".head"
+    if (n > 1 && (n <= 8 || i < 7)) "._" + (i+1)
+    else {
+      val path = ".tail" * i
+      if (i == n - 1) path else path + ".head"
+    }
   }
 
   case class Binding(scope: String, path: String, column: Column)
@@ -106,7 +110,11 @@ trait SqlCompiler extends SqlAST with SqlParser {
     def resolve(schema: String, name: String): Option[Binding] = {
       if (schema.isEmpty || schema == table.name) {
         val i = table.schema.indexWhere(c => c.name == name)
-        if (i >= 0) Some(Binding(scope.name, indexToPath(i, table.schema.length), table.schema(i))) else None
+        if (i >= 0) {
+          //val path = indexToPath(i, table.schema.length);
+          val path = "." + name
+          Some(Binding(scope.name, path, table.schema(i)))
+        } else None
       } else None
     }
   }
@@ -224,7 +232,13 @@ trait SqlCompiler extends SqlAST with SqlParser {
         val binding = lookup(c)
         binding.scope + binding.path
       }
-      case SelectExpr(s) => "(" + generateOperator(s.operator) + ")"
+      case SelectExpr(s) => {
+        val saveIndent = indent
+        indent += "\t"
+        val subselect = "(" + generateOperator(s.operator) + ")"
+        indent = saveIndent
+        subselect
+      }
       case CountExpr() => "result.count"
       case CountDistinctExpr(_) => "result.count" // TODO: exclude duplicates
       case CountNotNullExpr(_) => "result.count"  // TODO: NULLs are not supported now
@@ -235,7 +249,13 @@ trait SqlCompiler extends SqlAST with SqlParser {
       case SubstrExpr(str, from, len) => generateExpr(str) + ".substring(" + generateExpr(from) + ", " + generateExpr(from) + " + " + generateExpr(len) + ")"
       case CaseWhenExpr(list) => generateCaseWhen(list, 0)
       case InListExpr(sel, lst) => "(" + lst.map(alt => (generateExpr(sel) + " === " + generateExpr(alt))).mkString(" || ") + ")"
-      case InExpr(sel, query) => "(" + generateOperator(query.operator) + ".where(e => e == " + generateExpr(sel) + ").count !== 0)"
+      case InExpr(sel, query) => {
+        val saveIndent = indent
+        indent += "\t"
+        val subselect ="(" + generateOperator(query.operator) + ".where(e => e == " + generateExpr(sel) + ").count !== 0)"
+        indent = saveIndent
+        subselect
+      }
       case FuncExpr(name, args) => name + "(" + args.map(p => generateExpr(p)).mkString(", ") + ")"
     }
   }
@@ -436,8 +456,9 @@ trait SqlCompiler extends SqlAST with SqlParser {
         val map = buildTree(aggregates.map(agg => generateAggOperand(agg)), "Pair(")
         val reduce = if (aggregates.length == 1) aggCombine(aggregates(0), "s1", "s2") else Array.tabulate(aggregates.length)(i => aggCombine(aggregates(i), "s1._" + (i+1), "s2._" + (i+1))).mkString(",")
         val aggResult = buildTree(Array.tabulate(columns.length)(i => generateAggResult(columns, aggregates, gby, i, countIndex)), "Pair(")
-        val result = s"""ReadOnlyTable(${generateOperator(p)}.mapReduce(${currScope.name} => Pair(${groupBy}, ${map}),
-           | (s1: Rep[${aggTypes}], s2: Rep[${aggTypes}]) => (${reduce})).toArray.map(${currScope.name} => ${aggResult}))""".stripMargin
+        val result = s"""ReadOnlyTable(${generateOperator(p)}
+           |$indent.mapReduce(${currScope.name} => Pair(${groupBy}, ${map}),
+           |$indent\t(s1: Rep[${aggTypes}], s2: Rep[${aggTypes}]) => (${reduce})).toArray.map(${currScope.name} => ${aggResult}))""".stripMargin
         popContext()
         result
       }
@@ -528,18 +549,18 @@ trait SqlCompiler extends SqlAST with SqlParser {
       case _ => (op, predicate)      
     }
   }
- 
+
   def generateOperator(op:Operator): String = {
     op match {
-      case Join(outer, inner, on) => generateOperator(outer) + ".join(" + generateOperator(inner) + ")(" + generateJoinKey(outer, on) + ", " + generateJoinKey(inner, on) + ")"
+      case Join(outer, inner, on) => generateOperator(outer) + s"""\n$indent.join(${generateOperator(inner)})(${generateJoinKey(outer, on)}, ${generateJoinKey(inner, on)})"""
       case Scan(t) => t.name.toLowerCase
-      case OrderBy(p, by) => generateOperator(p) + ".orderBy(" + generateLambdaExprList(p, by) + ")"
+      case OrderBy(p, by) => generateOperator(p) + s"""\n$indent.orderBy(${generateLambdaExprList(p, by)})"""
       case GroupBy(p, by) => groupBy(p, by)
       case Filter(p, predicate) => {
-        val (joins, conjuncts) = optimize(p, predicate)  
+        val (joins, conjuncts) = optimize(p, predicate)
         conjuncts match {
-          case Literal(_,_) => generateOperator(joins)
-          case _ => generateOperator(joins) + ".where(" + generateLambdaExpr(p, conjuncts) + ")"
+          case Literal(_, _) => generateOperator(joins)
+          case _ => generateOperator(joins) + s"""\n$indent.where(${generateLambdaExpr(p, conjuncts)})"""
         }
       }
       case Project(p, columns) =>
@@ -549,10 +570,15 @@ trait SqlCompiler extends SqlAST with SqlParser {
           popContext()
           agg
         } else {
-          generateOperator(p) + ".select(" + generateLambdaExprList(p, columns) + ")"
+          generateOperator(p) + s"""\n$indent.select(${generateLambdaExprList(p, columns)})"""
         }
       case TableAlias(t, a) => generateOperator(t)
-      case SubSelect(p) => generateOperator(p)
+      case SubSelect(p) =>
+        val saveIdent = indent
+        indent = indent + "\t"
+        val subquery = generateOperator(p)
+        indent = saveIdent
+        subquery
     }
   }
 
@@ -579,15 +605,22 @@ trait SqlCompiler extends SqlAST with SqlParser {
 
   def generateTable(table:Table): String = {
     val columns = table.schema
+    val n_columns = columns.length
     val typeName = table.name.capitalize
     val typeDef = buildTree(columns.map(c => c.ctype.scalaName))
-    val parse = buildTree(Array.tabulate(columns.length)(i => "c(" + i + ")" + parseType(columns(i).ctype)), "Pair(")
+    val classDef = Array.tabulate(n_columns)(i => "  def " + columns(i).name + " = self" + indexToPath(i, n_columns)).mkString("\n")
+    val parse = buildTree(Array.tabulate(n_columns)(i => "c(" + i + ")" + parseType(columns(i).ctype)), "Pair(")
     val pairTableDef = buildTree(columns.map(c => "Table.create[" + c.ctype.scalaName + "](tableName + \"." + c.name + "\")"), "PairTable.create(")
     s"""type $typeName = $typeDef
        |
        |def create$typeName(tableName: Rep[String]) = $pairTableDef
        |
        |def parse$typeName(c: Arr[String]): Rep[$typeName] = $parse
+       |
+       |implicit class ${typeName}_class(self: Rep[$typeName]) {
+       |$classDef
+       |}
+       |
        |""".stripMargin
   }
 
