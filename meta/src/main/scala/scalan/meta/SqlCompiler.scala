@@ -1,4 +1,4 @@
-package main.scala.scalan.sql.parser
+package scalan.meta
 
 /**
  * Created by knizhnik on 1/14/15.
@@ -32,20 +32,26 @@ trait SqlCompiler extends SqlAST with SqlParser {
 
   def lookup(col: ColumnRef): Binding = currScope.lookup(col)
   
-  def generate(sql: String): String = {
-    val statements = parseSql(sql)
-    var nQueries = 0
+  def generateSchema(sql: String): String = {
+    val statements = parseDDL(sql)
 
     statements.map(stmt => {
       stmt match {
-        case s: SelectStmt => {
-          nQueries += 1
-          generateQuery(nQueries, s.operator)
-        }
         case s: CreateIndexStmt => generateIndex(s)
         case s: CreateTableStmt => generateTable(s.table)
       }
     }).mkString("\n\n")
+  }
+
+  val currMethod:ScalanAst.SMethodDef = throw new IllegalStateException("Selet can be used only inside method")
+
+  def generateQuery(m: ScalanAst.SMethodDef): String = {
+    val args = m.allArgs.map(arg => arg.name + ": " + arg.tpe).mkString(", ")
+    val select = parseSelect(m.sql.get)
+    val op = select.operator
+    s"""type ${m.name}_Result = ${resultType(select)}
+      |
+      | override def ${m.name}(${args}) = ${generateOperator(op)}${tableToArray(op)}""".stripMargin
   }
 
   def tablesInNestedSelects(e: Expression): Set[Table] = {
@@ -552,7 +558,11 @@ trait SqlCompiler extends SqlAST with SqlParser {
   def generateOperator(op:Operator): String = {
     op match {
       case Join(outer, inner, on) => generateOperator(outer) + s"""\n$indent.join(${generateOperator(inner)})(${generateJoinKey(outer, on)}, ${generateJoinKey(inner, on)})"""
-      case Scan(t) => t.name.toLowerCase
+      case Scan(t) =>
+        currMethod.explicitArgs.find(arg => arg.tpe.toString ==  t.name) match { // TODO: global lookup
+          case Some(arg) => arg.name
+          case _ => t.name.toLowerCase
+        }
       case OrderBy(p, by) => generateOperator(p) + s"""\n$indent.orderBy(${generateLambdaExprList(p, by)})"""
       case GroupBy(p, by) => groupBy(p, by)
       case Filter(p, predicate) => {
@@ -589,9 +599,30 @@ trait SqlCompiler extends SqlAST with SqlParser {
     }
   }
 
-  def generateQuery(q:Int, op:Operator): String = {
-    val params = tables(op).map(t => t.name.toLowerCase + ": Rep[Table[" + t.name.capitalize + "]]").mkString(", ")
-     s"""def Q$q(${params}) = ${generateOperator(op)}${tableToArray(op)}"""
+  def operatorType(op: Operator): String = {
+    op match {
+      case Join(outer, inner, on) => "(" + operatorType(outer) + ", " + operatorType(inner) + ")"
+      case Scan(t) => buildTree(t.schema.map(c => c.ctype.scalaName))
+      case OrderBy(p, by) => operatorType(p)
+      case GroupBy(p, by) => operatorType(p)
+      case Filter(p, predicate) => operatorType(p)
+      case Project(p, columns) => {
+        pushContext(p)
+        val projection = buildTree(columns.map(c => getExprType(c).scalaName))
+        popContext()
+        projection
+      }
+      case TableAlias(t, a) => generateOperator(t)
+      case SubSelect(p) => operatorType(p)
+    }
+  }
+
+  def resultType(query: SelectStmt): String = {
+    query.operator match {
+      case OrderBy(p, by) => "Arr[" + operatorType(p) + "]"
+      case Project(p, c) if (isGrandAggregate(c)) => "Rep[" + operatorType(p) + "]"
+      case _ => "Arr[" + operatorType(query.operator) + "]"
+    }
   }
 
   def parseType(t: ColumnType): String = {

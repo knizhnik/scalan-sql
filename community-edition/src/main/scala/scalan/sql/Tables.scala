@@ -1,7 +1,6 @@
 package scalan.sql
 
 import scalan._
-import scalan.collections._
 import scalan.common.Default
 
 

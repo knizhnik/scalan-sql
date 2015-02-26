@@ -8,6 +8,7 @@ object StarterBoilerplateTool extends BoilerplateTool {
   lazy val starterConfig = CodegenConfig(
     srcPath = "community-edition/src/main/scala",
     entityFiles = List(
+      "scalan/sql/Database.scala",
       "scalan/sql/Sql.scala",
       "scalan/sql/Tables.scala"),
     baseContextTrait = "Scalan",

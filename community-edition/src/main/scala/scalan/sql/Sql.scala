@@ -14,6 +14,7 @@ trait Sql extends Base { sql: SqlDsl =>
   def joinShardedView[O:Elem, I:Elem, K:Elem](outer: ShardedView[O], inner: Rep[Table[I]], outKey: Rep[O => K], inKey: Rep[I => K]): Rep[Table[(O,I)]]
   def getKeyPath[K](key:Rep[K]): String
 
+  def sql(stmt: String) = throw new AbstractMethodError("sql quuery is not redefined")
 
   trait Table[R] extends Reifiable[Table[R]] { 
     implicit def schema:Elem[R]
