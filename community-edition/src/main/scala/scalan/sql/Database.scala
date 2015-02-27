@@ -1,13 +1,23 @@
 package scalan.sql
 
 import scalan._
+import scalan.common.Default
 
 /**
  * Created by knizhnik on 2/26/15.
  */
 trait Database extends Base {
   self: DatabaseDsl =>
-  
+
+  trait Session extends Reifiable[Session] {}
+  trait SessionCompanion {}
+
+  abstract class DatabaseSession(val login: Rep[String]) extends Session
+
+  trait DatabaseSessionCompanion extends ConcreteClass0[DatabaseSession] with SessionCompanion {
+    def defaultOf = Default.defaultVal(DatabaseSession(""))
+  }
+
   def schema = sql(s"""
   create table lineitem(
     l_orderkey integer,

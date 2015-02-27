@@ -3,7 +3,7 @@ package scalan.meta
 /**
  * Created by knizhnik on 1/14/15.
  */
-trait SqlCompiler extends SqlAST with SqlParser {
+trait SqlCompiler extends SqlAST with ScalanAst with SqlParser {
   case class Scope(var ctx: Context, outer: Option[Scope], nesting: Int, name: String) {
     def lookup(col: ColumnRef): Binding = {
       ctx.resolve(col.table, col.name) match {
@@ -43,11 +43,12 @@ trait SqlCompiler extends SqlAST with SqlParser {
     }).mkString("\n\n")
   }
 
-  val currMethod:ScalanAst.SMethodDef = throw new IllegalStateException("Selet can be used only inside method")
+  val currMethod:SMethodDef = throw new IllegalStateException("Selet can be used only inside method")
 
-  def generateQuery(m: ScalanAst.SMethodDef): String = {
+  def generateQuery(m: SMethodDef): String = {
     val args = m.allArgs.map(arg => arg.name + ": " + arg.tpe).mkString(", ")
-    val select = parseSelect(m.sql.get)
+    val sql = m.body.get.asInstanceOf[SApply].args(0).asInstanceOf[SLiteral].value
+    val select = parseSelect(sql)
     val op = select.operator
     s"""type ${m.name}_Result = ${resultType(select)}
       |
