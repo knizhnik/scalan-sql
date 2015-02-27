@@ -388,7 +388,7 @@ trait ScalanCodegen extends ScalanParsers with SqlCompiler with ScalanAstExtensi
             ""
         }
 
-        def converterBody(entity: STraitDef, conc: SClassDef) = {
+        def converterBody(entity: STraitOrClassDef, conc: SClassDef) = {
           val availableFields = entity.getAvailableFields(module)
           val concFields = conc.args.args.map(_.name)
           val missingFields = concFields.filterNot(availableFields.contains(_))

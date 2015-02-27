@@ -9,7 +9,7 @@ object StarterBoilerplateTool extends BoilerplateTool {
     name = "SqlMeta",
     srcPath = "community-edition/src/main/scala",
     entityFiles = List(
- //     "scalan/sql/Database.scala",
+      "scalan/sql/Database.scala",
       "scalan/sql/Sql.scala",
       "scalan/sql/Tables.scala"),
     baseContextTrait = "Scalan",
