@@ -17,8 +17,7 @@ trait Sql extends Base { sql: SqlDsl =>
   def sql(stmt: String) = throw new AbstractMethodError("sql quuery is not redefined")
 
   trait Table[R] extends Reifiable[Table[R]] {
-    implicit def eR:Elem[R]
-    def schema:Elem[R] = eR
+    implicit def schema:Elem[R]
     def tableName:Rep[String]
     def Select[P:Elem](projection: Rep[R=>P]): Rep[Table[P]] = ReadOnlyTable(toArray.mapBy(projection))
     def filter(predicate: Rep[R => Boolean]): Rep[Table[R]] = ReadOnlyTable(toArray.filterBy(predicate))
