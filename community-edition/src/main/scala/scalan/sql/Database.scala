@@ -18,7 +18,7 @@ trait Database extends Base {
     def defaultOf = Default.defaultVal(DatabaseSession(""))
   }
 
-  def schema = sql(s"""
+  def schema = sql("""
   create table lineitem(
     l_orderkey integer,
     l_partkey integer,
@@ -36,7 +36,7 @@ trait Database extends Base {
     l_shipinstruct varchar,
     l_shipmode varchar,
     l_comment varchar);
-    q""")
+    """)
   
   type Lineitem
   type Q1_Result

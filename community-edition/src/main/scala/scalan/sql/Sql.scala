@@ -62,6 +62,10 @@ trait Sql extends Base { sql: SqlDsl =>
     def toArray: Arr[R]
   }
 
+  implicit class StringFormatter(str: Rep[String]) {
+    def toDate: Rep[Int] = (str.substring(0, 4) + str.substring(5, 7) + str.substring(8, 10)).toInt
+    def toChar: Rep[Char] = str(0)
+  }
 
   implicit def defaultTableElement[R:Elem]: Elem[Table[R]] = element[BaseTable[R]].asElem[Table[R]]
 

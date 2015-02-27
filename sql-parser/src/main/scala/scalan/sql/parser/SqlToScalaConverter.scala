@@ -18,12 +18,7 @@ object SqlToScalaConverter extends  SqlCompiler {
            |import scalan._
            |
            |trait Queries extends ScalanDsl with SqlDsl {
-           |
-           |implicit class StringFormatter(str: Rep[String]) {
-           |  def toDate: Rep[Int] = (str.substring(0, 4) + str.substring(5, 7) + str.substring(8, 10)).toInt
-           |  def toChar: Rep[Char] = str(0)
-           |}
-           |
+           ||
            |${generate(input)}
            |
            |}""".stripMargin;

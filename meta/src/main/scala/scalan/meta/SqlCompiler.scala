@@ -43,13 +43,14 @@ trait SqlCompiler extends SqlAST with ScalanAst with SqlParser {
     }).mkString("\n\n")
   }
 
-  val currMethod:SMethodDef = throw new IllegalStateException("Selet can be used only inside method")
+  var currMethod:SMethodDef = null
 
   def generateQuery(m: SMethodDef): String = {
     val args = m.allArgs.map(arg => arg.name + ": " + arg.tpe).mkString(", ")
     val sql = m.body.get.asInstanceOf[SApply].args(0).asInstanceOf[SLiteral].value
     val select = parseSelect(sql)
     val op = select.operator
+    currMethod = m
     s"""type ${m.name}_Result = ${resultType(select)}
       |
       | override def ${m.name}(${args}) = ${generateOperator(op)}${tableToArray(op)}""".stripMargin
@@ -560,7 +561,8 @@ trait SqlCompiler extends SqlAST with ScalanAst with SqlParser {
     op match {
       case Join(outer, inner, on) => generateOperator(outer) + s"""\n$indent.join(${generateOperator(inner)})(${generateJoinKey(outer, on)}, ${generateJoinKey(inner, on)})"""
       case Scan(t) =>
-        currMethod.explicitArgs.find(arg => arg.tpe.toString ==  t.name) match { // TODO: global lookup
+        currMethod.explicitArgs.find(arg =>
+          arg.tpe.isInstanceOf[STraitCall] && arg.tpe.asInstanceOf[STraitCall].name == "Table" &&  arg.tpe.asInstanceOf[STraitCall].tpeSExprs(0).toString == t.name.capitalize) match { // TODO: global lookup
           case Some(arg) => arg.name
           case _ => t.name.toLowerCase
         }
