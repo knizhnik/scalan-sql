@@ -84,11 +84,8 @@ trait ScalanParsers extends ScalanAst {
       case Seq(only) => only
       case seq => !!!(s"There must be exactly one module trait in file, found ${seq.length}")
     }
-    val sql = statements.collect { case dd: DefDef if dd.tpt.isEmpty && dd.rhs.isInstanceOf[Apply] && dd.rhs.asInstanceOf[Apply].fun.symbol.name == "sql" =>
-        dd.rhs.asInstanceOf[Apply].args(0).asInstanceOf[Literal].value.stringValue }.mkString(";")
-
     val moduleTraitDef = traitDef(moduleTraitTree, moduleTraitTree)
-    val module = SEntityModuleDef(packageName, imports, moduleTraitDef, config, sql)
+    val module = SEntityModuleDef(packageName, imports, moduleTraitDef, config)
     val moduleName = moduleTraitDef.name
 
     val dslSeq = fileTree.stats.collectFirst {
@@ -296,8 +293,8 @@ trait ScalanParsers extends ScalanAst {
 //      case _ => None
 //    }
      val optBody:Option[SExpr] = md.rhs match {
-       case call:Apply if call.fun.symbol.name == "sql" =>
-         Some(SApply(SLiteral("sql"), List(SLiteral(call.args(0).asInstanceOf[Literal].value.stringValue))))
+       case Apply(ident:Ident, args) if ident.name.intern() == "sql" =>
+         Some(SApply(SLiteral("sql"), List(SLiteral(args(0).asInstanceOf[Apply].fun.asInstanceOf[Select].qualifier.asInstanceOf[Apply].args(0).asInstanceOf[Literal].value.stringValue))))
        case _ => None
      }
      val optElem = if (isElem) Some(()) else None

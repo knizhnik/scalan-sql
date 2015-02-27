@@ -36,7 +36,7 @@ trait Database extends Base {
     l_shipinstruct varchar,
     l_shipmode varchar,
     l_comment varchar);
-    """)
+    q""")
   
   type Lineitem
   type Q1_Result
