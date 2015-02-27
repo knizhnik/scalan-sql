@@ -41,7 +41,7 @@ trait Database extends Base {
   type Lineitem
   type Q1_Result
 
-  def Q1(items: Table[Lineitem]): Q1_Result = sql("""
+  def Q1(items: Rep[Table[Lineitem]]): Q1_Result = sql("""
   select
     l_returnflag,
     l_linestatus,
