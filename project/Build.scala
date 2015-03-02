@@ -66,51 +66,60 @@ object ScalanStartRootBuild extends Build {
 
   def liteDependency(name: String) = "com.huawei.scalan" %% name % "0.2.7-SNAPSHOT"
 
+  def itFilter(name: String): Boolean =
+    name endsWith "ItTests"
+
+  def unitFilter(name: String): Boolean = !itFilter(name)
+
+
   lazy val metaDeps = liteDependency("meta")
-  lazy val startermeta = Project(
-    id = "starter-meta",
+  lazy val scalancommonDeps = liteDependency("common")
+  lazy val coreDeps = liteDependency("core")
+  lazy val ceDeps = liteDependency("community-edition")
+  lazy val lmsDeps = liteDependency("lms-backend")
+
+  lazy val sqlmeta = Project(
+    id = "sql-meta",
     base = file("meta")).addTestConfigsAndCommonSettings.
     settings(libraryDependencies ++= Seq(metaDeps))
 
-  lazy val common = liteDependency("common")
-
-  lazy val seqParser = Project(
+  lazy val sqlParser = Project(
     id = "sql-parser",
     base = file("sql-parser")).addTestConfigsAndCommonSettings.
-    settings(libraryDependencies ++= Seq(common))
+    settings(libraryDependencies ++= Seq(scalancommonDeps))
 
-  lazy val coreDeps = liteDependency("core")
   lazy val start = Project(
     id = "scalan-starter",
     base = file(".")).addTestConfigsAndCommonSettings.
-    settings(libraryDependencies ++= Seq(coreDeps, coreDeps % "test" classifier "tests"))
+    settings(libraryDependencies ++= Seq(
+      coreDeps, coreDeps % "test" classifier "tests",
+      scalancommonDeps, scalancommonDeps % "test" classifier "tests"))
 
-  lazy val ceDeps = liteDependency("community-edition")
   lazy val communityEdition = Project(
     id = "community-edition-starter",
     base = file("community-edition")).addTestConfigsAndCommonSettings.
-    settings(libraryDependencies ++= Seq(common, common % "test" classifier "tests", coreDeps, coreDeps % "test" classifier "tests", ceDeps, ceDeps % "test" classifier "tests"))
+    settings(libraryDependencies ++= Seq(
+      scalancommonDeps , scalancommonDeps % "test" classifier "tests",
+      coreDeps, coreDeps % "test" classifier "tests",
+      ceDeps, ceDeps % "test" classifier "tests"))
 
   val virtScala = Option(System.getenv("SCALA_VIRTUALIZED_VERSION")).getOrElse("2.10.2")
-
-  lazy val lmsDeps = liteDependency("lms-backend")
   lazy val lmsBackend = Project(
     id = "lms",
     base = file("lms-backend"))
     .dependsOn(communityEdition.allConfigDependency)
     .addTestConfigsAndCommonSettings
-    .settings(libraryDependencies ++= Seq(coreDeps, coreDeps % "test" classifier "tests", ceDeps, ceDeps % "test" classifier "tests", lmsDeps, lmsDeps % "test" classifier "tests",
-       "org.scala-lang.virtualized" % "scala-library" % virtScala,
-       "org.scala-lang.virtualized" % "scala-compiler" % virtScala),
+    .settings(
+      libraryDependencies ++= Seq(
+        coreDeps, coreDeps % "test" classifier "tests",
+        ceDeps, ceDeps % "test" classifier "tests",
+        lmsDeps, lmsDeps % "test" classifier "tests",
+        "org.scala-lang.virtualized" % "scala-library" % virtScala,
+        "org.scala-lang.virtualized" % "scala-compiler" % virtScala),
       scalaOrganization := "org.scala-lang.virtualized",  
       scalaVersion := virtScala,
       fork in Test := true,
       fork in ItTest := true)
-
-  def itFilter(name: String): Boolean =
-    name endsWith "ItTests"
-
-  def unitFilter(name: String): Boolean = !itFilter(name)
 
   lazy val ItTest = config("it").extend(Test)
 
