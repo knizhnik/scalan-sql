@@ -163,8 +163,8 @@ trait Tables extends Base {
   }
 }
 
-trait TablesDsl extends ScalanDsl with impl.TablesAbs with Tables
+trait TablesDsl extends impl.TablesAbs
 
-trait TablesDslSeq extends TablesDsl with impl.TablesSeq with ScalanSeq
+trait TablesDslSeq extends impl.TablesSeq
 
-trait TablesDslExp extends TablesDsl with impl.TablesExp with ScalanExp
+trait TablesDslExp extends impl.TablesExp

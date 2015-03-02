@@ -358,7 +358,9 @@ trait Sql extends Base { sql: SqlDsl =>
   }
 }
 
-trait SqlDsl extends ScalanDsl with impl.SqlAbs with Sql with MultiMapsDsl {
+trait SqlDsl extends impl.SqlAbs
+  with ScalanCommunityDsl
+  with MultiMapsDsl {
   implicit class StringFormatter(str: Rep[String]) {
     def toDate: Rep[Int] = (str.substring(0, 4) + str.substring(5, 7) + str.substring(8, 10)).toInt
     def toChar: Rep[Char] = str(0)
@@ -393,7 +395,9 @@ trait SqlDsl extends ScalanDsl with impl.SqlAbs with Sql with MultiMapsDsl {
 
 }
 
-trait SqlDslSeq extends SqlDsl with impl.SqlSeq with ScalanCtxSeq with MultiMapsDslSeq {
+trait SqlDslSeq extends impl.SqlSeq
+  with ScalanCommunityDslSeq
+  with MultiMapsDslSeq {
   def uniqueIndexSearch[K:Elem,R:Elem](index: Rep[UniqueIndex[K,R]], predicate: Rep[R=>Boolean]): Rep[Table[R]] = {
     ReadOnlyTable(index.table.toArray.filterBy(predicate))
   }
@@ -416,7 +420,9 @@ trait SqlDslSeq extends SqlDsl with impl.SqlSeq with ScalanCtxSeq with MultiMaps
   def getKeyPath[K](key:Rep[K]): String = ""
 }
 
-trait SqlDslExp extends SqlDsl with impl.SqlExp with ScalanExp with MultiMapsDslExp {
+trait SqlDslExp extends impl.SqlExp
+  with ScalanCommunityDslExp
+  with MultiMapsDslExp {
   def getKeyPath[K](key: Rep[K]): String = {
     key match {
       case Def(l: Lambda[_, _]) => getKeyPath(l.y)

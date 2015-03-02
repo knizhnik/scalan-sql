@@ -16,7 +16,7 @@ trait SqlAbs extends Scalan with Sql {
     proxyOps[Table[R]](p)(TagImplicits.typeTagToClassTag[Table[R]])
   }
 
-  abstract class TableElem[R, From, To <: Table[R]](iso: Iso[From, To])
+  abstract class TableElem[R, From, To <: Table[R]](iso: Iso[From, To])(implicit schema: Elem[R])
     extends ViewElem[From, To](iso) {
     override def convert(x: Rep[Reifiable[_]]) = convertTable(x.asRep[Table[R]])
     def convertTable(x : Rep[Table[R]]): Rep[To]
@@ -557,7 +557,7 @@ trait SqlSeq extends SqlDsl with ScalanSeq {
   }
 
   def mkBaseTable[R]
-      (tableName: Rep[String])(implicit schema: Elem[R]) =
+      (tableName: Rep[String])(implicit schema: Elem[R]): Rep[BaseTable[R]] =
       new SeqBaseTable[R](tableName)
   def unmkBaseTable[R:Elem](p: Rep[BaseTable[R]]) =
     Some((p.tableName))
@@ -574,7 +574,7 @@ trait SqlSeq extends SqlDsl with ScalanSeq {
   }
 
   def mkUniqueIndex[K, R]
-      (tableName: Rep[String], table: Rep[Table[R]], map: Rep[MMap[K,R]], getKey: Rep[R => K])(implicit schema: Elem[R], index: Elem[K], keyPath: String) =
+      (tableName: Rep[String], table: Rep[Table[R]], map: Rep[MMap[K,R]], getKey: Rep[R => K])(implicit schema: Elem[R], index: Elem[K], keyPath: String): Rep[UniqueIndex[K, R]] =
       new SeqUniqueIndex[K, R](tableName, table, map, getKey)
   def unmkUniqueIndex[K:Elem, R:Elem](p: Rep[UniqueIndex[K, R]]) =
     Some((p.tableName, p.table, p.map, p.getKey))
@@ -591,7 +591,7 @@ trait SqlSeq extends SqlDsl with ScalanSeq {
   }
 
   def mkNonUniqueIndex[K, R]
-      (tableName: Rep[String], table: Rep[Table[R]], map: Rep[MMultiMap[K,R]], getKey: Rep[R => K])(implicit schema: Elem[R], index: Elem[K], keyPath: String) =
+      (tableName: Rep[String], table: Rep[Table[R]], map: Rep[MMultiMap[K,R]], getKey: Rep[R => K])(implicit schema: Elem[R], index: Elem[K], keyPath: String): Rep[NonUniqueIndex[K, R]] =
       new SeqNonUniqueIndex[K, R](tableName, table, map, getKey)
   def unmkNonUniqueIndex[K:Elem, R:Elem](p: Rep[NonUniqueIndex[K, R]]) =
     Some((p.tableName, p.table, p.map, p.getKey))
@@ -608,7 +608,7 @@ trait SqlSeq extends SqlDsl with ScalanSeq {
   }
 
   def mkReadWriteTable[R]
-      (tableName: Rep[String], records: Rep[ArrayBuffer[R]])(implicit schema: Elem[R]) =
+      (tableName: Rep[String], records: Rep[ArrayBuffer[R]])(implicit schema: Elem[R]): Rep[ReadWriteTable[R]] =
       new SeqReadWriteTable[R](tableName, records)
   def unmkReadWriteTable[R:Elem](p: Rep[ReadWriteTable[R]]) =
     Some((p.tableName, p.records))
@@ -625,7 +625,7 @@ trait SqlSeq extends SqlDsl with ScalanSeq {
   }
 
   def mkReadOnlyTable[R]
-      (records: Rep[Array[R]])(implicit schema: Elem[R]) =
+      (records: Rep[Array[R]])(implicit schema: Elem[R]): Rep[ReadOnlyTable[R]] =
       new SeqReadOnlyTable[R](records)
   def unmkReadOnlyTable[R:Elem](p: Rep[ReadOnlyTable[R]]) =
     Some((p.records))
@@ -642,7 +642,7 @@ trait SqlSeq extends SqlDsl with ScalanSeq {
   }
 
   def mkPairTable[R1, R2]
-      (left: Rep[Table[R1]], right: Rep[Table[R2]])(implicit leftSchema: Elem[R1], rightSchema: Elem[R2]) =
+      (left: Rep[Table[R1]], right: Rep[Table[R2]])(implicit leftSchema: Elem[R1], rightSchema: Elem[R2]): Rep[PairTable[R1, R2]] =
       new SeqPairTable[R1, R2](left, right)
   def unmkPairTable[R1:Elem, R2:Elem](p: Rep[PairTable[R1, R2]]) =
     Some((p.left, p.right))
@@ -659,7 +659,7 @@ trait SqlSeq extends SqlDsl with ScalanSeq {
   }
 
   def mkShardedTable[R]
-      (tableName: Rep[String], nShards: Rep[Int], distrib: Rep[R => Int], shards: Rep[Array[Table[R]]])(implicit schema: Elem[R], shardKeyPath: String) =
+      (tableName: Rep[String], nShards: Rep[Int], distrib: Rep[R => Int], shards: Rep[Array[Table[R]]])(implicit schema: Elem[R], shardKeyPath: String): Rep[ShardedTable[R]] =
       new SeqShardedTable[R](tableName, nShards, distrib, shards)
   def unmkShardedTable[R:Elem](p: Rep[ShardedTable[R]]) =
     Some((p.tableName, p.nShards, p.distrib, p.shards))
@@ -676,7 +676,7 @@ trait SqlSeq extends SqlDsl with ScalanSeq {
   }
 
   def mkShardedView[R]
-      (nShards: Rep[Int], view: Rep[Int => Table[R]])(implicit schema: Elem[R], shardKeyPath: String) =
+      (nShards: Rep[Int], view: Rep[Int => Table[R]])(implicit schema: Elem[R], shardKeyPath: String): Rep[ShardedView[R]] =
       new SeqShardedView[R](nShards, view)
   def unmkShardedView[R:Elem](p: Rep[ShardedView[R]]) =
     Some((p.nShards, p.view))
@@ -768,7 +768,7 @@ trait SqlExp extends SqlDsl with ScalanExp {
   }
 
   def mkBaseTable[R]
-    (tableName: Rep[String])(implicit schema: Elem[R]) =
+    (tableName: Rep[String])(implicit schema: Elem[R]): Rep[BaseTable[R]] =
     new ExpBaseTable[R](tableName)
   def unmkBaseTable[R:Elem](p: Rep[BaseTable[R]]) =
     Some((p.tableName))
@@ -875,7 +875,7 @@ trait SqlExp extends SqlDsl with ScalanExp {
   }
 
   def mkUniqueIndex[K, R]
-    (tableName: Rep[String], table: Rep[Table[R]], map: Rep[MMap[K,R]], getKey: Rep[R => K])(implicit schema: Elem[R], index: Elem[K], keyPath: String) =
+    (tableName: Rep[String], table: Rep[Table[R]], map: Rep[MMap[K,R]], getKey: Rep[R => K])(implicit schema: Elem[R], index: Elem[K], keyPath: String): Rep[UniqueIndex[K, R]] =
     new ExpUniqueIndex[K, R](tableName, table, map, getKey)
   def unmkUniqueIndex[K:Elem, R:Elem](p: Rep[UniqueIndex[K, R]]) =
     Some((p.tableName, p.table, p.map, p.getKey))
@@ -982,7 +982,7 @@ trait SqlExp extends SqlDsl with ScalanExp {
   }
 
   def mkNonUniqueIndex[K, R]
-    (tableName: Rep[String], table: Rep[Table[R]], map: Rep[MMultiMap[K,R]], getKey: Rep[R => K])(implicit schema: Elem[R], index: Elem[K], keyPath: String) =
+    (tableName: Rep[String], table: Rep[Table[R]], map: Rep[MMultiMap[K,R]], getKey: Rep[R => K])(implicit schema: Elem[R], index: Elem[K], keyPath: String): Rep[NonUniqueIndex[K, R]] =
     new ExpNonUniqueIndex[K, R](tableName, table, map, getKey)
   def unmkNonUniqueIndex[K:Elem, R:Elem](p: Rep[NonUniqueIndex[K, R]]) =
     Some((p.tableName, p.table, p.map, p.getKey))
@@ -1077,7 +1077,7 @@ trait SqlExp extends SqlDsl with ScalanExp {
   }
 
   def mkReadWriteTable[R]
-    (tableName: Rep[String], records: Rep[ArrayBuffer[R]])(implicit schema: Elem[R]) =
+    (tableName: Rep[String], records: Rep[ArrayBuffer[R]])(implicit schema: Elem[R]): Rep[ReadWriteTable[R]] =
     new ExpReadWriteTable[R](tableName, records)
   def unmkReadWriteTable[R:Elem](p: Rep[ReadWriteTable[R]]) =
     Some((p.tableName, p.records))
@@ -1172,7 +1172,7 @@ trait SqlExp extends SqlDsl with ScalanExp {
   }
 
   def mkReadOnlyTable[R]
-    (records: Rep[Array[R]])(implicit schema: Elem[R]) =
+    (records: Rep[Array[R]])(implicit schema: Elem[R]): Rep[ReadOnlyTable[R]] =
     new ExpReadOnlyTable[R](records)
   def unmkReadOnlyTable[R:Elem](p: Rep[ReadOnlyTable[R]]) =
     Some((p.records))
@@ -1267,7 +1267,7 @@ trait SqlExp extends SqlDsl with ScalanExp {
   }
 
   def mkPairTable[R1, R2]
-    (left: Rep[Table[R1]], right: Rep[Table[R2]])(implicit leftSchema: Elem[R1], rightSchema: Elem[R2]) =
+    (left: Rep[Table[R1]], right: Rep[Table[R2]])(implicit leftSchema: Elem[R1], rightSchema: Elem[R2]): Rep[PairTable[R1, R2]] =
     new ExpPairTable[R1, R2](left, right)
   def unmkPairTable[R1:Elem, R2:Elem](p: Rep[PairTable[R1, R2]]) =
     Some((p.left, p.right))
@@ -1458,7 +1458,7 @@ trait SqlExp extends SqlDsl with ScalanExp {
   }
 
   def mkShardedTable[R]
-    (tableName: Rep[String], nShards: Rep[Int], distrib: Rep[R => Int], shards: Rep[Array[Table[R]]])(implicit schema: Elem[R], shardKeyPath: String) =
+    (tableName: Rep[String], nShards: Rep[Int], distrib: Rep[R => Int], shards: Rep[Array[Table[R]]])(implicit schema: Elem[R], shardKeyPath: String): Rep[ShardedTable[R]] =
     new ExpShardedTable[R](tableName, nShards, distrib, shards)
   def unmkShardedTable[R:Elem](p: Rep[ShardedTable[R]]) =
     Some((p.tableName, p.nShards, p.distrib, p.shards))
@@ -1649,7 +1649,7 @@ trait SqlExp extends SqlDsl with ScalanExp {
   }
 
   def mkShardedView[R]
-    (nShards: Rep[Int], view: Rep[Int => Table[R]])(implicit schema: Elem[R], shardKeyPath: String) =
+    (nShards: Rep[Int], view: Rep[Int => Table[R]])(implicit schema: Elem[R], shardKeyPath: String): Rep[ShardedView[R]] =
     new ExpShardedView[R](nShards, view)
   def unmkShardedView[R:Elem](p: Rep[ShardedView[R]]) =
     Some((p.nShards, p.view))
