@@ -1,0 +1,8 @@
+class Dynamic
+
+class DataSource 
+{
+  public:
+    virtual Vector<Field> columns() = 0;
+    virtual Cursor* cursor() = 0;
+};

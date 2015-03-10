@@ -1,0 +1,107 @@
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/svn/!svn/ver/16637/trunk/MCO/eXtremeDB_4.0/include/sql
+END
+memmgr.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/15902/trunk/MCO/eXtremeDB_4.0/include/sql/memmgr.h
+END
+doxygen.cfg
+K 25
+svn:wc:ra_dav:version-url
+V 66
+/svn/!svn/ver/8339/trunk/MCO/eXtremeDB_4.0/include/sql/doxygen.cfg
+END
+apidef.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/16622/trunk/MCO/eXtremeDB_4.0/include/sql/apidef.h
+END
+sqlsrv.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/14950/trunk/MCO/eXtremeDB_4.0/include/sql/sqlsrv.h
+END
+sqlsrv_c.h
+K 25
+svn:wc:ra_dav:version-url
+V 66
+/svn/!svn/ver/13527/trunk/MCO/eXtremeDB_4.0/include/sql/sqlsrv_c.h
+END
+sqlcln.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/16637/trunk/MCO/eXtremeDB_4.0/include/sql/sqlcln.h
+END
+sqlcln_c.h
+K 25
+svn:wc:ra_dav:version-url
+V 66
+/svn/!svn/ver/13527/trunk/MCO/eXtremeDB_4.0/include/sql/sqlcln_c.h
+END
+mcosql.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/16445/trunk/MCO/eXtremeDB_4.0/include/sql/mcosql.h
+END
+stdtp.h
+K 25
+svn:wc:ra_dav:version-url
+V 63
+/svn/!svn/ver/16065/trunk/MCO/eXtremeDB_4.0/include/sql/stdtp.h
+END
+sqlcpp.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/16620/trunk/MCO/eXtremeDB_4.0/include/sql/sqlcpp.h
+END
+sqlc.h
+K 25
+svn:wc:ra_dav:version-url
+V 62
+/svn/!svn/ver/15225/trunk/MCO/eXtremeDB_4.0/include/sql/sqlc.h
+END
+config.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/16528/trunk/MCO/eXtremeDB_4.0/include/sql/config.h
+END
+mcoapi.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/16528/trunk/MCO/eXtremeDB_4.0/include/sql/mcoapi.h
+END
+mcoapic.h
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svn/!svn/ver/9341/trunk/MCO/eXtremeDB_4.0/include/sql/mcoapic.h
+END
+dbapi.h
+K 25
+svn:wc:ra_dav:version-url
+V 63
+/svn/!svn/ver/16637/trunk/MCO/eXtremeDB_4.0/include/sql/dbapi.h
+END
+exceptions.h
+K 25
+svn:wc:ra_dav:version-url
+V 68
+/svn/!svn/ver/15950/trunk/MCO/eXtremeDB_4.0/include/sql/exceptions.h
+END
+mcoapiseq.h
+K 25
+svn:wc:ra_dav:version-url
+V 67
+/svn/!svn/ver/16620/trunk/MCO/eXtremeDB_4.0/include/sql/mcoapiseq.h
+END

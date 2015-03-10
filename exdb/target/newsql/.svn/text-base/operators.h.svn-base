@@ -1,0 +1,152 @@
+class TemporaryDataSpource : public DataSource
+{
+    Runtime* const runtime;
+    
+    TemporaryDataSource(Runtime* rt) : runtime(rt) {}
+};
+
+class CrossJoin : public DataSource 
+{
+  public:
+    DataSource* outer;
+    DataSource* inner;
+
+    Cursor* cursor(Runtime* runtime);
+    CrossJoin(Runtime* runtime, DataSource* outer, DataSource* inner);
+    ~CrossJoin();
+};
+
+class IndexedJoin : public DataSource 
+{
+  public:
+    DataSource* outer;
+    Index* index;
+    Vector<Field>* outerKeys;
+    bool isOuterJoin;
+
+    Cursor* records();
+    IndexedJoin(Runtime* runtime, DataSource* outer, Index* index, Vector<Field>* outerKeys, bool isOuterJoin);
+    ~IndexedJoin();
+};
+
+class HashJoin : public DataSource 
+{
+  public:
+    DataSource* outer;
+    DataSource* inner;
+    Vector<Field>* innerKeys;
+    Vector<Field>* outerKeys;
+    bool outer;
+
+    Cursor* records();
+    HashJoin(DataSource* outer, DataSource* inner, Vector<Field>* outerKeys, Vector<Field>* innerKeys, bool outer);
+};
+
+class Filter : public DataSource
+{
+  public:
+    DataSource* input;
+    ExprNode* predicate;
+
+    Cursor* records();
+    Filter(Runtime* runtime, DataSource* input, ExprNode* predicate);
+};
+
+class Project : public DataSource
+{
+  public:
+    DataSource* input;
+    Vector<Field>* columns;
+
+    Cursor* records();
+    Filter(Runtime* runtime, DataSource* input, Vector<Field>* columns);
+};
+
+class HashAggregate : public DataSource
+{
+  public:
+    DataSource* input;
+    Vector<ExprNode>* groupBy;
+    Vector<ExprNode>* aggregates;
+    
+    Cursor* records();
+    HashAggregate(Runtime* runtime, DataSource* input, Vector<ExprNode>* groupBy, Vector<ExprNode>* aggregates);
+};
+
+class GrandAggregate : public DataSource
+{
+  public:
+    DataSource* input;
+    Vector<ExprNode>* aggregates;
+    
+    Cursor* records();
+    GrandAggregate(DataSource* input, Vector<ExprNode>* aggregates);
+};
+
+class SortBy : public DataSource
+{
+  public:
+    DataSource* input;
+    Vector<OrderNode>* orderBy;
+    
+    Cursor* records();
+    SortBy(Runtime* runtime, DataSource* input, Vector<OrderNode>* orderBy);
+};
+
+class Intersect : public DataSource
+{
+  public:
+    DataSource* left;
+    DataSource* right;
+
+    Cursor* records();
+    Intersect(DataSource* left, DataSource* right);
+};
+
+class Union : public DataSource
+{
+  public:
+    DataSource* left;
+    DataSource* right;
+
+    Cursor* records();
+    Union(Runtime* runtime, DataSource* left, DataSource* right);
+};
+
+class UnionAll : public DataSource
+{
+  public:
+    DataSource* left;
+    DataSource* right;
+
+    Cursor* records();
+    UnionAll(DataSource* left, DataSource* right);
+};
+
+
+class Except : public DataSource
+{
+  public:
+    DataSource* left;
+    DataSource* right;
+
+    Cursor* records();
+    Except(Runtime* runtime, DataSource* left, DataSource* right);
+};
+
+class Limit : public DataSource
+{
+  public:
+    DataSource* input;
+    ExprNode* skip;
+    ExprNode* limit;
+    
+    Cursor* records();
+    Limit(Runtime* runtime, DataSource* input, ExprNode* skip, ExprNode* limit);
+};
+
+    
+
+
+
+
