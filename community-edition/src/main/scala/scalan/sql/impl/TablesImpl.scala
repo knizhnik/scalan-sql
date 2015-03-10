@@ -748,7 +748,7 @@ trait TablesSeq extends TablesDsl with ScalanSeq {
   }
 
   def mkDetail
-      (id: Rep[Int], desc: Rep[String], weight: Rep[Double]) =
+      (id: Rep[Int], desc: Rep[String], weight: Rep[Double]): Rep[Detail] =
       new SeqDetail(id, desc, weight)
   def unmkDetail(p: Rep[Detail]) =
     Some((p.id, p.desc, p.weight))
@@ -765,7 +765,7 @@ trait TablesSeq extends TablesDsl with ScalanSeq {
   }
 
   def mkSupplier
-      (id: Rep[Int], company: Rep[String], address: Rep[String]) =
+      (id: Rep[Int], company: Rep[String], address: Rep[String]): Rep[Supplier] =
       new SeqSupplier(id, company, address)
   def unmkSupplier(p: Rep[Supplier]) =
     Some((p.id, p.company, p.address))
@@ -782,7 +782,7 @@ trait TablesSeq extends TablesDsl with ScalanSeq {
   }
 
   def mkOrder
-      (detail: Rep[Int], supplier: Rep[Int], amount: Rep[Int], price: Rep[Double], delivery: Rep[Int]) =
+      (detail: Rep[Int], supplier: Rep[Int], amount: Rep[Int], price: Rep[Double], delivery: Rep[Int]): Rep[Order] =
       new SeqOrder(detail, supplier, amount, price, delivery)
   def unmkOrder(p: Rep[Order]) =
     Some((p.detail, p.supplier, p.amount, p.price, p.delivery))
@@ -799,7 +799,7 @@ trait TablesSeq extends TablesDsl with ScalanSeq {
   }
 
   def mkLINEITEM
-      (l_orderkey: Rep[Int], l_partkey: Rep[Int], l_suppkey: Rep[Int], l_linenumber: Rep[Int], l_quantity: Rep[Double], l_extendedprice: Rep[Double], l_discount: Rep[Double], l_tax: Rep[Double], l_returnflag: Rep[Char], l_linestatus: Rep[Char], l_shipdate: Rep[Int], l_commitdate: Rep[Int], l_receiptdate: Rep[Int], l_shipinstruct: Rep[String], l_shipmode: Rep[String], l_comment: Rep[String]) =
+      (l_orderkey: Rep[Int], l_partkey: Rep[Int], l_suppkey: Rep[Int], l_linenumber: Rep[Int], l_quantity: Rep[Double], l_extendedprice: Rep[Double], l_discount: Rep[Double], l_tax: Rep[Double], l_returnflag: Rep[Char], l_linestatus: Rep[Char], l_shipdate: Rep[Int], l_commitdate: Rep[Int], l_receiptdate: Rep[Int], l_shipinstruct: Rep[String], l_shipmode: Rep[String], l_comment: Rep[String]): Rep[LINEITEM] =
       new SeqLINEITEM(l_orderkey, l_partkey, l_suppkey, l_linenumber, l_quantity, l_extendedprice, l_discount, l_tax, l_returnflag, l_linestatus, l_shipdate, l_commitdate, l_receiptdate, l_shipinstruct, l_shipmode, l_comment)
   def unmkLINEITEM(p: Rep[LINEITEM]) =
     Some((p.l_orderkey, p.l_partkey, p.l_suppkey, p.l_linenumber, p.l_quantity, p.l_extendedprice, p.l_discount, p.l_tax, p.l_returnflag, p.l_linestatus, p.l_shipdate, p.l_commitdate, p.l_receiptdate, p.l_shipinstruct, p.l_shipmode, p.l_comment))
@@ -816,7 +816,7 @@ trait TablesSeq extends TablesDsl with ScalanSeq {
   }
 
   def mkORDERS
-      (o_orderkey: Rep[Int], o_custkey: Rep[Int], o_orderstatus: Rep[Char], o_totalprice: Rep[Double], o_orderdate: Rep[Int], o_orderpriority: Rep[String], o_clerk: Rep[String], o_shippriority: Rep[Int], o_comment: Rep[String]) =
+      (o_orderkey: Rep[Int], o_custkey: Rep[Int], o_orderstatus: Rep[Char], o_totalprice: Rep[Double], o_orderdate: Rep[Int], o_orderpriority: Rep[String], o_clerk: Rep[String], o_shippriority: Rep[Int], o_comment: Rep[String]): Rep[ORDERS] =
       new SeqORDERS(o_orderkey, o_custkey, o_orderstatus, o_totalprice, o_orderdate, o_orderpriority, o_clerk, o_shippriority, o_comment)
   def unmkORDERS(p: Rep[ORDERS]) =
     Some((p.o_orderkey, p.o_custkey, p.o_orderstatus, p.o_totalprice, p.o_orderdate, p.o_orderpriority, p.o_clerk, p.o_shippriority, p.o_comment))
@@ -833,7 +833,7 @@ trait TablesSeq extends TablesDsl with ScalanSeq {
   }
 
   def mkCUSTOMER
-      (c_custkey: Rep[Int], c_name: Rep[String], c_address: Rep[String], c_nationkey: Rep[Int], c_phone: Rep[String], c_acctbal: Rep[Double], c_mktsegment: Rep[String], c_comment: Rep[String]) =
+      (c_custkey: Rep[Int], c_name: Rep[String], c_address: Rep[String], c_nationkey: Rep[Int], c_phone: Rep[String], c_acctbal: Rep[Double], c_mktsegment: Rep[String], c_comment: Rep[String]): Rep[CUSTOMER] =
       new SeqCUSTOMER(c_custkey, c_name, c_address, c_nationkey, c_phone, c_acctbal, c_mktsegment, c_comment)
   def unmkCUSTOMER(p: Rep[CUSTOMER]) =
     Some((p.c_custkey, p.c_name, p.c_address, p.c_nationkey, p.c_phone, p.c_acctbal, p.c_mktsegment, p.c_comment))
@@ -850,7 +850,7 @@ trait TablesSeq extends TablesDsl with ScalanSeq {
   }
 
   def mkSUPPLIER
-      (s_suppkey: Rep[Int], s_name: Rep[String], s_address: Rep[String], s_nationkey: Rep[Int], s_phone: Rep[String], s_acctbal: Rep[Double], s_comment: Rep[String]) =
+      (s_suppkey: Rep[Int], s_name: Rep[String], s_address: Rep[String], s_nationkey: Rep[Int], s_phone: Rep[String], s_acctbal: Rep[Double], s_comment: Rep[String]): Rep[SUPPLIER] =
       new SeqSUPPLIER(s_suppkey, s_name, s_address, s_nationkey, s_phone, s_acctbal, s_comment)
   def unmkSUPPLIER(p: Rep[SUPPLIER]) =
     Some((p.s_suppkey, p.s_name, p.s_address, p.s_nationkey, p.s_phone, p.s_acctbal, p.s_comment))
@@ -867,7 +867,7 @@ trait TablesSeq extends TablesDsl with ScalanSeq {
   }
 
   def mkPARTSUPP
-      (ps_partkey: Rep[Int], ps_suppkey: Rep[Int], ps_availqty: Rep[Int], ps_supplycost: Rep[Double], ps_comment: Rep[String]) =
+      (ps_partkey: Rep[Int], ps_suppkey: Rep[Int], ps_availqty: Rep[Int], ps_supplycost: Rep[Double], ps_comment: Rep[String]): Rep[PARTSUPP] =
       new SeqPARTSUPP(ps_partkey, ps_suppkey, ps_availqty, ps_supplycost, ps_comment)
   def unmkPARTSUPP(p: Rep[PARTSUPP]) =
     Some((p.ps_partkey, p.ps_suppkey, p.ps_availqty, p.ps_supplycost, p.ps_comment))
@@ -884,7 +884,7 @@ trait TablesSeq extends TablesDsl with ScalanSeq {
   }
 
   def mkREGION
-      (r_regionkey: Rep[Int], r_name: Rep[String], r_comment: Rep[String]) =
+      (r_regionkey: Rep[Int], r_name: Rep[String], r_comment: Rep[String]): Rep[REGION] =
       new SeqREGION(r_regionkey, r_name, r_comment)
   def unmkREGION(p: Rep[REGION]) =
     Some((p.r_regionkey, p.r_name, p.r_comment))
@@ -901,7 +901,7 @@ trait TablesSeq extends TablesDsl with ScalanSeq {
   }
 
   def mkNATION
-      (n_nationkey: Rep[Int], n_name: Rep[String], n_regionkey: Rep[Int], n_comment: Rep[String]) =
+      (n_nationkey: Rep[Int], n_name: Rep[String], n_regionkey: Rep[Int], n_comment: Rep[String]): Rep[NATION] =
       new SeqNATION(n_nationkey, n_name, n_regionkey, n_comment)
   def unmkNATION(p: Rep[NATION]) =
     Some((p.n_nationkey, p.n_name, p.n_regionkey, p.n_comment))
@@ -918,7 +918,7 @@ trait TablesSeq extends TablesDsl with ScalanSeq {
   }
 
   def mkPART
-      (p_partkey: Rep[Int], p_name: Rep[String], p_mfgr: Rep[String], p_brand: Rep[String], p_type: Rep[String], p_size: Rep[Int], p_container: Rep[String], p_retailprice: Rep[Double], p_comment: Rep[String]) =
+      (p_partkey: Rep[Int], p_name: Rep[String], p_mfgr: Rep[String], p_brand: Rep[String], p_type: Rep[String], p_size: Rep[Int], p_container: Rep[String], p_retailprice: Rep[Double], p_comment: Rep[String]): Rep[PART] =
       new SeqPART(p_partkey, p_name, p_mfgr, p_brand, p_type, p_size, p_container, p_retailprice, p_comment)
   def unmkPART(p: Rep[PART]) =
     Some((p.p_partkey, p.p_name, p.p_mfgr, p.p_brand, p.p_type, p.p_size, p.p_container, p.p_retailprice, p.p_comment))
@@ -975,7 +975,7 @@ trait TablesExp extends TablesDsl with ScalanExp {
   }
 
   def mkDetail
-    (id: Rep[Int], desc: Rep[String], weight: Rep[Double]) =
+    (id: Rep[Int], desc: Rep[String], weight: Rep[Double]): Rep[Detail] =
     new ExpDetail(id, desc, weight)
   def unmkDetail(p: Rep[Detail]) =
     Some((p.id, p.desc, p.weight))
@@ -1023,7 +1023,7 @@ trait TablesExp extends TablesDsl with ScalanExp {
   }
 
   def mkSupplier
-    (id: Rep[Int], company: Rep[String], address: Rep[String]) =
+    (id: Rep[Int], company: Rep[String], address: Rep[String]): Rep[Supplier] =
     new ExpSupplier(id, company, address)
   def unmkSupplier(p: Rep[Supplier]) =
     Some((p.id, p.company, p.address))
@@ -1071,7 +1071,7 @@ trait TablesExp extends TablesDsl with ScalanExp {
   }
 
   def mkOrder
-    (detail: Rep[Int], supplier: Rep[Int], amount: Rep[Int], price: Rep[Double], delivery: Rep[Int]) =
+    (detail: Rep[Int], supplier: Rep[Int], amount: Rep[Int], price: Rep[Double], delivery: Rep[Int]): Rep[Order] =
     new ExpOrder(detail, supplier, amount, price, delivery)
   def unmkOrder(p: Rep[Order]) =
     Some((p.detail, p.supplier, p.amount, p.price, p.delivery))
@@ -1119,7 +1119,7 @@ trait TablesExp extends TablesDsl with ScalanExp {
   }
 
   def mkLINEITEM
-    (l_orderkey: Rep[Int], l_partkey: Rep[Int], l_suppkey: Rep[Int], l_linenumber: Rep[Int], l_quantity: Rep[Double], l_extendedprice: Rep[Double], l_discount: Rep[Double], l_tax: Rep[Double], l_returnflag: Rep[Char], l_linestatus: Rep[Char], l_shipdate: Rep[Int], l_commitdate: Rep[Int], l_receiptdate: Rep[Int], l_shipinstruct: Rep[String], l_shipmode: Rep[String], l_comment: Rep[String]) =
+    (l_orderkey: Rep[Int], l_partkey: Rep[Int], l_suppkey: Rep[Int], l_linenumber: Rep[Int], l_quantity: Rep[Double], l_extendedprice: Rep[Double], l_discount: Rep[Double], l_tax: Rep[Double], l_returnflag: Rep[Char], l_linestatus: Rep[Char], l_shipdate: Rep[Int], l_commitdate: Rep[Int], l_receiptdate: Rep[Int], l_shipinstruct: Rep[String], l_shipmode: Rep[String], l_comment: Rep[String]): Rep[LINEITEM] =
     new ExpLINEITEM(l_orderkey, l_partkey, l_suppkey, l_linenumber, l_quantity, l_extendedprice, l_discount, l_tax, l_returnflag, l_linestatus, l_shipdate, l_commitdate, l_receiptdate, l_shipinstruct, l_shipmode, l_comment)
   def unmkLINEITEM(p: Rep[LINEITEM]) =
     Some((p.l_orderkey, p.l_partkey, p.l_suppkey, p.l_linenumber, p.l_quantity, p.l_extendedprice, p.l_discount, p.l_tax, p.l_returnflag, p.l_linestatus, p.l_shipdate, p.l_commitdate, p.l_receiptdate, p.l_shipinstruct, p.l_shipmode, p.l_comment))
@@ -1155,7 +1155,7 @@ trait TablesExp extends TablesDsl with ScalanExp {
   }
 
   def mkORDERS
-    (o_orderkey: Rep[Int], o_custkey: Rep[Int], o_orderstatus: Rep[Char], o_totalprice: Rep[Double], o_orderdate: Rep[Int], o_orderpriority: Rep[String], o_clerk: Rep[String], o_shippriority: Rep[Int], o_comment: Rep[String]) =
+    (o_orderkey: Rep[Int], o_custkey: Rep[Int], o_orderstatus: Rep[Char], o_totalprice: Rep[Double], o_orderdate: Rep[Int], o_orderpriority: Rep[String], o_clerk: Rep[String], o_shippriority: Rep[Int], o_comment: Rep[String]): Rep[ORDERS] =
     new ExpORDERS(o_orderkey, o_custkey, o_orderstatus, o_totalprice, o_orderdate, o_orderpriority, o_clerk, o_shippriority, o_comment)
   def unmkORDERS(p: Rep[ORDERS]) =
     Some((p.o_orderkey, p.o_custkey, p.o_orderstatus, p.o_totalprice, p.o_orderdate, p.o_orderpriority, p.o_clerk, p.o_shippriority, p.o_comment))
@@ -1191,7 +1191,7 @@ trait TablesExp extends TablesDsl with ScalanExp {
   }
 
   def mkCUSTOMER
-    (c_custkey: Rep[Int], c_name: Rep[String], c_address: Rep[String], c_nationkey: Rep[Int], c_phone: Rep[String], c_acctbal: Rep[Double], c_mktsegment: Rep[String], c_comment: Rep[String]) =
+    (c_custkey: Rep[Int], c_name: Rep[String], c_address: Rep[String], c_nationkey: Rep[Int], c_phone: Rep[String], c_acctbal: Rep[Double], c_mktsegment: Rep[String], c_comment: Rep[String]): Rep[CUSTOMER] =
     new ExpCUSTOMER(c_custkey, c_name, c_address, c_nationkey, c_phone, c_acctbal, c_mktsegment, c_comment)
   def unmkCUSTOMER(p: Rep[CUSTOMER]) =
     Some((p.c_custkey, p.c_name, p.c_address, p.c_nationkey, p.c_phone, p.c_acctbal, p.c_mktsegment, p.c_comment))
@@ -1227,7 +1227,7 @@ trait TablesExp extends TablesDsl with ScalanExp {
   }
 
   def mkSUPPLIER
-    (s_suppkey: Rep[Int], s_name: Rep[String], s_address: Rep[String], s_nationkey: Rep[Int], s_phone: Rep[String], s_acctbal: Rep[Double], s_comment: Rep[String]) =
+    (s_suppkey: Rep[Int], s_name: Rep[String], s_address: Rep[String], s_nationkey: Rep[Int], s_phone: Rep[String], s_acctbal: Rep[Double], s_comment: Rep[String]): Rep[SUPPLIER] =
     new ExpSUPPLIER(s_suppkey, s_name, s_address, s_nationkey, s_phone, s_acctbal, s_comment)
   def unmkSUPPLIER(p: Rep[SUPPLIER]) =
     Some((p.s_suppkey, p.s_name, p.s_address, p.s_nationkey, p.s_phone, p.s_acctbal, p.s_comment))
@@ -1263,7 +1263,7 @@ trait TablesExp extends TablesDsl with ScalanExp {
   }
 
   def mkPARTSUPP
-    (ps_partkey: Rep[Int], ps_suppkey: Rep[Int], ps_availqty: Rep[Int], ps_supplycost: Rep[Double], ps_comment: Rep[String]) =
+    (ps_partkey: Rep[Int], ps_suppkey: Rep[Int], ps_availqty: Rep[Int], ps_supplycost: Rep[Double], ps_comment: Rep[String]): Rep[PARTSUPP] =
     new ExpPARTSUPP(ps_partkey, ps_suppkey, ps_availqty, ps_supplycost, ps_comment)
   def unmkPARTSUPP(p: Rep[PARTSUPP]) =
     Some((p.ps_partkey, p.ps_suppkey, p.ps_availqty, p.ps_supplycost, p.ps_comment))
@@ -1299,7 +1299,7 @@ trait TablesExp extends TablesDsl with ScalanExp {
   }
 
   def mkREGION
-    (r_regionkey: Rep[Int], r_name: Rep[String], r_comment: Rep[String]) =
+    (r_regionkey: Rep[Int], r_name: Rep[String], r_comment: Rep[String]): Rep[REGION] =
     new ExpREGION(r_regionkey, r_name, r_comment)
   def unmkREGION(p: Rep[REGION]) =
     Some((p.r_regionkey, p.r_name, p.r_comment))
@@ -1335,7 +1335,7 @@ trait TablesExp extends TablesDsl with ScalanExp {
   }
 
   def mkNATION
-    (n_nationkey: Rep[Int], n_name: Rep[String], n_regionkey: Rep[Int], n_comment: Rep[String]) =
+    (n_nationkey: Rep[Int], n_name: Rep[String], n_regionkey: Rep[Int], n_comment: Rep[String]): Rep[NATION] =
     new ExpNATION(n_nationkey, n_name, n_regionkey, n_comment)
   def unmkNATION(p: Rep[NATION]) =
     Some((p.n_nationkey, p.n_name, p.n_regionkey, p.n_comment))
@@ -1371,7 +1371,7 @@ trait TablesExp extends TablesDsl with ScalanExp {
   }
 
   def mkPART
-    (p_partkey: Rep[Int], p_name: Rep[String], p_mfgr: Rep[String], p_brand: Rep[String], p_type: Rep[String], p_size: Rep[Int], p_container: Rep[String], p_retailprice: Rep[Double], p_comment: Rep[String]) =
+    (p_partkey: Rep[Int], p_name: Rep[String], p_mfgr: Rep[String], p_brand: Rep[String], p_type: Rep[String], p_size: Rep[Int], p_container: Rep[String], p_retailprice: Rep[Double], p_comment: Rep[String]): Rep[PART] =
     new ExpPART(p_partkey, p_name, p_mfgr, p_brand, p_type, p_size, p_container, p_retailprice, p_comment)
   def unmkPART(p: Rep[PART]) =
     Some((p.p_partkey, p.p_name, p.p_mfgr, p.p_brand, p.p_type, p.p_size, p.p_container, p.p_retailprice, p.p_comment))
