@@ -1,0 +1,273 @@
+diff --git a/core/src/main/scala/scalan/Elems.scala b/core/src/main/scala/scalan/Elems.scala
+index f838df9..7aad5c1 100644
+--- a/core/src/main/scala/scalan/Elems.scala
++++ b/core/src/main/scala/scalan/Elems.scala
+@@ -64,6 +64,14 @@ trait Elems extends Base { self: Scalan =>
+     protected def getDefaultRep = Pair(eFst.defaultRepValue, eSnd.defaultRepValue)
+   }
+ 
++  class StructElem[T](val fieldTypes: List[Elem[_]], val fieldNames: List[String]) extends Element[T] {
++    override def isEntityType = false
++    lazy val tag = {
++      weakTypeTag[T]
++    }
++    protected def getDefaultRep = ???
++  }
++
+   case class SumElem[A, B](eLeft: Elem[A], eRight: Elem[B]) extends Element[(A | B)] {
+     override def isEntityType = eLeft.isEntityType || eRight.isEntityType
+     lazy val tag = {
+diff --git a/core/src/main/scala/scalan/Scalan.scala b/core/src/main/scala/scalan/Scalan.scala
+index c500c8f..83a4931 100644
+--- a/core/src/main/scala/scalan/Scalan.scala
++++ b/core/src/main/scala/scalan/Scalan.scala
+@@ -110,6 +110,7 @@ trait ScalanExp
+   with MetadataExp
+   with ListOpsExp
+   with ListViewsExp
++  with StructsExp
+ 
+ trait ScalanCtxExp
+   extends ScalanDsl
+diff --git a/core/src/main/scala/scalan/Views.scala b/core/src/main/scala/scalan/Views.scala
+index d5e5cab..eca9fd8 100644
+--- a/core/src/main/scala/scalan/Views.scala
++++ b/core/src/main/scala/scalan/Views.scala
+@@ -216,6 +216,18 @@ trait ViewsExp extends Views with BaseExp { self: ScalanExp =>
+ 
+   def shouldUnpack(e: ViewElem[_, _]) = unpackTesters.exists(_(e))
+ 
++  type FlatteningTester = Element[_] => Boolean
++
++  private var flatteningTesters: Set[FlatteningTester] = Set.empty
++
++  def addFlatteningTester(tester: FlatteningTester): Unit =
++    flatteningTesters += tester
++  def removeFlatteningTester(tester: FlatteningTester): Unit =
++    flatteningTesters -= tester
++
++  def shouldFlatten(e: ViewElem[_, _]) = flatteningTesters.exists(_(e))
++
++
+   trait UserTypeDef[T, TImpl <: T] extends ReifiableExp[T, TImpl] {
+     def uniqueOpId = selfType.name
+   }
+diff --git a/core/src/main/scala/scalan/compilation/Passes.scala b/core/src/main/scala/scalan/compilation/Passes.scala
+index 615c853..f0640ec 100644
+--- a/core/src/main/scala/scalan/compilation/Passes.scala
++++ b/core/src/main/scala/scalan/compilation/Passes.scala
+@@ -48,6 +48,19 @@ trait Passes { self: ScalanExp =>
+     }
+   }
+ 
++  class EnableFlatteningPass(methodsDescription: String)(flatPred: FlatteningTester) extends GraphPass {
++    def name = s"enable_flattening_$methodsDescription"
++
++    def apply(graph: PGraph) = {
++      addFlatteningTester(flatPred)
++      graph.transform(DefaultMirror, FlatteningRewriter, MapTransformer.Empty)
++    }
++
++    override def doFinalization(): Unit = {
++      removeFlatteningTester(flatPred)
++    }
++  }
++
+   def constantPass(pass: GraphPass) = (_: PGraph) => pass
+ 
+   def invokeEnabler(name: String)(pred: InvokeTester) = constantPass(new EnableInvokePass(name)(pred))
+@@ -57,4 +70,8 @@ trait Passes { self: ScalanExp =>
+   def unpackEnabler(name: String)(pred: UnpackTester) = constantPass(new EnableUnpackPass(name)(pred))
+ 
+   val AllUnpackEnabler = unpackEnabler("all") { _ => true }
++
++  def flatteningEnabler(name: String)(pred: FlatteningTester) = constantPass(new EnableFlatteningPass(name)(pred))
++
++  val AllFlatteningEnabler = flatteningEnabler("all") { _ => true }
+ }
+diff --git a/core/src/main/scala/scalan/primitives/Structs.scala b/core/src/main/scala/scalan/primitives/Structs.scala
+index 401ce9b..742065b 100644
+--- a/core/src/main/scala/scalan/primitives/Structs.scala
++++ b/core/src/main/scala/scalan/primitives/Structs.scala
+@@ -21,15 +21,15 @@ trait StructsSeq extends Structs  { self: ScalanSeq =>
+ trait StructsExp extends Structs with BaseExp {
+   self: ScalanExp =>
+ 
+-  case class Structure(components: List[Exp[_]]) extends Def[Structure] {
+-     override def mirror(t: Transformer) = Structure(components.map(c => t(c)))
++  case class Structure[T](components: List[Exp[_]]) extends Def[T] {
++     override def mirror(t: Transformer) = Structure[T](components.map(c => t(c)))
+ 
+-    lazy val selfType = new StructElem[Structure](components.map(c => c.elem), List.tabulate(components.size){ i => "_" + (i+1) })
++    lazy val selfType = new StructElem[Structure[T]](components.map(c => c.elem), List.tabulate(components.size){ i => "_" + (i+1) })
+     val signature = components.map(c => c.elem.name).mkString(",")
+     lazy val uniqueOpId = s"$name{$signature}"
+   }
+ 
+-  case class StructGet[S: Elem, T: Elem](ref: Exp[S], field_name: String) extends Def[T] {
++  case class StructGet[S: Elem, T: Elem](ref: Exp[_], field_name: String) extends Def[T] {
+     override def mirror(t: Transformer) = StructGet[S,T](t(ref), field_name)
+ 
+     lazy val selfType = element[T]
+diff --git a/core/src/main/scala/scalan/staged/Transforming.scala b/core/src/main/scala/scalan/staged/Transforming.scala
+index 415b3ab..7f99a76 100644
+--- a/core/src/main/scala/scalan/staged/Transforming.scala
++++ b/core/src/main/scala/scalan/staged/Transforming.scala
+@@ -60,6 +60,57 @@ trait Transforming { self: ScalanExp =>
+     }
+   }
+ 
++
++  def getTreeRoot(x: Exp[_]): Exp[_] = x match {
++    case Def(First(s)) => getTreeRoot(s)
++    case Def(Second(s)) => getTreeRoot(s)
++    case _ => x
++  }
++
++  def getTreeSize(elem: Elem[_]): Int = elem match {
++    case PairElem(fst, sec) => getTreeSize(fst) + getTreeSize(sec)
++    case _ => 1
++  }
++
++  def getHeadIndex(x: Exp[_]): Int = x match {
++    case Def(First(s)) => getHeadIndex(s)
++    case Def(Second(s)) => getTailIndex(s)
++    case _ => 1
++  }
++
++
++  def getTailIndex(x: Exp[_]): Int = x match {
++    case Def(First(s)) => getTreeSize(x.elem.asInstanceOf[PairElem[_,_]].eFst) + getHeadIndex(s)
++    case Def(Second(s)) => getTreeSize(x.elem.asInstanceOf[PairElem[_,_]].eFst) + getTailIndex(s)
++    case _ => 1
++  }
++
++  object FlatteningRewriter  extends Rewriter {
++    def apply[T](x: Exp[T]): Exp[T] = x match {
++      case Def(Tup(Def(Structure(s1)), Def(Structure(s2)))) => Structure[T](s1 ++ s2)
++      case Def(Tup(Def(Structure(s1)), c2)) => Structure[T](s1 ++ List(c2))
++      case Def(Tup(c1, Def(Structure(s2)))) => Structure[T](List(c1) ++ s2)
++      case Def(Tup(c1, c2)) => Structure[T](List(c1, c2))
++      case Def(First(s)) => {
++        val root = getTreeRoot(s)
++        root.elem match {
++          case se: StructElem[ss] =>
++            implicit val sE = se
++            StructGet[ss, T](root, "_" + getHeadIndex(s))
++        }
++      }
++      case Def(Second(s)) => {
++        val root = getTreeRoot(s)
++        root.elem match {
++          case se: StructElem[ss] =>
++            implicit val sE = se
++            StructGet[ss, T](root, "_" + getTailIndex(s))
++        }
++      }
++      case _ => x
++    }
++  }
++
+   object InvokeRewriter extends Rewriter {
+     def apply[T](x: Exp[T]): Exp[T] = x match {
+       case Def(MethodCall(Def(d), m, args, neverInvoke)) =>
+diff --git a/lms-backend/src/main/scala/scalan/compilation/lms/CoreBridge.scala b/lms-backend/src/main/scala/scalan/compilation/lms/CoreBridge.scala
+index 0025304..864d90f 100644
+--- a/lms-backend/src/main/scala/scalan/compilation/lms/CoreBridge.scala
++++ b/lms-backend/src/main/scala/scalan/compilation/lms/CoreBridge.scala
+@@ -2,6 +2,7 @@ package scalan
+ package compilation.lms
+ 
+ import java.lang.reflect.Method
++import scala.virtualization.lms.common.Record
+ import java.util.HashMap
+ 
+ import scalan.compilation.language.{CoreMethodMapping, MethodMapping, Interpreter}
+@@ -106,6 +107,32 @@ trait CoreBridge extends LmsBridge with Interpreter with CoreMethodMapping { sel
+             (exps :+ exp, symMirr + ((sym, exp)), funcMirr)
+         }
+ 
++
++      case g@StructGet(ref, field_name) =>
++        (createManifest(ref.elem), createManifest(g.selfType)) match {
++          case (mA: Manifest[a], mB: Manifest[b]) =>
++            val ref_ = symMirr(ref).asInstanceOf[lms.Exp[a]]
++            val exp = lms.structGet(ref_, field_name)(mA, mB)
++            (exps :+ exp, symMirr + ((sym, exp)), funcMirr)
++        }
++
++      case StructSet(ref, field_name, value) =>
++        (createManifest(ref.elem), createManifest(value.elem)) match {
++          case (mA: Manifest[a], mB: Manifest[b]) =>
++            val ref_ = symMirr(ref).asInstanceOf[lms.Exp[a]]
++            val value_ = symMirr(value).asInstanceOf[lms.Exp[b]]
++            val exp = lms.structSet(ref_, field_name, value_)(mA, mB)
++            (exps :+ exp, symMirr + ((sym, exp)), funcMirr)
++        }
++
++      case s@Structure(components) =>
++        (createManifest(s.selfType)) match {
++          case (mT: Manifest[T]) =>
++            val values = components.map(c => symMirr(c))
++            val exp = lms.structure[T](values)(mT)
++            (exps :+ exp, symMirr + ((sym, exp)), funcMirr)
++        }
++
+       case Tup(fst, snd) =>
+         (createManifest(fst.elem), createManifest(snd.elem)) match {
+           case (mA: Manifest[a], mB: Manifest[b]) =>
+diff --git a/lms-backend/src/main/scala/scalan/compilation/lms/LmsBackend.scala b/lms-backend/src/main/scala/scalan/compilation/lms/LmsBackend.scala
+index b7481b4..4d96ac1 100644
+--- a/lms-backend/src/main/scala/scalan/compilation/lms/LmsBackend.scala
++++ b/lms-backend/src/main/scala/scalan/compilation/lms/LmsBackend.scala
+@@ -261,6 +261,16 @@ trait LmsBackendFacade extends ObjectOpsExtExp with LiftVariables with LiftPrimi
+     map.values.toArray
+   }
+ 
++  def structGet[A: Manifest, B: Manifest](ref: Exp[A], name: String): Exp[B] = {
++    field[B](ref, name)
++  }
++
++  def structSet[A: Manifest, B: Manifest](ref: Exp[A], name: String, value: Exp[B]): Exp[Unit] = ???
++
++  def structure[T : Manifest](components: List[Exp[_]]): Exp[T] = {
++    record_new[T](Array.tabulate(components.size){ i => ("_" + (i+1), false, _ => components(i)) })
++  }
++
+   def tuple[A: Manifest, B: Manifest](a: Exp[A], b: Exp[B]): Exp[(A, B)] = {
+     Tuple2(a, b)
+   }
+diff --git a/lms-backend/src/main/scala/scalan/compilation/lms/LmsBridge.scala b/lms-backend/src/main/scala/scalan/compilation/lms/LmsBridge.scala
+index d7ad010..601b79a 100644
+--- a/lms-backend/src/main/scala/scalan/compilation/lms/LmsBridge.scala
++++ b/lms-backend/src/main/scala/scalan/compilation/lms/LmsBridge.scala
+@@ -2,6 +2,7 @@ package scalan.compilation.lms
+ 
+ import scalan.ScalanCtxExp
+ import scalan.compilation.lms.scalac.LmsManifestUtil
++import scala.virtualization.lms.common.Record
+ import LmsManifestUtil._
+ 
+ trait LmsBridge { self: ScalanCtxExp =>
+@@ -65,6 +66,8 @@ trait LmsBridge { self: ScalanCtxExp =>
+     case el: ArrayBufferElem[_] => Manifest.classType(classOf[scala.collection.mutable.ArrayBuilder[_]], createManifest(el.eItem))
+     case PairElem(eFst, eSnd) =>
+       Manifest.classType(classOf[(_, _)], createManifest(eFst), createManifest(eSnd))
++    case el: StructElem[_] =>
++      scala.reflect.ManifestFactory.refinedType[Record](manifest[Record], el.fieldNames, el.fieldTypes.map(e => createManifest(e)))
+     case SumElem(eLeft, eRight) =>
+       Manifest.classType(classOf[Either[_, _]], createManifest(eLeft), createManifest(eRight))
+     case el: FuncElem[_, _] =>
+diff --git a/lms-backend/src/main/scala/scalan/compilation/lms/scalac/LmsCompilerScala.scala b/lms-backend/src/main/scala/scalan/compilation/lms/scalac/LmsCompilerScala.scala
+index c778c74..0d7e941 100644
+--- a/lms-backend/src/main/scala/scalan/compilation/lms/scalac/LmsCompilerScala.scala
++++ b/lms-backend/src/main/scala/scalan/compilation/lms/scalac/LmsCompilerScala.scala
+@@ -22,7 +22,7 @@ trait LmsCompilerScala extends LmsCompiler with SbtCompiler with CoreBridge with
+   case class CompilerConfig(scalaVersion: Option[String], extraCompilerOptions: Seq[String], sbt : SbtConfig = SbtConfig(), traits : Seq[String] = Seq.empty[String])
+   implicit val defaultCompilerConfig = CompilerConfig(None, Seq.empty)
+ 
+-  def graphPasses(compilerConfig: CompilerConfig) = Seq(AllUnpackEnabler, AllInvokeEnabler)
++  def graphPasses(compilerConfig: CompilerConfig) = Seq(AllUnpackEnabler, AllInvokeEnabler, AllFlatteningEnabler)
+ 
+   protected def doBuildExecutable[A, B](sourcesDir: File, executableDir: File, functionName: String, graph: PGraph, graphVizConfig: GraphVizConfig)
+                                        (compilerConfig: CompilerConfig, eInput: Elem[A], eOutput: Elem[B]) = {
