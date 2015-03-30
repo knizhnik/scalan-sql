@@ -19,29 +19,95 @@ create table lineitem(
    l_comment String);
 
 ----------------------------------
+type Lineitem = (Int, Int, Int, Int, Double, Double, Double, Double, Byte, Byte, Int, Int, Int, String, String, String)
+implicit class Lineitem_class(self: Lineitem) {
+  def l_orderkey = self._1
+  def l_partkey = self._2
+  def l_suppkey = self._3
+  def l_linenumber = self._4
+  def l_quantity = self._5
+  def l_extendedprice = self._6
+  def l_discount = self._7
+  def l_tax = self._8
+  def l_returnflag = self._9
+  def l_linestatus = self._10
+  def l_shipdate = self._11
+  def l_commitdate = self._12
+  def l_receiptdate = self._13
+  def l_shipinstruct = self._14
+  def l_shipmode = self._15
+  def l_comment = self._16
+}
+def parseDate(s: String): Int = (s.substring(0,4) + s.substring(5,7) + s.substring(8,10)).toInt
+val lineitems = sc.textFile("/home/builder/tpch-data/sf1/lineitem.tbl")
+val lineitemRDD = lineitems.map(_.split("\\|")).map(p => (p(0).toInt, p(1).toInt, p(2).toInt, p(3).toInt, p(4).toDouble, p(5).toDouble, p(6).toDouble, p(7).toDouble, p(8)(0).toByte, p(9)(0).toByte, parseDate(p(10)), parseDate(p(11)), parseDate(p(12)), p(13), p(14), p(15)))
+def now: Long = java.lang.System.currentTimeMillis()
+def execQ1() = {
+  val start = now
+  lineitemRDD.filter(l => l.l_shipdate <= 19981201).map(l => ((l.l_returnflag,l.l_linestatus), (l.l_quantity, l.l_extendedprice, l.l_extendedprice*(1-l.l_discount), l.l_extendedprice*(1-l.l_discount)*(1+l.l_tax), 1, l.l_discount))).reduceByKey((a,b) => (a._1+b._1, a._2+b._2, a._3+b._3, a._4+b._4, a._5+b._5, a._6+b._6)).map(p => ((p._1._1, p._1._2), (p._2._1, p._2._2, p._2._3, p._2._4, p._2._1/p._2._5, p._2._2/p._2._5, p._2._6/p._2._5, p._2._5))).sortByKey().collect().foreach(println)
+  println("Elapsed time: " + (now - start))
+}
+lineitemRDD.cache()
+execQ1()
+
+----------------------------------
+case class lineitem(
+                           l_orderkey: Int,
+                           l_partkey: Int,
+                           l_suppkey: Int,
+                           l_linenumber: Int,
+                           l_quantity: Double,
+                           l_extendedprice: Double,
+                           l_discount: Double,
+                           l_tax: Double,
+                           l_returnflag: Byte,
+                           l_linestatus: Byte,
+                           l_shipdate: Int,
+                           l_commitdate: Int,
+                           l_receiptdate: Int,
+                           l_shipinstruct: String,
+                           l_shipmode: String,
+                           l_comment: String)
+def parseDate(s: String): Int = (s.substring(0,4) + s.substring(5,7) + s.substring(8,10)).toInt
+val lineitems = sc.textFile("/home/builder/tpch-data/sf1/lineitem.tbl")
+val lineitemRDD = lineitems.map(_.split("\\|")).map(p => lineitem(p(0).toInt, p(1).toInt, p(2).toInt, p(3).toInt, p(4).toDouble, p(5).toDouble, p(6).toDouble, p(7).toDouble, p(8)(0).toByte, p(9)(0).toByte, parseDate(p(10)), parseDate(p(11)), parseDate(p(12)), p(13), p(14), p(15)))
+def now: Long = java.lang.System.currentTimeMillis()
+def execQ1() = {
+  val start = now
+  lineitemRDD.filter(l => l.l_shipdate <= 19981201).map(l => ((l.l_returnflag,l.l_linestatus), (l.l_quantity, l.l_extendedprice, l.l_extendedprice*(1-l.l_discount), l.l_extendedprice*(1-l.l_discount)*(1+l.l_tax), 1, l.l_discount))).reduceByKey((a,b) => (a._1+b._1, a._2+b._2, a._3+b._3, a._4+b._4, a._5+b._5, a._6+b._6)).map(p => ((p._1._1, p._1._2), (p._2._1, p._2._2, p._2._3, p._2._4, p._2._1/p._2._5, p._2._2/p._2._5, p._2._6/p._2._5, p._2._5))).sortByKey().collect().foreach(println)
+  println("Elapsed time: " + (now - start))
+}
+lineitemRDD.cache()
+execQ1()
+------------------------------------------------
+import org.apache.spark.sql._
+import org.apache.spark.sql.types._
 val sqlContext = new org.apache.spark.sql.SQLContext(sc)
-val lineitems = sc.textFile("/home/knizhnik/tpch-data/sf1/lineitem.tbl")
+val lineitems = sc.textFile("/home/builder/tpch-data/sf1/lineitem.tbl")
 val schema = StructType(Array(
-        StructField("l_orderkey", IntegerType, true), 
-        StructField("l_partkey", IntegerType, true),
-        StructField("l_suppkey", IntegerType, true),
-        StructField("l_linenumber", IntegerType, true),
-        StructField("l_quantity", DoubleType, true),
-        StructField("l_extendedprice", DoubleType, true),
-        StructField("l_discount", DoubleType, true),
-        StructField("l_tax", DoubleType, true),
-        StructField("l_returnflag", ByteType, true),
-        StructField("l_linestatus", ByteType, true),
-        StructField("l_shipdate", IntegerType, true),
-        StructField("l_commitdate", IntegerType, true),
-        StructField("l_receiptdate", IntegerType, true),
-        StructField("l_shipinstruct", StringType, true),
-        StructField("l_shipmode", StringType, true),
+        StructField("l_orderkey", IntegerType, false), 
+        StructField("l_partkey", IntegerType, false),
+        StructField("l_suppkey", IntegerType, false),
+        StructField("l_linenumber", IntegerType, false),
+        StructField("l_quantity", DoubleType, false),
+        StructField("l_extendedprice", DoubleType, false),
+        StructField("l_discount", DoubleType, false),
+        StructField("l_tax", DoubleType, false),
+        StructField("l_returnflag", ByteType, false),
+        StructField("l_linestatus", ByteType, false),
+        StructField("l_shipdate", IntegerType, false),
+        StructField("l_commitdate", IntegerType, false),
+        StructField("l_receiptdate", IntegerType, false),
+        StructField("l_shipinstruct", StringType, false),
+        StructField("l_shipmode", StringType, false),
         StructField("l_comment", StringType)))
 def parseDate(s: String): Int = (s.substring(0,4) + s.substring(5,7) + s.substring(8,10)).toInt
-val lineitemRDD = lineitem.map(_.split("\\|")).map(p => Row(p(0).toInt, p(1).toInt, p(2).toInt, p(3).toInt, p(4).toDouble, p(5).toDouble, p(6).toDouble, p(7).toDouble, p(8)(0).toByte, p(9)(0).toByte, parseDate(p(10)), parseDate(p(11)), parseDate(p(12)), p(13), p(14), p(15)))
+val lineitemRDD = lineitems.map(_.split("\\|")).map(p => Row(p(0).toInt, p(1).toInt, p(2).toInt, p(3).toInt, p(4).toDouble, p(5).toDouble, p(6).toDouble, p(7).toDouble, p(8)(0).toByte, p(9)(0).toByte, parseDate(p(10)), parseDate(p(11)), parseDate(p(12)), p(13), p(14), p(15)))
 val lineitemSchemaRDD = sqlContext.applySchema(lineitemRDD, schema)
 lineitemSchemaRDD.registerTempTable("lineitemRDD")
+lineitemSchemaRDD.cache()
+sqlContext.cacheTable("lineitemRDD")
+sqlContext.sql("set spark.sql.codegen=true")
 def now: Long = java.lang.System.currentTimeMillis()
 def exec(sql :String) = {
   val start = now
@@ -54,9 +120,9 @@ exec("select l_returnflag, l_linestatus, sum(l_quantity) as sum_qty, sum(l_exten
 lineitemSchemaRDD.saveAsParquetFile("lineitem.parquet")
 val parquetFile = sqlContext.parquetFile("lineitem.parquet")
 parquetFile.registerTempTable("parquetLineitem")
-
+parquetFile.cache()
+sqlContext.cacheTable("parquetLineitem")
 exec("select l_returnflag, l_linestatus, sum(l_quantity) as sum_qty, sum(l_extendedprice) as sum_base_price, sum(l_extendedprice*(1-l_discount)) as sum_disc_price, sum(l_extendedprice*(1-l_discount)*(1+l_tax)) as sum_charge, avg(l_quantity) as avg_qty, avg(l_extendedprice) as avg_price, avg(l_discount) as avg_disc, count(*) as count_order from parquetLineitem where l_shipdate <= 19981201 group by l_returnflag, l_linestatus order by l_returnflag, l_linestatus")
-
 
 
 
