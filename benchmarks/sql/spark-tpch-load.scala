@@ -2,8 +2,8 @@ import org.apache.spark.sql._
 import org.apache.spark.sql.types._
 val sqlContext = new org.apache.spark.sql.SQLContext(sc)
 
-//val data_dir = "hdfs://ws3:9000/"
-val data_dir = "/mnt/tpch/"
+val data_dir = "hdfs://ws3:9000/"
+//val data_dir = "/mnt/tpch/"
 
 val lineitems = sc.textFile(data_dir + "lineitem.tbl")
 val orders = sc.textFile(data_dir + "orders.tbl")
