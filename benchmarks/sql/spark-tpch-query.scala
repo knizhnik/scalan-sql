@@ -13,6 +13,53 @@ sqlContext.parquetFile(data_dir + "region.parquet").registerTempTable("region")
 sqlContext.parquetFile(data_dir + "nation.parquet").registerTempTable("nation")
 sqlContext.parquetFile(data_dir + "part.parquet").registerTempTable("part")
 
+def now: Long = java.lang.System.currentTimeMillis()
+
+def exec(query: String, df: DataFrame) = {
+  df.explain()
+  val start = now
+  df.show()
+  println(s"Elapsed time for ${query}: ${now - start}")
+}
+
+val lineitem = sqlContext.parquetFile(data_dir + "lineitem.parquet")
+val orders = sqlContext.parquetFile(data_dir + "orders.parquet")
+val customer = sqlContext.parquetFile(data_dir + "customer.parquet")
+val supplier = sqlContext.parquetFile(data_dir + "supplier.parquet")
+val partsupp = sqlContext.parquetFile(data_dir + "partsupp.parquet")
+val region = sqlContext.parquetFile(data_dir + "region.parquet")
+val nation = sqlContext.parquetFile(data_dir + "nation.parquet")
+val part = sqlContext.parquetFile(data_dir + "part.parquet")
+
+val q1 = lineitem.filter("l_shipdate" <= 19981201)
+    .groupBy("l_returnflag", "l_linestatus").agg(
+    sum("l_quantity"),
+    sum("l_extendedprice"),
+    sum("l_extendedprice"*(1-"l_discount")),
+    sum("l_extendedprice"*(1-"l_discount")*(1+"l_tax")),
+    avg("l_quantity") as avg_qty,
+    avg("l_extendedprice") as avg_price,
+    avg("l_discount"),
+    count()).orderBy("l_returnflag","l_linestatus")
+
+
+exec("Q1", q1)
+
+val q5 = orders.filter("o_orderdate" >= 19960101 and "o_orderdate" < 19970101)
+    .join(lineitem, lineitem("l_orderkey") === orders("o_orderkey"))
+    .join(supplier, lineitem("l_suppkey") === supplier("s_suppkey"))
+    .join(customer, customer("c_custkey") === orders("o_custkey") and customer("c_nationkey") === supplier("s_nationkey"))
+    .join(nation, customer("c_nationkey") === nation("n_nationkey"))
+    .join(region, nation("n_regionkey") === region("r_regionkey"))
+    .filter(region("r_name") === "ASIA")
+    .groupBy("n_name")
+    .agg(sum(lineitem("l_extendedprice") * (1-lineitem("l_discount"))) as "revenue")
+    .orderBy($"revenue".desc)
+
+exec("Q5", q5)
+
+
+
 sqlContext.sql("set spark.sql.codegen=true")
 //sqlContext.sql("set spark.sql.shuffle.partitions=64")
 
