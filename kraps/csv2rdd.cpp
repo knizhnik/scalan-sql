@@ -26,7 +26,7 @@ date_t parseDate(char const* str)
 
 int main() 
 { 
-    FILE* in = fopen("lineitem.tab", "r");
+    FILE* in = fopen("lineitem.tbl", "r");
     FILE* out = fopen("lineitem.rdd", "wb");
     char buf[1024];
     char* columns[64];
@@ -51,7 +51,7 @@ int main()
         strncpy(lineitem.l_shipinstruct, columns[13], sizeof(lineitem.l_shipinstruct));
         strncpy(lineitem.l_shipmode, columns[14], sizeof(lineitem.l_shipmode));
         strncpy(lineitem.l_comment, columns[15], sizeof(lineitem.l_comment));
-        int rc = fwrite(&lineitem, 1, sizeof(lineitem), out);
+        size_t rc = fwrite(&lineitem, sizeof(lineitem), 1, out);
         assert(rc == 1);
     }
     fclose(in);
