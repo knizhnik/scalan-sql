@@ -1,8 +1,9 @@
 import org.apache.spark.sql._
 val sqlContext = new org.apache.spark.sql.SQLContext(sc)
 
-val data_dir = "hdfs://ws3:9000/"
+val data_dir = "hdfs://strong:9000/"
 //val data_dir = "/mnt/tpch/"
+sqlContext.sql("set spark.sql.codegen=true")
 
 sqlContext.parquetFile(data_dir + "lineitem.parquet").registerTempTable("lineitem")
 sqlContext.parquetFile(data_dir + "orders.parquet").registerTempTable("orders")
