@@ -86,7 +86,7 @@ class MapReduceRDD : public RDD< Pair<K,V> >
             curr = table[i++];
         }
         record = curr->pair;
-        curr = curr->next;
+        curr = curr->collision;
         return true;
     }
 
@@ -118,6 +118,7 @@ class MapReduceRDD : public RDD< Pair<K,V> >
             if (entry == NULL) { 
                 entry = new Entry();
                 entry->collision = table[h];
+                entry->hash = hash;
                 table[h] = entry;
                 entry->pair = pair;
             } else { 
