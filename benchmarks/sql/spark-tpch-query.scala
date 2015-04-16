@@ -31,30 +31,31 @@ val region = sqlContext.parquetFile(data_dir + "region.parquet")
 val nation = sqlContext.parquetFile(data_dir + "nation.parquet")
 val part = sqlContext.parquetFile(data_dir + "part.parquet")
 
-val q1 = lineitem.filter("l_shipdate" <= 19981201)
-    .groupBy("l_returnflag", "l_linestatus").agg(
+val q1 = lineitem.filter(lineitem("l_shipdate") <= 19981201).groupBy("l_returnflag", "l_linestatus").agg(
+    $"l_returnflag",
+    $"l_linestatus",
     sum("l_quantity"),
     sum("l_extendedprice"),
-    sum("l_extendedprice"*(1-"l_discount")),
-    sum("l_extendedprice"*(1-"l_discount")*(1+"l_tax")),
-    avg("l_quantity") as avg_qty,
-    avg("l_extendedprice") as avg_price,
+    sum($"l_extendedprice" * (lit(1) - $"l_discount")),
+    sum($"l_extendedprice" * (lit(1) - $"l_discount") * (lit(1) + $"l_tax")),
+    avg("l_quantity"),
+    avg("l_extendedprice"),
     avg("l_discount"),
-    count()).orderBy("l_returnflag","l_linestatus")
+    count("*")).orderBy("l_returnflag","l_linestatus")
 
 
 exec("Q1", q1)
 
-val q5 = orders.filter("o_orderdate" >= 19960101 and "o_orderdate" < 19970101)
-    .join(lineitem, lineitem("l_orderkey") === orders("o_orderkey"))
-    .join(supplier, lineitem("l_suppkey") === supplier("s_suppkey"))
-    .join(customer, customer("c_custkey") === orders("o_custkey") and customer("c_nationkey") === supplier("s_nationkey"))
-    .join(nation, customer("c_nationkey") === nation("n_nationkey"))
-    .join(region, nation("n_regionkey") === region("r_regionkey"))
-    .filter(region("r_name") === "ASIA")
-    .groupBy("n_name")
-    .agg(sum(lineitem("l_extendedprice") * (1-lineitem("l_discount"))) as "revenue")
-    .orderBy($"revenue".desc)
+val q5 = orders.filter(orders("o_orderdate") >= 19960101 and orders("o_orderdate") < 19970101).
+    join(lineitem, lineitem("l_orderkey") === orders("o_orderkey")).
+    join(supplier, lineitem("l_suppkey") === supplier("s_suppkey")).
+    join(customer, customer("c_custkey") === orders("o_custkey") and customer("c_nationkey") === supplier("s_nationkey")).
+    join(nation, customer("c_nationkey") === nation("n_nationkey")).
+    join(region, nation("n_regionkey") === region("r_regionkey")).
+    filter(region("r_name") === lit("ASIA")).
+    groupBy("n_name").
+    agg(sum(lineitem("l_extendedprice") * (lit(1)-lineitem("l_discount"))) as "revenue").
+    orderBy($"revenue".desc)
 
 exec("Q5", q5)
 

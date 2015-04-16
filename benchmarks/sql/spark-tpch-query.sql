@@ -1,11 +1,11 @@
-create temporary table lineitem using org.apache.spark.sql.parquet options(path "hdfs://ws3:9000/lineitem.parquet");
-create temporary table orders using org.apache.spark.sql.parquet options(path "hdfs://ws3:9000/orders.parquet");
-create temporary table customer using org.apache.spark.sql.parquet options(path "hdfs://ws3:9000/customer.parquet");
-create temporary table supplier using org.apache.spark.sql.parquet options(path "hdfs://ws3:9000/supplier.parquet");
-create temporary table partsupp using org.apache.spark.sql.parquet options(path "hdfs://ws3:9000/partsupp.parquet");
-create temporary table region using org.apache.spark.sql.parquet options(path "hdfs://ws3:9000/region.parquet");
-create temporary table nation using org.apache.spark.sql.parquet options(path "hdfs://ws3:9000/nation.parquet");
-create temporary table part using org.apache.spark.sql.parquet options(path "hdfs://ws3:9000/part.parquet");
+create temporary table lineitem using org.apache.spark.sql.parquet options(path "/mnt/tpch/lineitem.parquet");
+create temporary table orders using org.apache.spark.sql.parquet options(path "/mnt/tpch/orders.parquet");
+create temporary table customer using org.apache.spark.sql.parquet options(path "/mnt/tpch/customer.parquet");
+create temporary table supplier using org.apache.spark.sql.parquet options(path "/mnt/tpch/supplier.parquet");
+create temporary table partsupp using org.apache.spark.sql.parquet options(path "/mnt/tpch/partsupp.parquet");
+create temporary table region using org.apache.spark.sql.parquet options(path "/mnt/tpch/region.parquet");
+create temporary table nation using org.apache.spark.sql.parquet options(path "/mnt/tpch/nation.parquet");
+create temporary table part using org.apache.spark.sql.parquet options(path "/mnt/tpch/part.parquet");
 
 set spark.sql.codegen=true;
 set spark.sql.autoBroadcastJoinThreshold=1073741824;
