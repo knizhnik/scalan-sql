@@ -86,6 +86,7 @@ class MapReduceRDD : public RDD< Pair<K,V> >
             curr = table[i++];
         }
         record = curr->pair;
+        curr = curr->next;
         return true;
     }
 
