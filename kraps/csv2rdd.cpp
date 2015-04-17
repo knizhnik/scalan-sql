@@ -122,7 +122,7 @@ int main()
             strncpy(supplier.s_address, columns[2], sizeof supplier.s_address);
             supplier.s_nationkey = atoi(columns[3]);
             strncpy(supplier.s_phone, columns[4], sizeof supplier.s_phone);
-            supplier.s_acctball = atof(columns[5]);
+            supplier.s_acctbal = atof(columns[5]);
             strncpy(supplier.s_comment, columns[6], sizeof supplier.s_comment);
             size_t rc = fwrite(&supplier, sizeof(supplier), 1, out);
             assert(rc == 1);
@@ -141,7 +141,7 @@ int main()
             assert(nColumns == 5);
             partsupp.ps_partkey = atoi(columns[0]);
             partsupp.ps_suppkey = atoi(columns[1]);
-            partsupp.ps_availqtykey = atoi(columns[2]);
+            partsupp.ps_availqty = atoi(columns[2]);
             partsupp.ps_supplycost = atoi(columns[3]);
             strncpy(partsupp.ps_comment, columns[4], sizeof partsupp.ps_comment);
             size_t rc = fwrite(&partsupp, sizeof(partsupp), 1, out);

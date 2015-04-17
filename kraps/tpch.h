@@ -1,5 +1,5 @@
 typedef unsigned date_t;
-
+typedef char name_t[25];
 struct Lineitem
 {
     int    l_orderkey;
@@ -36,7 +36,7 @@ struct Orders
 struct Customer
 {
     int c_custkey;
-    char c_name[25];
+    name_t c_name;
     char c_address[40];
     int c_nationkey;
     char c_phone[15];
@@ -49,7 +49,7 @@ struct Customer
 struct Supplier
 {
     int s_suppkey;
-    char s_name[25];
+    name_t s_name;
     char s_address[40];
     int s_nationkey;
     char s_phone[15];
@@ -70,14 +70,14 @@ struct PartSupp
 struct Region
 {
     int r_regionkey;
-    char r_name[25];
+    name_t r_name;
     char r_comment[152];
 };
 
 struct Nation
 {
     int n_nationkey;
-    char n_name[25];
+    name_t n_name;
     int n_regionkey;
     char n_comment[152];
 };
@@ -91,7 +91,7 @@ struct Part
     char p_type[25];
     int p_size;
     char p_container[10];
-    dobule p_retailprice;
+    double p_retailprice;
     char p_comment[23];
 };
 

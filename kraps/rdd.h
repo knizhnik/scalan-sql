@@ -9,20 +9,23 @@ struct Pair
     V value;
 };
 
-class Set
-{
-public:
-    virtual size_t count() = 0;
-    virtual void print(FILE* out) = 0;
-    virtual ~Set() = 0;
-};
-    
 template<class Outer, class Inner>
-class Join : public Outer, Inner {}
+struct Join : Outer, Inner {};
 
+inline size_t hashCode(int key) { 
+    return key;
+}
+
+inline size_t hashCode(char const* key) { 
+    size_t h = 0;
+    while (*key != '\0') { 
+        h = h*31 + (*key++ & 0xFF);
+    }
+    return h;
+}
 
 template<class T>
-class RDD : public Set
+class RDD
 {
   public:
     virtual bool next(T& record) = 0;
@@ -55,6 +58,8 @@ class RDD : public Set
         for (n = 0; next(record); n++);
         return n;
     }
+    
+    virtual~RDD() {}
 };
 
 template<class T>
@@ -80,7 +85,7 @@ public:
     static FileRDD<T>* load(char const* fileName) { 
         return new FileRDD<T>(fileName);
     }
-}
+};
 
 
 template<class T, bool (*predicate)(T const&)>
@@ -127,7 +132,7 @@ class MapReduceRDD : public RDD< Pair<K,V> >
         return true;
     }
 
-    ~MapReduce() { 
+    ~MapReduceRDD() { 
         deleteHash();        
         delete in;
     }
@@ -153,7 +158,7 @@ class MapReduceRDD : public RDD< Pair<K,V> >
 
         while (in->next(record)) {
             map(pair, record);
-            size_t hash = pair.key.hashCode();
+            size_t hash = hashCode(pair.key);
             size_t h = hash % size;            
             for (entry = table[h]; entry != NULL && !(entry->hash == hash && pair.key == entry->pair.key); entry = entry->collision);
             if (entry == NULL) { 
@@ -245,7 +250,7 @@ class SortRDD : public RDD<T>
 };
 
 template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner)>
-class HashJoinRDD : public RDD< Pair<L,R> >
+class HashJoinRDD : public RDD< Join<O,I> >
 {
 public:
     HashJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t estimation, bool outerJoin) 
@@ -253,7 +258,7 @@ public:
         loadHash(innerRDD);
     }
 
-    public bool next(Join<O,I>& record)
+    bool next(Join<O,I>& record)
     {
         if (inner == NULL) { 
             do { 
@@ -261,9 +266,9 @@ public:
                     return false;
                 }
                 outerKey(key, outerRec);
-                size_t hash = key.hashCode();
+                hash = hashCode(key);
                 size_t h = hash % size;
-                for (inner = tables[h]; inner != NULL && !(inner->hash == hash && key == inner.pair.key); inner = inner->collision);
+                for (inner = table[h]; inner != NULL && !(inner->hash == hash && key == inner->key); inner = inner->collision);
             } while (inner == NULL && !isOuterJoin);
             
             if (inner == NULL) { 
@@ -272,11 +277,11 @@ public:
                 return true;
             }
         }
-        (O&)key = outerRec;
-        (I&)value = inner->pair.value;
+        (O&)record = outerRec;
+        (I&)record = inner->record;
         do {
-            inner = inner->next;
-        } while (inner != NULL && !(inner->hash == hash && key == inner.pair.key));
+            inner = inner->collision;
+        } while (inner != NULL && !(inner->hash == hash && key == inner->key));
 
         return true;
     }
@@ -287,7 +292,8 @@ public:
     }
 private:
     struct Entry {
-        Join<K,I> ;
+        K      key;
+        I      record;
         Entry* collision;
         size_t hash;
     };
@@ -299,17 +305,17 @@ private:
     O          outerRec;
     I          innerRec;
     K          key;
+    size_t     hash;
     Entry*     inner;
 
-    void loadHash(RDD<R>* inner) {
-        Entry* entry;
+    void loadHash(RDD<I>* inner) {
         Entry* entry = new Entry();
 
         memset(table, 0, size*sizeof(Entry*));
 
-        while (inner->next(entry->pair.value)) {
-            innerKey(entry->key, inner);
-            entry->hash = entry->key.hashCode();
+        while (inner->next(entry->record)) {
+            innerKey(entry->key, entry->record);
+            entry->hash = hashCode(entry->key);
             size_t h = entry->hash % size;  
             entry->collision = table[h]; 
             table[h] = entry;
@@ -357,6 +363,6 @@ inline RDD<T>* RDD<T>::sort(size_t estimation) {
 
 template<class T>
 template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner)>
-RDD< Pair<T,I> >* RDD<T>::join(RDD<I>* with, size_t estimation, bool outerJoin) {
-    return new HashJoinRDD<T,I,outerKey,innerKey>(this, with, estimation, outerJoin);
+RDD< Join<T,I> >* RDD<T>::join(RDD<I>* with, size_t estimation, bool outerJoin) {
+    return new HashJoinRDD<T,I,K,outerKey,innerKey>(this, with, estimation, outerJoin);
 }

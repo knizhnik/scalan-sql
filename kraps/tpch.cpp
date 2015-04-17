@@ -2,6 +2,8 @@
 #include "rdd.h"
 #include "tpch.h"
 
+const size_t SF = 1000;
+
 namespace Q1
 {
     struct GroupBy
@@ -9,15 +11,15 @@ namespace Q1
         char   l_returnflag;
         char   l_linestatus;
 
-        size_t hashCode() {
-            return (l_returnflag << 8) ^ l_linestatus;
-        }
-    
         bool operator == (GroupBy const& other) { 
             return l_returnflag == other.l_returnflag && l_linestatus == other.l_linestatus;
         }
     };
 
+    size_t hashCode(GroupBy const& gby) {
+        return (gby.l_returnflag << 8) ^ gby.l_linestatus;
+    }
+    
     struct Aggregate
     {
         double sum_qty;
@@ -96,7 +98,7 @@ namespace Q1
         return diff != 0 ? diff : a->l_linestatus - b->l_linestatus;
     }
 
-    Set* query() 
+    RDD<Projection>* query() 
     { 
         return
             FileManager::load<Lineitem>("lineitem.rdd")->
@@ -120,55 +122,132 @@ namespace Q5
         key = order.o_orderkey;
     }
     
-    void lineitemKey(int& key, Lineitem const& lineitem)
+    void lineitemOrderKey(int& key, Lineitem const& lineitem)
     {
         key = lineitem.l_orderkey;
     }
     
-    void lineitemSupplierKey(int& key, Pair<Lineitem,Orders> const& pair)
+    void lineitemSupplierKey(int& key, Join<Lineitem,Orders> const& r)
     {
-        key = pair.head.l_suppkey;
+        key = r.l_suppkey;
     }
 
     
     void supplierKey(int& key, Supplier const& supplier)
     {
-        key = supplier.s.suppkey;
+        key = supplier.s_suppkey;
     }
 
-    void orderCustomerKey(int& key, Pair< Pair<Lineitem,Orders>, Supplier> const& pair)
+    void orderCustomerKey(int& key, Join<Join<Lineitem,Orders>,Supplier> const& r)
     {
-        key = pair.head.head.o_custkey,
-    Set* query() 
-    { 
-        return
-            FileManager::load<Lineitem>.load("lineitem.rdd")->            
-            join<Lineitem, int, orderKey, lineitemKey>(FileManager::load<Orders>.load("orders.rdd")->filter<orderRange>(), 1500000*SF)->
-            join<Supplier, int, lineitemSupplierKey, supplierKey>(FileManager::load<Supplier>::load("supplier.rdd"), 10*SF)->
-            join(Customer, int, orderCustomerKey, customerKey>(FileManager::load<Customer>::load("customer.rdd"), 150000*SF)->
-    join(customer, customer("c_custkey") === orders("o_custkey") and customer("c_nationkey") === supplier("s_nationkey")).
-    join(nation, customer("c_nationkey") === nation("n_nationkey")).
-    join(region, nation("n_regionkey") === region("r_regionkey")).
-    filter(region("r_name") === lit("ASIA")).
-    groupBy("n_name").
-    agg(sum(lineitem("l_extendedprice") * (lit(1)-lineitem("l_discount"))) as "revenue").
-    orderBy($"revenue".desc)
+        key = r.o_custkey;
+    }
 
+    void customerKey(int& key, Customer const& customer)
+    {
+        key = customer.c_custkey;
+    }
 
-            FileManager::load<Lineitem>("lineitem.rdd")->
-            filter<predicate>()->
-            mapReduce<GroupBy,Aggregate,map,reduce>(10000)->
-            project<Projection, projection>()->
-            sort<compare>(100);
+    bool sameNation(Join<Join<Join<Lineitem,Orders>,Supplier>,Customer> const& r)
+    {
+        return r.c_nationkey == r.s_nationkey;
+    }
+
+    void customerNationKey(int& key, Join<Join<Join<Lineitem,Orders>,Supplier>,Customer> const& r)
+    {
+        key = r.c_nationkey;
     }
     
+    void nationKey(int& key, Nation const& nation)
+    {
+        key = nation.n_nationkey;
+    }
+    
+    void nationRegionKey(int& key, Join<Join<Join<Join<Lineitem,Orders>,Supplier>,Customer>, Nation> const& r)
+    {
+        key = r.n_regionkey;
+    }
+    
+    void regionKey(int& key, Region const& region)
+    {
+        key = region.r_regionkey;
+    }
+    
+    bool asiaRegion(Join<Join<Join<Join<Join<Lineitem,Orders>,Supplier>,Customer>,Nation>,Region> const& r) 
+    { 
+        return strcmp(r.r_name, "ASIA") == 0;
+
+    }
+
+    struct Name 
+    { 
+        name_t name;
+        
+        bool operator==(Name const& other) { 
+            return strcmp(name, other.name) == 0;
+        }
+    };
+ 
+    size_t hashCode(Name const& key)
+    {
+        return ::hashCode(key.name);
+    }
+
+    void map(Pair<Name,double>& pair, Join<Join<Join<Join<Join<Lineitem,Orders>,Supplier>,Customer>,Nation>,Region> const& r)
+    {
+        strcpy(pair.key.name, r.n_name);
+        pair.value = r.l_extendedprice * (1 - r.l_discount);
+    }
+
+    void reduce(double& dst, double const& src) 
+    {
+        dst += src;
+    }
+
+    struct Revenue 
+    {
+        name_t n_name;
+        double revenue;
+
+        void print(FILE* out) { 
+            printf("%s, %f\n", n_name, revenue);
+        }
+    };
+
+    void revenue(Revenue& out, Pair<Name,double> const& in)
+    {
+        strcpy(out.n_name, in.key.name);
+        out.revenue = in.value;
+    }
+
+    int byRevenue(Revenue const* a, Revenue const* b) 
+    {
+        return a->revenue < b->revenue ? -1 : a->revenue == b->revenue ? 0 : 1;
+    }
+
+    RDD<Revenue>* query() 
+    { 
+        return
+            FileManager::load<Lineitem>("lineitem.rdd")->            
+            join<Orders, int, lineitemOrderKey, orderKey>(FileManager::load<Orders>("orders.rdd")->filter<orderRange>(), 1500000*SF)->
+            join<Supplier, int, lineitemSupplierKey, supplierKey>(FileManager::load<Supplier>("supplier.rdd"), 10*SF)->
+            join<Customer, int, orderCustomerKey, customerKey>(FileManager::load<Customer>("customer.rdd"), 150000*SF)->
+            filter<sameNation>()->
+            join<Nation, int, customerNationKey, nationKey>(FileManager::load<Nation>("nation.rdd"), 25)->
+            join<Region, int, nationRegionKey, regionKey>(FileManager::load<Region>("region.rdd"), 5)->
+            filter<asiaRegion>()->
+            mapReduce<Name, double, map, reduce>(25)->
+            project<Revenue, revenue>()->
+            sort<byRevenue>(25);
+    }    
 }
 
-void execute(char const* name, void (*query)()) 
+template<class T>
+void execute(char const* name, RDD<T>* (*query)()) 
 {
-    time_t start; = time(NULL);
-    Collection* result = query();
-    result->print();
+    time_t start = time(NULL);
+    RDD<T>* result = query();
+    result->print(stdout);
     delete result;
     printf("Elapsed time for %s: %d seconds\n", name, (int)(time(NULL) - start));
 }
