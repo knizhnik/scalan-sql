@@ -96,7 +96,7 @@ namespace Q1
         return diff != 0 ? diff : a->l_linestatus - b->l_linestatus;
     }
 
-    Collection* query() 
+    Set* query() 
     { 
         return
             FileManager::load<Lineitem>("lineitem.rdd")->
@@ -110,6 +110,57 @@ namespace Q1
 
 namespace Q5
 {
+    bool orderRange(Orders const& orders) 
+    {
+        return orders.o_orderdate >= 19960101 && orders.o_orderdate < 19970101;
+    }
+
+    void orderKey(int& key, Orders const& order)
+    {
+        key = order.o_orderkey;
+    }
+    
+    void lineitemKey(int& key, Lineitem const& lineitem)
+    {
+        key = lineitem.l_orderkey;
+    }
+    
+    void lineitemSupplierKey(int& key, Pair<Lineitem,Orders> const& pair)
+    {
+        key = pair.head.l_suppkey;
+    }
+
+    
+    void supplierKey(int& key, Supplier const& supplier)
+    {
+        key = supplier.s.suppkey;
+    }
+
+    void orderCustomerKey(int& key, Pair< Pair<Lineitem,Orders>, Supplier> const& pair)
+    {
+        key = pair.head.head.o_custkey,
+    Set* query() 
+    { 
+        return
+            FileManager::load<Lineitem>.load("lineitem.rdd")->            
+            join<Lineitem, int, orderKey, lineitemKey>(FileManager::load<Orders>.load("orders.rdd")->filter<orderRange>(), 1500000*SF)->
+            join<Supplier, int, lineitemSupplierKey, supplierKey>(FileManager::load<Supplier>::load("supplier.rdd"), 10*SF)->
+            join(Customer, int, orderCustomerKey, customerKey>(FileManager::load<Customer>::load("customer.rdd"), 150000*SF)->
+    join(customer, customer("c_custkey") === orders("o_custkey") and customer("c_nationkey") === supplier("s_nationkey")).
+    join(nation, customer("c_nationkey") === nation("n_nationkey")).
+    join(region, nation("n_regionkey") === region("r_regionkey")).
+    filter(region("r_name") === lit("ASIA")).
+    groupBy("n_name").
+    agg(sum(lineitem("l_extendedprice") * (lit(1)-lineitem("l_discount"))) as "revenue").
+    orderBy($"revenue".desc)
+
+
+            FileManager::load<Lineitem>("lineitem.rdd")->
+            filter<predicate>()->
+            mapReduce<GroupBy,Aggregate,map,reduce>(10000)->
+            project<Projection, projection>()->
+            sort<compare>(100);
+    }
     
 }
 
