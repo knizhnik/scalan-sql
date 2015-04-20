@@ -1,5 +1,5 @@
 all: tpch csv2rdd
-CPP=g++ -pthread -O3 
+CPP=g++ -pthread -O3 -Wall
 
 tpch.o: tpch.cpp rdd.h cluster.h tpch.h sync.h sockio.h
 	$(CPP) -c tpch.cpp

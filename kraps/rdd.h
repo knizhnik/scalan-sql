@@ -347,7 +347,7 @@ class MapReduceRDD : public RDD< Pair<K,V> >
         curr = NULL;
         i = 0;
         Queue* queue = Cluster::getQueue();
-        if (!Cluster::isCoordinator()) { 
+        if (Cluster::isCoordinator()) { 
             GatherRDD< Pair<K,V> > gather(queue);
             queue->put(Buffer::create(queue->qid, 0)); // do not wait for this node
             Pair<K,V> pair;
@@ -437,7 +437,7 @@ class SortRDD : public RDD<T>
     void loadArray(RDD<T>* input, size_t estimation) { 
         Queue* queue = Cluster::getQueue();
         if (Cluster::isCoordinator()) {         
-            Thread(new FetchJob<T>(input, queue));
+            Thread loader(new FetchJob<T>(input, queue));
             GatherRDD<T> gather(queue);
             buf = new T[estimation];
             for (size = 0; gather.next(buf[size]); size++) { 
@@ -466,7 +466,7 @@ public:
     HashJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t estimation, bool outerJoin) 
     : isOuterJoin(outerJoin), table(new Entry*[estimation]), size(estimation), inner(NULL) {
         queue = Cluster::getQueue();
-        Thread(new ScatterJob<I,K,innerKey>(innerRDD, queue));
+        Thread loader(new ScatterJob<I,K,innerKey>(innerRDD, queue));
         loadHash(new GatherRDD<I>(queue));
         scatter = new Thread(new ScatterJob<O,K,outerKey>(outerRDD, queue));
         outer = new GatherRDD<O>(queue);

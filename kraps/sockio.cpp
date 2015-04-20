@@ -18,7 +18,7 @@
  
 char const* Socket::unixSocketDir = "/tmp/";
 
-const char* SocketError::what()const throw()
+const char* SocketError::what() const throw()
 {
     char* error = new char[strlen(msg) + 32];
     sprintf(error, "%s: %d\n", msg, errno);
@@ -48,7 +48,7 @@ Socket* Socket::createLocal(int port)
 {
     struct sockaddr sock;
     sock.sa_family = AF_UNIX;
-    int len = ((char*)sock.sa_data - (char*)&sock) + sprintf(sock.sa_data, "%sp%u", unixSocketDir, port);
+    size_t len = ((char*)sock.sa_data - (char*)&sock) + sprintf(sock.sa_data, "%sp%u", unixSocketDir, port);
     unlink(sock.sa_data); /* remove file if existed */
     int sd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (sd < 0) { 

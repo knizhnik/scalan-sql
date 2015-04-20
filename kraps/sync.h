@@ -76,5 +76,6 @@ private:
         Job* job = (Job*)arg;
         job->run();
         delete job;
+        return NULL;
     }
 };

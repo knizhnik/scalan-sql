@@ -83,40 +83,29 @@ Cluster::Cluster(size_t id, size_t nHosts, char** hosts, size_t nQueues, size_t 
     char* sep = strchr(hosts[id], ':');
     int port = atoi(sep+1);
     Socket* localGateway = Socket::createLocal(port);
+    Socket* globalGateway = Socket::createGlobal(port);
     for (size_t i = id+1; i < nHosts; i++) {
-        if (strncmp(hosts[i], "localhost:", 10) == 0) { 
-            size_t node;
-            Socket* s = localGateway->accept();
-            s->read(&node, sizeof node);
-            assert(sockets[node] == NULL);
-            sockets[node] = s;
-        }
+        size_t node;
+        Socket* s = (strncmp(hosts[i], "localhost:", 10) == 0) 
+            ? localGateway->accept()
+            : globalGateway->accept();
+        s->read(&node, sizeof node);
+        assert(sockets[node] == NULL);
+        sockets[node] = s;
     }
     delete localGateway;
-
-    Socket* globalGateway = Socket::createGlobal(port);
-    for (size_t i = id+1; i < nHosts && strncmp(hosts[i], "localhost:", 10) != 0; i++) {
-        if (strncmp(hosts[i], "localhost:", 10) != 0) { 
-            size_t node;
-            Socket* s = globalGateway->accept();
-            s->read(&node, sizeof node);
-            assert(sockets[node] == NULL);
-            sockets[node] = s;
-        }
-    }
     delete globalGateway;
 }
 
 void GatherJob::run()
 {
-    Buffer* header = Buffer::create(0,0);
+    Buffer header(0,0);
     Cluster* cluster = Cluster::instance;
     while (true) {
         Socket* socket = Socket::select(cluster->nNodes, cluster->sockets);
-        socket->read(header, BUF_HDR_SIZE);
-        Buffer* buf = header;
+        socket->read(&header, BUF_HDR_SIZE);
+        Buffer* buf = Buffer::create(header.qid, header.size);
         if (buf->size != 0) { 
-            buf = Buffer::create(header->qid, header->size);
             socket->read(buf->data, buf->size);
         }
         cluster->queues[buf->qid]->put(buf);
