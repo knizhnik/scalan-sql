@@ -57,8 +57,8 @@ private:
 
 class Job {
 public:
-    virtual void run();
-    virtual~Job();
+    virtual void run() = 0;
+    virtual~Job() {}
 };
     
 class Thread
@@ -72,7 +72,7 @@ public:
 private:
     pthread_t thread;
 
-    static void* trampoline(void* agr) { 
+    static void* trampoline(void* arg) { 
         Job* job = (Job*)arg;
         job->run();
         delete job;

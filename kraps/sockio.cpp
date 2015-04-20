@@ -15,7 +15,6 @@
 #include <string.h>
 #include <errno.h>
 #include "sockio.h"
-#include "exception.h"
  
 char const* Socket::unixSocketDir = "/tmp/";
 
@@ -28,20 +27,19 @@ const char* SocketError::what()const throw()
 
 Socket* Socket::createGlobal(int port)
 {
-    struct sockaddr_in sock_inet;
-    u.sock.sa_family = AF_INET;
-    u.sock_inet.sin_addr.s_addr = htonl(INADDR_ANY);
-    u.sock_inet.sin_port = htons(port);
-    int len = sizeof(u.sock_inet);
-    int sd = socket(u.sock.sa_family, SOCK_STREAM, 0);
+    struct sockaddr_in sock; 
+    sock.sin_family = AF_INET;
+    sock.sin_addr.s_addr = htonl(INADDR_ANY);
+    sock.sin_port = htons(port);
+    int sd = socket(AF_INET, SOCK_STREAM, 0);
     if (sd < 0) { 
-        throw SocketException("Failed to create local socket");
+        throw SocketError("Failed to create global socket");
     }       
     int on = 1;
     setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, (char*)&on, sizeof on);
 
-    if (bind(sd, &u.sock, len) < 0) {
-        throw SocketException("Failed to bind socket");
+    if (bind(sd, (sockaddr*)&sock, sizeof(sock)) < 0) {
+        throw SocketError("Failed to bind socket");
     }    
     return new Socket(sd);
 }
@@ -49,55 +47,57 @@ Socket* Socket::createGlobal(int port)
 Socket* Socket::createLocal(int port)
 {
     struct sockaddr sock;
-    u.sock.sa_family = AF_UNIX;
-    int len = offsetof(struct sockaddr, sa_data) + sprintf(u.sock.sa_data, "%sp%u", unixSocketDir, port);
-    unlink(u.sock.sa_data); /* remove file if existed */
-    int sd = socket(u.sock.sa_family, SOCK_STREAM, 0);
+    sock.sa_family = AF_UNIX;
+    int len = ((char*)sock.sa_data - (char*)&sock) + sprintf(sock.sa_data, "%sp%u", unixSocketDir, port);
+    unlink(sock.sa_data); /* remove file if existed */
+    int sd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (sd < 0) { 
-        throw SocketException("Failed to create global socket");
+        throw SocketError("Failed to create local socket");
     }       
-    if (bind(sd, &u.sock, len) < 0) {
-        throw SocketException("Failed to bind socket");
+    if (bind(sd, &sock, len) < 0) {
+        throw SocketError("Failed to bind socket");
     }    
     return new Socket(sd);
 }
 
-Socket* Socket::connect(char const* address, int maxAttempts)
+Socket* Socket::connect(char const* address, size_t maxAttempts)
 {
     char const* sep = strchr(address, ':');
-    union { 
-        struct sockaddr sock;
-        struct sockaddr_in sock_inet;
-    } u;
     if (sep == NULL) { 
-        throw SocketException("Port is not specified");
+        throw SocketError("Port is not specified");
     }
     *(char*)sep = '\0';
     int port = atoi(sep+1);
     int rc;
+    int sd;
     while (1) { 
         if (strcmp(address, "localhost") == 0) { 
-            struct sockaddr sock;
-            int len = offsetof(struct sockaddr, sa_data) + sprintf(u.sock.sa_data, "%sp%u", unixSocketDir, port);
+            struct sockaddr sock; 
+            sock.sa_family = AF_UNIX;
+            sd = socket(AF_UNIX, SOCK_STREAM, 0); 
+            if (sd < 0) { 
+                throw SocketError("Failed to create local socket");
+            }    
+            size_t len = ((char*)sock.sa_data - (char*)&sock) + sprintf(sock.sa_data, "%sp%u", unixSocketDir, port);
             do { 
-                rc = connect(s->handle, &sock, len);
-            } while (rc < 0 && ERRNO_INTR());            
+                rc = ::connect(sd, &sock, len);
+            } while (rc < 0 && errno == EINTR);            
         } else { 
             struct sockaddr_in sock_inet;
-            uint4 addrs[128];
-            int   n_addrs = sizeof(addrs) / sizeof(addrs[0]);
-
-#if defined(_ECOS)
-            sock_inet.sin_len = sizeof(struct sockaddr_in);
-#endif
+            unsigned addrs[128];
+            size_t n_addrs = sizeof(addrs) / sizeof(addrs[0]);
             sock_inet.sin_family = AF_INET;  
             sock_inet.sin_port = htons(port);
             
-            for (i = 0; i < n_addrs; ++i) {
+            sd = socket(AF_INET, SOCK_STREAM, 0);
+            if (sd < 0) { 
+                throw SocketError("Failed to create global socket");
+            }       
+            for (size_t i = 0; i < n_addrs; ++i) {
                 memcpy(&sock_inet.sin_addr, &addrs[i], sizeof sock_inet.sin_addr);
                 do { 
-                    rc = connect(s->handle, (struct sockaddr*)&sock_inet, sizeof(sock_inet));
-                } while (rc < 0 && ERRNO_INTR());
+                    rc = ::connect(sd, (struct sockaddr*)&sock_inet, sizeof(sock_inet));
+                } while (rc < 0 && errno == EINTR);
 
                 if (rc >= 0 || errno == EINPROGRESS) { 
                     break;
@@ -109,14 +109,14 @@ Socket* Socket::connect(char const* address, int maxAttempts)
                 throw SocketError("Failed to connect socket");
             }
             if (errno == ENOENT || errno == ECONNREFUSED) {
-                if (--maxAttempts > 0) {
+                if (maxAttempts-- != 0) {
                     sleep(1);
                     continue;
                 }
             }
             throw SocketError("Connection can not be establish");
         } else { 
-            return new Socket(rc);
+            return new Socket(sd);
         }
     }
 }
@@ -155,7 +155,7 @@ Socket* Socket::accept()
 {
     struct sockaddr_in new_addr;
     socklen_t addrlen = sizeof(new_addr);
-    int ns = accept(sd, (struct sockaddr*) &new_addr, &addrlen);
+    int ns = ::accept(sd, (struct sockaddr*) &new_addr, &addrlen);
     if (ns < 0) { 
         throw SocketError("Failed to accept socket");
     }
@@ -176,14 +176,14 @@ Socket* Socket::select(size_t nSockets, Socket** sockets)
             }
             FD_SET(sd, &events);
         }
-        int rc = select(max_sd+1, &events, NULL, NULL, NULL);
+        int rc = ::select(max_sd+1, &events, NULL, NULL, NULL);
         if (rc < 0) { 
             if (rc != EINTR) {
                 throw SocketError("Failed to select socket");
             }
         } else { 
             for (size_t i = 0; i < nSockets; i++) { 
-                if (FD_ISSET(sockets[i]->sd)) { 
+                if (FD_ISSET(sockets[i]->sd, &events)) { 
                     return sockets[i];
                 }
             }

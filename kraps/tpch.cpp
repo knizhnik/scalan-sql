@@ -255,17 +255,23 @@ void execute(char const* name, RDD<T>* (*query)())
 int main(int argc, char* argv[])
 {
     if (argc < 4) {
-        fprintf(stderr, "Usage: kraps NODE_ID N_NODES address1:port1  address2:port2...\n");
+        fprintf(stderr, "Usage: kraps NODE_ID N_NODES address1:port1 address2:port2...\n");
         return 1;
     }
     int nodeId = atoi(argv[1]);
     int nNodes = atoi(argv[2]);
-    if (argc != 3 + nNodes) { 
-        fprintf(stderr, "At least one node has to be speicfied\nUsage: kraps NODE_ID N_NODES address1:port1  address2:port2...\n");
+    if (nodeId < 0 || nodeId >= nNodes)  { 
+        fprintf(stderr, "Invalid node ID %d\n", nodeId);
         return 1;
     }
+    if (argc != 3 + nNodes) { 
+        fprintf(stderr, "At least one node has to be specified\nUsage: kraps NODE_ID N_NODES address1:port1  address2:port2...\n");
+        return 1;
+    }
+    printf("Node %d started...\n", nodeId);
     Cluster cluster(nodeId, nNodes, &argv[3]);
     execute("Q1", Q1::query);
     execute("Q5", Q5::query);
+    printf("Node %d finished.\n", nodeId);
     return 0;
 }

@@ -1,7 +1,7 @@
 #include "sync.h"
 #include "sockio.h"
 
-const size_t COORDIANTOR = 0;
+const size_t COORDINATOR = 0;
 const size_t BUF_HDR_SIZE = 8;
 
 class Cluster;
@@ -25,25 +25,31 @@ struct Buffer
     
     Buffer(qid_t id, size32_t len) : size(len), qid(id) {}
 
-    operator new (size_t hdrSize, size_t bufSize) { 
-        return new char[BUF_HDR_SIZE + bufSize);
+    void* operator new(size_t hdrSize, size_t bufSize) { 
+        return new char[BUF_HDR_SIZE + bufSize];
     }
-    operator delete(void* ptr, size_t size) { 
+    void operator delete(void* ptr, size_t size) { 
+        delete[] (char*)ptr;
+    }
+    void operator delete(void* ptr) { 
         delete[] (char*)ptr;
     }
 };
 
+// FIFO queue, one consumer, multipler producers
 class Queue
 {
-public:
+    friend class Cluster;
+  public:
     qid_t const qid;
 
     void put(Buffer* buf);
     Buffer* get();
-    Queue(qid_t id, size_t maxSize, Queue* chain) 
-    : qid(id), head(NULL), tail(&head), size(NULL), limit(maxSize), nFinished(0), blockedPut(false), blockedGet(false), next(chain){}
 
-private:
+    Queue(qid_t id, size_t maxSize, Queue* chain) 
+    : qid(id), head(NULL), tail(&head), size(0), limit(maxSize), nFinished(0), blockedPut(false), blockedGet(false), next(chain){}
+
+  private:
     struct Message { 
         Message* next;
         Buffer* buf;
@@ -66,17 +72,18 @@ private:
         
 class GatherJob : public Job
 {
-    public void run();
+  public:
+    void run();
 };
 
      
 class Cluster {
-public:
+  public:
     size_t const nNodes;
     size_t const nodeId;
+    size_t const bufferSize;
     Socket** sockets;
-    size_t   bufferSize;
-    Queue*   freeQueue;
+    Queue*   freeQueueList;
     Queue**  queues;
         
     static bool isCoordinator() { return instance->nodeId == COORDINATOR; }
@@ -85,5 +92,5 @@ public:
 
     static Cluster* instance;
 
-    Cluster(size_t nodeId, size_t nHosts, char const* hosts, size_t nQueues = 16, size_t bufferSize = 64*1024, size_t queueSize = 1024*1024);
+    Cluster(size_t nodeId, size_t nHosts, char** hosts, size_t nQueues = 16, size_t bufferSize = 64*1024, size_t queueSize = 1024*1024);
 };

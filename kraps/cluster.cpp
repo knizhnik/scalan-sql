@@ -1,15 +1,18 @@
 #include "rdd.h"
 
+Cluster* Cluster::instance;
+
 void Queue::put(Buffer* buf) 
 { 
-    CriticalSecion cs(mutex);
+    CriticalSection cs(mutex);
     if (buf->size == 0) { 
-        if (++nFinished != Cluster::instance->nNodes) {  / make it possible to reused queue
-            nFinished = 0;
+        if (++nFinished != Cluster::instance->nNodes) {  
             return;
         }
+        nFinished = 0; // make it possible to reuse queue
     } else { 
         while (size >= limit) { 
+            blockedPut = true;
             full.wait(mutex);
         }
         size += buf->size;
@@ -25,8 +28,9 @@ void Queue::put(Buffer* buf)
 
 Buffer* Queue::get() 
 {
-    CriticalSecion cs(mutex);
+    CriticalSection cs(mutex);
     while (head == NULL) { 
+        blockedGet = true;
         empty.wait(mutex);
     }
     Message* msg = head;
@@ -46,22 +50,29 @@ Buffer* Queue::get()
 
 Queue* Cluster::getQueue()
 {
-    Queue* queue = instance->freeQueue;
+    Queue* queue = instance->freeQueueList;
     assert(queue != NULL);
-    instance->freeQueue = queue->next;
+    instance->freeQueueList = queue->next;
+    queue->nFinished = 0; 
     return queue;
 }
 
 void Cluster::freeQueue(Queue* queue)
 {
-    queue->next = instance->freeQueue;
-    freeQueue  = queue;
+    queue->next = instance->freeQueueList;
+    instance->freeQueueList = queue;
 }
 
-Cluster::Cluster(size_t id, size_t nHosts, char const* hosts, size_t nQueues = 16, size_t bufSize, size_t queueSize) : nNodes(nHosts), nodeId(id), bufferSize(bufSize), queue(queueSize)
+Cluster::Cluster(size_t id, size_t nHosts, char** hosts, size_t nQueues, size_t bufSize, size_t queueSize) 
+: nNodes(nHosts), nodeId(id), bufferSize(bufSize)
 {
     sockets = new Socket*[nHosts];
     memset(sockets, 0, nHosts*sizeof(Socket*));
+
+    freeQueueList = NULL;
+    for (size_t i = 0; i < nQueues; i++) { 
+        queues[i] = freeQueueList = new Queue((qid_t)i, queueSize, freeQueueList);
+    }
 
     for (size_t i = 0; i < id; i++) { 
         sockets[i] = Socket::connect(hosts[i]);
@@ -69,27 +80,29 @@ Cluster::Cluster(size_t id, size_t nHosts, char const* hosts, size_t nQueues = 1
     }
     sockets[id] = NULL;
 
-    freeQueue = NULL;
-    for (size_t i = 0; i < nQueues; i++) { 
-        queues[i] = freeQueue = new Queue((qid_t)i, queueSize, freeQueue );
-    }
+    char* sep = strchr(hosts[id], ':');
+    int port = atoi(sep+1);
     Socket* localGateway = Socket::createLocal(port);
-    for (size_t i = id+1; i < nHosts && strncmp(hosts[i], "localhost:", 10) == 0) {
-        size_t node;
-        Socket* s = localGateway->accept();
-        s->read(&node, sizeof node);
-        assert(sockets[node] == NULL);
-        sockets[node] = s;
+    for (size_t i = id+1; i < nHosts; i++) {
+        if (strncmp(hosts[i], "localhost:", 10) == 0) { 
+            size_t node;
+            Socket* s = localGateway->accept();
+            s->read(&node, sizeof node);
+            assert(sockets[node] == NULL);
+            sockets[node] = s;
+        }
     }
     delete localGateway;
 
-    Socket* globalGateway = SOcket::createGlobal(port);
-    for (size_t i = id+1; i < nHosts && strncmp(hosts[i], "localhost:", 10) != 0) {
-        size_t node;
-        Socket* s = globalGateway->accept();
-        s->read(&node, sizeof node);
-        assert(sockets[node] == NULL);
-        sockets[node] = s;
+    Socket* globalGateway = Socket::createGlobal(port);
+    for (size_t i = id+1; i < nHosts && strncmp(hosts[i], "localhost:", 10) != 0; i++) {
+        if (strncmp(hosts[i], "localhost:", 10) != 0) { 
+            size_t node;
+            Socket* s = globalGateway->accept();
+            s->read(&node, sizeof node);
+            assert(sockets[node] == NULL);
+            sockets[node] = s;
+        }
     }
     delete globalGateway;
 }
@@ -99,7 +112,7 @@ void GatherJob::run()
     Buffer* header = Buffer::create(0,0);
     Cluster* cluster = Cluster::instance;
     while (true) {
-        Socket* socket = Socket::select(cluster->nNodes, cluster->socket);
+        Socket* socket = Socket::select(cluster->nNodes, cluster->sockets);
         socket->read(header, BUF_HDR_SIZE);
         Buffer* buf = header;
         if (buf->size != 0) { 
