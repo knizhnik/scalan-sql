@@ -117,12 +117,12 @@ namespace Q5
         return orders.o_orderdate >= 19960101 && orders.o_orderdate < 19970101;
     }
 
-    void orderKey(int& key, Orders const& order)
+    void orderKey(long& key, Orders const& order)
     {
         key = order.o_orderkey;
     }
     
-    void lineitemOrderKey(int& key, Lineitem const& lineitem)
+    void lineitemOrderKey(long& key, Lineitem const& lineitem)
     {
         key = lineitem.l_orderkey;
     }
@@ -229,8 +229,8 @@ namespace Q5
     { 
         return
             FileManager::load<Lineitem>("lineitem.rdd")->            
-            join<Orders, int, lineitemOrderKey, orderKey>(FileManager::load<Orders>("orders.rdd")->filter<orderRange>(), 1500000*SF)->
-            join<Supplier, int, lineitemSupplierKey, supplierKey>(FileManager::load<Supplier>("supplier.rdd"), 10*SF)->
+            join<Orders, long, lineitemOrderKey, orderKey>(FileManager::load<Orders>("orders.rdd")->filter<orderRange>(), 1500000*SF)->
+            join<Supplier, int, lineitemSupplierKey, supplierKey>(FileManager::load<Supplier>("supplier.rdd"), 10000*SF)->
             join<Customer, int, orderCustomerKey, customerKey>(FileManager::load<Customer>("customer.rdd"), 150000*SF)->
             filter<sameNation>()->
             join<Nation, int, customerNationKey, nationKey>(FileManager::load<Nation>("nation.rdd"), 25)->
@@ -252,8 +252,19 @@ void execute(char const* name, RDD<T>* (*query)())
     printf("Elapsed time for %s: %d seconds\n", name, (int)(time(NULL) - start));
 }
 
-int main()
+int main(int argc, char* argv[])
 {
+    if (argc < 4) {
+        fprintf(stderr, "Usage: kraps NODE_ID N_NODES address1:port1  address2:port2...\n");
+        return 1;
+    }
+    int nodeId = atoi(argv[1]);
+    int nNodes = atoi(argv[2]);
+    if (argc != 3 + nNodes) { 
+        fprintf(stderr, "At least one node has to be speicfied\nUsage: kraps NODE_ID N_NODES address1:port1  address2:port2...\n");
+        return 1;
+    }
+    Cluster cluster(nodeId, nNodes, &argv[3]);
     execute("Q1", Q1::query);
     execute("Q5", Q5::query);
     return 0;

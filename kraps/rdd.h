@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include "cluster.h"
 
 template<class K, class V>
 struct Pair
@@ -13,7 +14,11 @@ template<class Outer, class Inner>
 struct Join : Outer, Inner {};
 
 inline size_t hashCode(int key) { 
-    return key;
+    return (size_t)key;
+}
+
+inline size_t hashCode(long key) { 
+    return (size_t)key;
 }
 
 inline size_t hashCode(char const* key) { 
@@ -45,22 +50,163 @@ class RDD
     template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner)>
     RDD< Join<T,I> >* join(RDD<I>* with, size_t estimation, bool outerJoin = false);
 
-    void print(FILE* out) {
-        T record;
-        while (next(record)) { 
-            record.print(out);
+    void print(FILE* out);
+
+    virtual~RDD() {}
+};
+
+
+template<class T>
+inline void sendToCoordinator(RDD<T>* input, Queue* queue) 
+{
+    Cluster* cluster = Cluster::instance;
+    T* data = (T*)buf->data;
+    size_t size = cluster->bufferSize/sizeof(T);
+    size_t used = 0;
+    Buffer* buf = Buffer::create(queue->qid, size*sizeof(T));
+    
+    while (input->next(&data[used])) { 
+        if (++used == size) { 
+            cluster->sockets[COORDINATOR]->write(buf);
+            used = 0;
+        }
+    }
+    if (used != 0) { 
+        buf->size = used*sizeof(T);
+        cluster->sockets[COORDINATOR]->write(buf);
+    } 
+    buf->size = 0;
+    cluster->sockets[COORDINATOR]->write(buf); // send EOF    
+}
+
+template<class T>
+class FetchJob : public Job
+{
+public:
+    FetchJob(RDD<T>* in,  Queue* q) : input(in), queue(q) {}
+
+    void run()
+    {        
+        Buffer* buf = Buffer::create(queue->qid, size*sizeof(T));
+        size_t used = 0;
+        size_t size = Cluster::instance->bufferSize/sizeof(T);
+        while (input->next(*((T*)buf->data + used))) { 
+            if (++used == size) { 
+                queue->put(buf);
+                buf = Buffer::create(queue->qid, size*sizeof(T));
+                used = 0;
+            }
+        }
+        buf->size = used*sizeof(T);
+        queue->put(buf);
+        if (used != 0) { 
+            buf = Buffer::create(queue->qid, 0);
+            queue->put(buf);
+        }
+    }
+private:
+    RDD<T>* const input;
+    Queue* const queue;
+};
+
+template<class T, class K, void (*dist_key)(K& key, T const& record)>
+class ScatterJob : public Job
+{
+public:
+    ScatterJob(RDD<T>* in, Queue* q) : input(in), queue(q) 
+    {
+        Cluster* cluster = Cluster::instance;
+        nNodes = cluster->nNodes;
+        nodeId = cluste->nodeId;
+        buffers = new Buffer*[nNodes];
+        for (size_t i = 0; i < nNodes; i++) { 
+            buffers[i] = Buffer::create(queue->qid, cluster->bufferSize);
+            buffers[i]->size = 0;
         }
     }
 
-    size_t count() {
-        T record;
-        size_t n;
-        for (n = 0; next(record); n++);
-        return n;
+    ~ScatterJob() { 
+        delete input; 
+        for (size_t i = 0; i < nNodes; i++) { 
+            delete buffers[i];
+        }
+        delete[] buffers;
     }
     
-    virtual~RDD() {}
+    void run()
+    {
+        K key;
+        T record;
+        Cluster* cluster = Cluster::instance;
+
+        while (input->next(record)) { 
+            dist_key(key, record);
+            size_t hash = hashCode(key);
+            size_t node = hash % nNodes;
+            if (cluster->buffers[node]->size + sizeof(T) > cluster->bufferSize) {
+                if (node == nodeId) { 
+                    queue->put(buffers[node]);
+                    buffers[node] = Buffer::create(queue->qid, cluster->bufferSize);
+                } else { 
+                    cluster->sockets[node]->write(&buffers[node], BUF_HDR_SIZE + buffers[node]->size);
+                }
+                buffers[node]->size = 0;
+            }
+            memcpy(buffers[node].data + buffers[node].size, &record, sizeof(T));
+            buffers[node]->size += sizeof(T);
+        }
+        for (size_t node = 0; node < nNodes; node++) {
+            if (node != nodeId) { 
+                if (buffers[node]->size != 0) { 
+                    sockets[node]->write(&buffers[node], BUF_HDR_SIZE + buffers[node]->size);
+                    buffers[node]->size = 0;
+                }
+                sockets[node]->write(&buffers[node], BUF_HDR_SIZE);
+            } else { 
+                queue->put(buffers[node]);
+                if (buffers[node]->size != 0) { 
+                    queue->put(Buffer::create(queue>qid, 0));
+                }
+                buffers[node] = NULL; // prevent deallocation of this buffer in destructor
+            }
+        }
+    }
+private:
+    RDD<T>* const input;
+    Queue* const queue;
+    Buffer** buffers;
+    size_t nNodes;
+    size_t nodeId;
 };
+
+template<class T>
+class GatherRDD : public RDD<T>
+{
+public:
+    bool next(T& record) {
+        if (used == size) { 
+            delete buf;
+            buf = queue->get();
+            if (buf->isEof()) {
+                return false;
+            }
+            used = 0;
+            size = buf->size / sizeof(T);
+        }
+        record = *((T*)buf->data + used);
+        used += 1;
+        return true;
+    }
+
+    GatherRDD(Queue* q) : buf(NULL), used(0), size(0), queue(q) {}
+    ~GatherRDD() { delete[] buf; }
+private:
+    Buffer* buf;
+    size_t used;
+    size_t size;
+    Queue* queue;
+};
+
 
 template<class T>
 class FileRDD : public RDD<T>
@@ -78,12 +224,48 @@ class FileRDD : public RDD<T>
     FILE* const f;    
 };
 
+ctemplate<class T>
+class DirRDD : public RDD<T>
+{
+  public:
+    DirRDD(char const* path) : dir(path), segno(Cluster::instance->nodeId), step(Cluster::instance->nNodes), f(NULL) {}
+
+    bool next(T& record) {
+        while (true) {
+            if (f == NULL) { 
+                char path[1024];
+                sprintf(path, "%s/%ld.rdd", dir, segno);
+                f = fopen(path, "rb");
+                if (f == NULL) { 
+                    return false;
+                }
+            }
+            if (fread(&record, sizeof(T), 1, f) == 1) { 
+                return true;
+            } else { 
+                fclose(f);
+                segno += step;
+                f = NULL;
+            }
+        }
+    }
+
+  private:
+    char const* dir;
+    size_t segno;
+    size_t step;
+    FILE* f;    
+};
+
 class FileManager
 {
 public:
     template<class T>
-    static FileRDD<T>* load(char const* fileName) { 
-        return new FileRDD<T>(fileName);
+    static RDD<T>* load(char const* fileName) { 
+        size_t len = strlen(fileName);
+        return (strcmp(fileName + len - 4, ".rdd") == 0) 
+            ? new FileRDD<T>(fileName)
+            ? new DirRDD<T>(fileName);
     }
 };
 
@@ -114,10 +296,8 @@ template<class T,class K,class V,void (*map)(Pair<K,V>& out, T const& in), void 
 class MapReduceRDD : public RDD< Pair<K,V> > 
 {    
   public:
-    MapReduceRDD(RDD<T>* input, size_t estimation) : in(input), table(new Entry*[estimation]), size(estimation) {
-        loadHash();
-        curr = NULL;
-        i = 0;
+    MapReduceRDD(RDD<T>* input, size_t estimation) : table(new Entry*[estimation]), size(estimation) {
+        loadHash(input);
     }
 
     bool next(Pair<K,V>& record) {
@@ -134,7 +314,6 @@ class MapReduceRDD : public RDD< Pair<K,V> >
 
     ~MapReduceRDD() { 
         deleteHash();        
-        delete in;
     }
   private:
     struct Entry {
@@ -143,19 +322,20 @@ class MapReduceRDD : public RDD< Pair<K,V> >
         size_t hash;
     };
     
-    RDD<T>* const in;
     Entry** const table;
     size_t  const size;
     size_t  i;
     Entry*  curr;
 
-    void loadHash() {
+    void loadHash(RDD<T>* input) 
+    {
         Entry* entry;
         T record;
         Pair<K,V> pair;
 
         memset(table, 0, size*sizeof(Entry*));
-
+        
+        size_t realSize = 0;
         while (in->next(record)) {
             map(pair, record);
             size_t hash = hashCode(pair.key);
@@ -167,10 +347,39 @@ class MapReduceRDD : public RDD< Pair<K,V> >
                 entry->hash = hash;
                 table[h] = entry;
                 entry->pair = pair;
+                realSize += 1;
             } else { 
                 reduce(entry->pair.value, pair.value);
             }
         }
+        curr = NULL;
+        i = 0;
+        Queue* queue = Cluster::getQueue();
+        if (!Cluster::isCoordinator()) { 
+            GatherRDD< Pair<K,V> > gather(queue);
+            queue.put(Buffer::create(queue->qid, 0)); // do not wait for this node
+            Pair<K,V> pair;
+            while (gather.next(pair)) {
+                size_t hash = hashCode(pair.key);
+                size_t h = hash % size;            
+                for (entry = table[h]; entry != NULL && !(entry->hash == hash && pair.key == entry->pair.key); entry = entry->collision);
+                if (entry == NULL) { 
+                    entry = new Entry();
+                    entry->collision = table[h];
+                    entry->hash = hash;
+                    table[h] = entry;
+                    entry->pair = pair;
+                    realSize += 1;
+                } else { 
+                    reduce(entry->pair.value, pair.value);
+                }                
+            }            
+        } else {
+            sendToCoordiantor< Pair<K,V> >(this, queue);            
+        }
+        Cluster::freeQueue(queue);
+        printf("HashAggregate: estimated size=%ld, real size=%ld\n", size, realSize);
+        delete input;
     }
 
     void deleteHash() {
@@ -210,9 +419,8 @@ template<class T, int compare(T const* a, T const* b)>
 class SortRDD : public RDD<T>
 {
   public:
-    SortRDD(RDD<T>* input, size_t estimation) : in(input) {
-        loadArray(estimation);
-        i = 0;
+    SortRDD(RDD<T>* input, size_t estimation) {
+        loadArray(input, estimation);
     }
 
     bool next(T& record) { 
@@ -224,28 +432,37 @@ class SortRDD : public RDD<T>
     }
     
     ~SortRDD() { 
-        delete in; 
         delete[] buf;
     }
 
   private:
-    RDD<T>* const in;
     T* buf;
     size_t size;
     size_t i;
 
     typedef int(*comparator_t)(void const* p, void const* q);
 
-    void loadArray(size_t estimation) { 
-        buf = new T[estimation];
-        for (size = 0; in->next(buf[size]); size++) { 
-            if (i == estimation) { 
-                T* newBuf = new T[estimation *= 2];
-                memcpy(newBuf, buf, size*sizeof(T));
-                delete[] buf;
+    void loadArray(RDD<T>* input, size_t estimation) { 
+        Queue* queue = Cluster::getQueue();
+        if (Cluster::isCoordinator()) {         
+            Thread(FetchJob(input, queue));
+            GatherRDD<T> gather(queue);
+            buf = new T[estimation];
+            for (size = 0; gather.next(buf[size]); size++) { 
+                if (i == estimation) { 
+                    T* newBuf = new T[estimation *= 2];
+                    memcpy(newBuf, buf, size*sizeof(T));
+                    delete[] buf;
+                }
             }
+            qsort(buf, size, sizeof(T), (comparator_t)compare);
+        } else { 
+            sendToCoordinator<T>(input, queue);
+            buf = NULL;
+            size = 0;
         }
-        qsort(buf, size, sizeof(T), (comparator_t)compare);
+        delete input;
+        i = 0;
     }
 };
 
@@ -254,8 +471,12 @@ class HashJoinRDD : public RDD< Join<O,I> >
 {
 public:
     HashJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t estimation, bool outerJoin) 
-    : outer(outerRDD), isOuterJoin(outerJoin), table(new Entry*[estimation]), size(estimation), inner(NULL) {
-        loadHash(innerRDD);
+    : isOuterJoin(outerJoin), table(new Entry*[estimation]), size(estimation), inner(NULL) {
+        queue = Cluster::getQueue();
+        Thread(new ScatterJob<I,K,innerKey>(inner, queue));
+        loadHash(new GatherRDD<I>(queue));
+        scatter = new Thread(new ScatterJob<O,K,outerKey>(outerRDD, queue));
+        outer = new GatherRDD<O>(queue);
     }
 
     bool next(Join<O,I>& record)
@@ -289,6 +510,8 @@ public:
     ~HashJoinRDD() { 
         deleteHash();
         delete outer;
+        delete scatter;
+        Cluster::freeQueue(queue);
     }
 private:
     struct Entry {
@@ -298,22 +521,24 @@ private:
         size_t hash;
     };
     
-    RDD<O>* const outer;
-    bool       const isOuterJoin;
-    Entry**    const table;
-    size_t     const size;
-    O          outerRec;
-    I          innerRec;
-    K          key;
-    size_t     hash;
-    Entry*     inner;
+    RDD<O>* outer;
+    Queue*  queue;
+    Thread* scatter;
+    bool    const isOuterJoin;
+    Entry** const table;
+    size_t  const size;
+    O       outerRec;
+    I       innerRec;
+    K       key;
+    size_t  hash;
+    Entry*  inner;
 
     void loadHash(RDD<I>* inner) {
         Entry* entry = new Entry();
 
         memset(table, 0, size*sizeof(Entry*));
-
-        while (inner->next(entry->record)) {
+        size_t realSize = 0;
+        while (gather->next(entry->record)) {
             innerKey(entry->key, entry->record);
             entry->hash = hashCode(entry->key);
             size_t h = entry->hash % size;  
@@ -321,6 +546,7 @@ private:
             table[h] = entry;
             entry = new Entry();
         }
+        printf("HashJoin: estimated size=%ld, real size=%ld\n", size, realSize);
         delete entry;
         delete inner;
     }
@@ -336,6 +562,22 @@ private:
     }
 };
     
+
+template<class T>
+void RDD<T>::print(FILE* out) 
+{
+    Queue* queue = Cluster::getQueue();
+    if (Cluster::isCoordinator()) {         
+        Thread(FetchJob(this, queue));
+        GatherRDD<T> gather(queue);
+        T record;
+        while (gather.next(record)) { 
+            record.print(out);
+        }
+    } else {         
+        sendToCoordinator<T>(this, queue);
+    }
+}
 
 template<class T>
 template<bool (*predicate)(T const&)>
@@ -366,3 +608,4 @@ template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*inne
 RDD< Join<T,I> >* RDD<T>::join(RDD<I>* with, size_t estimation, bool outerJoin) {
     return new HashJoinRDD<T,I,K,outerKey,innerKey>(this, with, estimation, outerJoin);
 }
+    

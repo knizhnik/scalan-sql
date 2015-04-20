@@ -39,7 +39,7 @@ int main()
         while (fgets(buf, sizeof buf, in)) { 
             int nColumns = split(columns, buf, '|');
             assert(nColumns == 16);
-            lineitem.l_orderkey = atoi(columns[0]);
+            lineitem.l_orderkey = atol(columns[0]);
             lineitem.l_partkey = atoi(columns[1]);
             lineitem.l_suppkey = atoi(columns[2]);
             lineitem.l_linenumber = atoi(columns[3]);
@@ -70,7 +70,7 @@ int main()
         while (fgets(buf, sizeof buf, in)) { 
             int nColumns = split(columns, buf, '|');
             assert(nColumns == 9);
-            orders.o_orderkey = atoi(columns[0]);
+            orders.o_orderkey = atol(columns[0]);
             orders.o_custkey = atoi(columns[1]);
             orders.o_orderstatus = *columns[2];
             orders.o_totalprice = atof(columns[3]);

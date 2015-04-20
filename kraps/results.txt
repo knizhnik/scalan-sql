@@ -1,0 +1,9 @@
+real	28m35.101s
+user	4m9.192s
+sys	4m38.355s
+[builder@beauty tpch]$ time dd if=lineitem.rdd of=/dev/null bs=1M
+823973+1 records in
+823973+1 records out
+863998518096 bytes (864 GB) copied, 1516.64 s, 570 MB/s
+
+real	25m16.660s

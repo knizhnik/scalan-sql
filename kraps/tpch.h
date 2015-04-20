@@ -2,7 +2,7 @@ typedef unsigned date_t;
 typedef char name_t[25];
 struct Lineitem
 {
-    int    l_orderkey;
+    long   l_orderkey;
     int    l_partkey;
     int    l_suppkey;
     int    l_linenumber;
@@ -22,7 +22,7 @@ struct Lineitem
 
 struct Orders
 {
-    int o_orderkey;
+    long o_orderkey;
     int o_custkey;
     char o_orderstatus;
     double o_totalprice;

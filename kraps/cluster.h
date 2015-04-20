@@ -1,0 +1,89 @@
+#include "sync.h"
+#include "sockio.h"
+
+const size_t COORDIANTOR = 0;
+const size_t BUF_HDR_SIZE = 8;
+
+class Cluster;
+
+typedef unsigned size32_t;
+typedef size32_t qid_t;
+
+struct Buffer 
+{ 
+    size32_t size;
+    qid_t    qid;
+    char     data[1];
+
+    bool isEof() { 
+        return size == 0;
+    }
+    
+    static Buffer* create(qid_t qid, size32_t size) {
+        return new (size) Buffer(qid, size);
+    }
+    
+    Buffer(qid_t id, size32_t len) : size(len), qid(id) {}
+
+    operator new (size_t hdrSize, size_t bufSize) { 
+        return new char[BUF_HDR_SIZE + bufSize);
+    }
+    operator delete(void* ptr, size_t size) { 
+        delete[] (char*)ptr;
+    }
+};
+
+class Queue
+{
+public:
+    qid_t const qid;
+
+    void put(Buffer* buf);
+    Buffer* get();
+    Queue(qid_t id, size_t maxSize, Queue* chain) 
+    : qid(id), head(NULL), tail(&head), size(NULL), limit(maxSize), nFinished(0), blockedPut(false), blockedGet(false), next(chain){}
+
+private:
+    struct Message { 
+        Message* next;
+        Buffer* buf;
+        
+        Message(Buffer* msgBuf) : next(NULL), buf(msgBuf) {}
+    };
+
+    Message* head;
+    Message** tail;
+    Mutex mutex;
+    Event empty;
+    Event full;
+    size_t size;
+    size_t limit;
+    size_t nFinished;
+    bool blockedPut;
+    bool blockedGet;
+    Queue* next;
+};
+        
+class GatherJob : public Job
+{
+    public void run();
+};
+
+     
+class Cluster {
+public:
+    size_t const nNodes;
+    size_t const nodeId;
+    Socket** sockets;
+    size_t   bufferSize;
+    Queue*   freeQueue;
+    Queue**  queues;
+        
+    static bool isCoordinator() { return instance->nodeId == COORDINATOR; }
+    static Queue* getQueue();
+    static void   freeQueue(Queue* queue);
+
+    static Cluster* instance;
+
+    Cluster(size_t nodeId, size_t nHosts, char const* hosts, size_t nQueues = 16, size_t bufferSize = 64*1024, size_t queueSize = 1024*1024);
+};
