@@ -17,5 +17,7 @@ csv2rdd: csv2rdd.cpp tpch.h
 	$(CPP) -o csv2rdd csv2rdd.cpp
 
 clean:
-	rm *.o 
+	rm -f *.o tpch csv2rdd
 
+tgz: clean 
+	cd .. ; tar cvzf kraps.tgz kraps
