@@ -60,6 +60,30 @@ Socket* Socket::createLocal(int port)
     return new Socket(sd);
 }
 
+static bool getAddrsByName(const char *hostname, unsigned* addrs, size_t* n_addrs)
+{
+    struct sockaddr_in sin;
+    struct hostent* hp;
+    size_t i;
+    
+    sin.sin_addr.s_addr = inet_addr(hostname);
+    if (sin.sin_addr.s_addr != INADDR_NONE) {
+        memcpy(&addrs[0], &sin.sin_addr.s_addr, sizeof(sin.sin_addr.s_addr));
+        *n_addrs = 1;
+        return true;
+    }
+
+    hp = gethostbyname(hostname);
+    if (hp == NULL || hp->h_addrtype != AF_INET) { 
+        return false;
+    }
+    for (i = 0; hp->h_addr_list[i] != NULL && i < *n_addrs; i++) { 
+        memcpy(&addrs[i], hp->h_addr_list[i], sizeof(addrs[i]));
+    }
+    *n_addrs = i;
+    return true;
+}
+
 Socket* Socket::connect(char const* address, size_t maxAttempts)
 {
     char const* sep = strchr(address, ':');
@@ -68,7 +92,7 @@ Socket* Socket::connect(char const* address, size_t maxAttempts)
     }
     *(char*)sep = '\0';
     int port = atoi(sep+1);
-    int rc;
+    int rc = 0;
     int sd;
     while (1) { 
         if (strcmp(address, "localhost") == 0) { 
@@ -89,6 +113,10 @@ Socket* Socket::connect(char const* address, size_t maxAttempts)
             sock_inet.sin_family = AF_INET;  
             sock_inet.sin_port = htons(port);
             
+            if (!getAddrsByName(address, addrs, &n_addrs)) {
+                throw SocketError("Failed to resolve addresses");
+            }
+
             sd = socket(AF_INET, SOCK_STREAM, 0);
             if (sd < 0) { 
                 throw SocketError("Failed to create global socket");
