@@ -101,7 +101,7 @@ namespace Q1
     RDD<Projection>* query() 
     { 
         return
-            FileManager::load<Lineitem>("lineitem.rdd")->
+            FileManager::load<Lineitem>("lineitem")->
             filter<predicate>()->
             mapReduce<GroupBy,Aggregate,map,reduce>(10000)->
             project<Projection, projection>()->
@@ -228,13 +228,13 @@ namespace Q5
     RDD<Revenue>* query() 
     { 
         return
-            FileManager::load<Lineitem>("lineitem.rdd")->            
-            join<Orders, long, lineitemOrderKey, orderKey>(FileManager::load<Orders>("orders.rdd")->filter<orderRange>(), 1500000*SF)->
-            join<Supplier, int, lineitemSupplierKey, supplierKey>(FileManager::load<Supplier>("supplier.rdd"), 10000*SF)->
-            join<Customer, int, orderCustomerKey, customerKey>(FileManager::load<Customer>("customer.rdd"), 150000*SF)->
+            FileManager::load<Lineitem>("lineitem")->            
+            join<Orders, long, lineitemOrderKey, orderKey>(FileManager::load<Orders>("orders")->filter<orderRange>(), 1500000*SF)->
+            join<Supplier, int, lineitemSupplierKey, supplierKey>(FileManager::load<Supplier>("supplier"), 10000*SF)->
+            join<Customer, int, orderCustomerKey, customerKey>(FileManager::load<Customer>("customer"), 150000*SF)->
             filter<sameNation>()->
-            join<Nation, int, customerNationKey, nationKey>(FileManager::load<Nation>("nation.rdd"), 25)->
-            join<Region, int, nationRegionKey, regionKey>(FileManager::load<Region>("region.rdd"), 5)->
+            join<Nation, int, customerNationKey, nationKey>(FileManager::load<Nation>("nation"), 25)->
+            join<Region, int, nationRegionKey, regionKey>(FileManager::load<Region>("region"), 5)->
             filter<asiaRegion>()->
             mapReduce<Name, double, map, reduce>(25)->
             project<Revenue, revenue>()->

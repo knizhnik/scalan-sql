@@ -13,8 +13,8 @@ private:
 class Socket 
 {
 public:
-    static Socket* createLocal(int port);
-    static Socket* createGlobal(int port);
+    static Socket* createLocal(int port, size_t listenQueueSize);
+    static Socket* createGlobal(int port, size_t listenQueueSize);
     static Socket* connect(char const* address, size_t maxAttempts = 10);
     Socket* accept();
     void read(void* buf, size_t size);    
@@ -24,7 +24,8 @@ public:
 
     static char const* unixSocketDir;
 private:
-    Socket(int fd) : sd(fd) {}
+    Socket(
+int fd) : sd(fd) {}
     int const sd;
 };
 

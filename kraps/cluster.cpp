@@ -66,10 +66,13 @@ void Cluster::freeQueue(Queue* queue)
 Cluster::Cluster(size_t id, size_t nHosts, char** hosts, size_t nQueues, size_t bufSize, size_t queueSize) 
 : nNodes(nHosts), nodeId(id), bufferSize(bufSize)
 {
+    instance = this;
+
     sockets = new Socket*[nHosts];
     memset(sockets, 0, nHosts*sizeof(Socket*));
 
     freeQueueList = NULL;
+    queues = new Queue*[nQueues];
     for (size_t i = 0; i < nQueues; i++) { 
         queues[i] = freeQueueList = new Queue((qid_t)i, queueSize, freeQueueList);
     }
@@ -82,8 +85,8 @@ Cluster::Cluster(size_t id, size_t nHosts, char** hosts, size_t nQueues, size_t 
 
     char* sep = strchr(hosts[id], ':');
     int port = atoi(sep+1);
-    Socket* localGateway = Socket::createLocal(port);
-    Socket* globalGateway = Socket::createGlobal(port);
+    Socket* localGateway = Socket::createLocal(port, nHosts);
+    Socket* globalGateway = Socket::createGlobal(port, nHosts);
     for (size_t i = id+1; i < nHosts; i++) {
         size_t node;
         Socket* s = (strncmp(hosts[i], "localhost:", 10) == 0) 

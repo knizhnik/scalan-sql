@@ -25,7 +25,7 @@ const char* SocketError::what() const throw()
     return error;
 }
 
-Socket* Socket::createGlobal(int port)
+Socket* Socket::createGlobal(int port, size_t listenQueueSize)
 {
     struct sockaddr_in sock; 
     sock.sin_family = AF_INET;
@@ -41,10 +41,13 @@ Socket* Socket::createGlobal(int port)
     if (bind(sd, (sockaddr*)&sock, sizeof(sock)) < 0) {
         throw SocketError("Failed to bind socket");
     }    
+    if (listen(sd, listenQueueSize) < 0) {
+        throw SocketError("Failed to listen socket");
+    }            
     return new Socket(sd);
 }
 
-Socket* Socket::createLocal(int port)
+Socket* Socket::createLocal(int port, size_t listenQueueSize)
 {
     struct sockaddr sock;
     sock.sa_family = AF_UNIX;
@@ -57,6 +60,9 @@ Socket* Socket::createLocal(int port)
     if (bind(sd, &sock, len) < 0) {
         throw SocketError("Failed to bind socket");
     }    
+    if (listen(sd, listenQueueSize) < 0) {
+        throw SocketError("Failed to listen socket");
+    }            
     return new Socket(sd);
 }
 
@@ -181,9 +187,7 @@ void Socket::write(void const* buf, size_t size)
         
 Socket* Socket::accept()
 {
-    struct sockaddr_in new_addr;
-    socklen_t addrlen = sizeof(new_addr);
-    int ns = ::accept(sd, (struct sockaddr*) &new_addr, &addrlen);
+    int ns = ::accept(sd, NULL, NULL);
     if (ns < 0) { 
         throw SocketError("Failed to accept socket");
     }
