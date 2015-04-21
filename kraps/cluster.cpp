@@ -50,17 +50,8 @@ Buffer* Queue::get()
 
 Queue* Cluster::getQueue()
 {
-    Queue* queue = instance->freeQueueList;
-    assert(queue != NULL);
-    instance->freeQueueList = queue->next;
-    queue->nFinished = 0; 
-    return queue;
-}
-
-void Cluster::freeQueue(Queue* queue)
-{
-    queue->next = instance->freeQueueList;
-    instance->freeQueueList = queue;
+    assert(qid < nNodes);
+    return queues[qid++];
 }
 
 Cluster::Cluster(size_t id, size_t nHosts, char** hosts, size_t nQueues, size_t bufSize, size_t queueSize) 
@@ -71,10 +62,10 @@ Cluster::Cluster(size_t id, size_t nHosts, char** hosts, size_t nQueues, size_t 
     sockets = new Socket*[nHosts];
     memset(sockets, 0, nHosts*sizeof(Socket*));
 
-    freeQueueList = NULL;
+    qid = 0;
     queues = new Queue*[nQueues];
     for (size_t i = 0; i < nQueues; i++) { 
-        queues[i] = freeQueueList = new Queue((qid_t)i, queueSize, freeQueueList);
+        queues[i] = new Queue((qid_t)i, queueSize);
     }
 
     for (size_t i = 0; i < id; i++) { 

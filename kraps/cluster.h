@@ -39,15 +39,14 @@ struct Buffer
 // FIFO queue, one consumer, multipler producers
 class Queue
 {
-    friend class Cluster;
   public:
     qid_t const qid;
 
     void put(Buffer* buf);
     Buffer* get();
 
-    Queue(qid_t id, size_t maxSize, Queue* chain) 
-    : qid(id), head(NULL), tail(&head), size(0), limit(maxSize), nFinished(0), blockedPut(false), blockedGet(false), next(chain){}
+    Queue(qid_t id, size_t maxSize) 
+    : qid(id), head(NULL), tail(&head), size(0), limit(maxSize), nFinished(0), blockedPut(false), blockedGet(false) {}
 
   private:
     struct Message { 
@@ -67,7 +66,6 @@ class Queue
     size_t nFinished;
     bool blockedPut;
     bool blockedGet;
-    Queue* next;
 };
         
 class GatherJob : public Job
@@ -83,14 +81,14 @@ class Cluster {
     size_t const nodeId;
     size_t const bufferSize;
     Socket** sockets;
-    Queue*   freeQueueList;
-    Queue**  queues;
+    Queue** queues;
+    qid_t qid;
         
-    static bool isCoordinator() { return instance->nodeId == COORDINATOR; }
-    static Queue* getQueue();
-    static void   freeQueue(Queue* queue);
+    bool isCoordinator() { return nodeId == COORDINATOR; }
+    Queue* getQueue();
+    void reset() { qid = 0; }
+
+    Cluster(size_t nodeId, size_t nHosts, char** hosts, size_t nQueues = 16, size_t bufferSize = 64*1024, size_t queueSize = 1024);
 
     static Cluster* instance;
-
-    Cluster(size_t nodeId, size_t nHosts, char** hosts, size_t nQueues = 16, size_t bufferSize = 64*1024, size_t queueSize = 1024*1024);
 };

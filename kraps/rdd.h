@@ -77,7 +77,8 @@ inline void sendToCoordinator(RDD<T>* input, Queue* queue)
         cluster->sockets[COORDINATOR]->write(buf, BUF_HDR_SIZE + buf->size);
     } 
     buf->size = 0;
-    cluster->sockets[COORDINATOR]->write(buf, BUF_HDR_SIZE); // send EOF    
+    cluster->sockets[COORDINATOR]->write(buf, BUF_HDR_SIZE); // send EOF 
+    delete buf;
 }
 
 template<class T>
@@ -191,7 +192,7 @@ public:
     }
 
     GatherRDD(Queue* q) : buf(NULL), used(0), size(0), queue(q) {}
-    ~GatherRDD() { delete[] buf; }
+    ~GatherRDD() { delete buf; }
 private:
     Buffer* buf;
     size_t used;
@@ -255,6 +256,7 @@ public:
     template<class T>
     static RDD<T>* load(char const* fileName) { 
         size_t len = strlen(fileName);
+        
         return (strcmp(fileName + len - 4, ".rdd") == 0) 
             ? (RDD<T>*)new FileRDD<T>(fileName)
             : (RDD<T>*)new DirRDD<T>(fileName);
@@ -346,8 +348,8 @@ class MapReduceRDD : public RDD< Pair<K,V> >
         }
         curr = NULL;
         i = 0;
-        Queue* queue = Cluster::getQueue();
-        if (Cluster::isCoordinator()) { 
+        Queue* queue = Cluster::instance->getQueue();
+        if (Cluster::instance->isCoordinator()) { 
             GatherRDD< Pair<K,V> > gather(queue);
             queue->put(Buffer::create(queue->qid, 0)); // do not wait for this node
             Pair<K,V> pair;
@@ -369,7 +371,6 @@ class MapReduceRDD : public RDD< Pair<K,V> >
         } else {
             sendToCoordinator< Pair<K,V> >(this, queue);            
         }
-        Cluster::freeQueue(queue);
         printf("HashAggregate: estimated size=%ld, real size=%ld\n", size, realSize);
         delete input;
     }
@@ -435,8 +436,8 @@ class SortRDD : public RDD<T>
     typedef int(*comparator_t)(void const* p, void const* q);
 
     void loadArray(RDD<T>* input, size_t estimation) { 
-        Queue* queue = Cluster::getQueue();
-        if (Cluster::isCoordinator()) {         
+        Queue* queue = Cluster::instance->getQueue();
+        if (Cluster::instance->isCoordinator()) {         
             Thread loader(new FetchJob<T>(input, queue));
             GatherRDD<T> gather(queue);
             buf = new T[estimation];
@@ -453,7 +454,6 @@ class SortRDD : public RDD<T>
             buf = NULL;
             size = 0;
         }
-        Cluster::freeQueue(queue);
         delete input;
         i = 0;
     }
@@ -465,7 +465,7 @@ class HashJoinRDD : public RDD< Join<O,I> >
 public:
     HashJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t estimation, bool outerJoin) 
     : isOuterJoin(outerJoin), table(new Entry*[estimation]), size(estimation), inner(NULL) {
-        queue = Cluster::getQueue();
+        queue = Cluster::instance->getQueue();
         Thread loader(new ScatterJob<I,K,innerKey>(innerRDD, queue));
         loadHash(new GatherRDD<I>(queue));
         scatter = new Thread(new ScatterJob<O,K,outerKey>(outerRDD, queue));
@@ -504,7 +504,6 @@ public:
         deleteHash();
         delete outer;
         delete scatter;
-        Cluster::freeQueue(queue);
     }
 private:
     struct Entry {
@@ -558,8 +557,8 @@ private:
 template<class T>
 void RDD<T>::print(FILE* out) 
 {
-    Queue* queue = Cluster::getQueue();
-    if (Cluster::isCoordinator()) {         
+    Queue* queue = Cluster::instance->getQueue();
+    if (Cluster::instance->isCoordinator()) {         
         Thread(new FetchJob<T>(this, queue));
         GatherRDD<T> gather(queue);
         T record;
