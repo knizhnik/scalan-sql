@@ -52,7 +52,7 @@ Buffer* Queue::get()
 Queue* Cluster::getQueue()
 {
     assert(qid < nNodes);
-    return queues[qid++];
+    return recvQueues[qid++];
 }
 
 Cluster::Cluster(size_t id, size_t nHosts, char** hosts, size_t nQueues, size_t bufSize, size_t queueSize) 
@@ -64,9 +64,14 @@ Cluster::Cluster(size_t id, size_t nHosts, char** hosts, size_t nQueues, size_t 
     memset(sockets, 0, nHosts*sizeof(Socket*));
 
     qid = 0;
-    queues = new Queue*[nQueues];
+    recvQueues = new Queue*[nQueues];
     for (size_t i = 0; i < nQueues; i++) { 
-        queues[i] = new Queue((qid_t)i, queueSize);
+        recvQueues[i] = new Queue((qid_t)i, queueSize);
+    }
+    sendQueues = new Queue*[nHosts];
+    for (size_t i = 0; i < nHosts; i++) { 
+        sendQueues[i] = new Queue((qid_t)i, queueSize);
+        new Thread(new SendJob(i));
     }
 
     for (size_t i = 0; i < id; i++) { 
@@ -91,25 +96,27 @@ Cluster::Cluster(size_t id, size_t nHosts, char** hosts, size_t nQueues, size_t 
     delete localGateway;
     delete globalGateway;
 
-    gather = new Thread(new GatherJob());
+    new Thread(new ReceiveJob());
+        
 }
 
 void Cluster::barrier()
 {
     Queue* queue = getQueue();
-    Buffer req(queue->qid, 0);
     for (size_t i = 0; i < nNodes; i++) { 
+        Buffer* req = Buffer::create(queue->qid, 0);
         if (i == nodeId) { 
-            queue->put(Buffer::create(queue->qid, 0));
+            queue->put(req);
         } else { 
-            sockets[i]->write(&req, BUF_HDR_SIZE);
+            sendQueues[i]->put(req);
         } 
     }
     Buffer* resp = queue->get();
     delete resp;
     qid = 0;
 }
-void GatherJob::run()
+
+void ReceiveJob::run()
 {
     Buffer header(0,0);
     Cluster* cluster = Cluster::instance;
@@ -120,6 +127,17 @@ void GatherJob::run()
         if (buf->size != 0) { 
             socket->read(buf->data, buf->size);
         }
-        cluster->queues[buf->qid]->put(buf);
+        cluster->sendQueues[buf->qid]->put(buf);
+    }
+}
+
+
+void SendJob::run()
+{
+    Cluster* cluster = Cluster::instance;
+    while (true) {
+        Buffer* buf = cluster->sendQueues[node]->get();
+        cluster->sockets[node]->write(buf, BUF_HDR_SIZE + buf->size);
+        delete buf;
     }
 }

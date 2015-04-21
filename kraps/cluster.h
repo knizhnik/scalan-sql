@@ -68,28 +68,38 @@ class Queue
     bool blockedGet;
 };
         
-class GatherJob : public Job
+class ReceiveJob : public Job
 {
   public:
     void run();
 };
 
-     
+class SendJob : public Job
+{
+public:
+    void run();
+    SendJob(size_t id) : node(id) {}
+
+private:
+    size_t const node;
+};
+
 class Cluster {
   public:
     size_t const nNodes;
     size_t const nodeId;
     size_t const bufferSize;
     Socket** sockets;
-    Queue** queues;
+    Queue** recvQueues;
+    Queue** sendQueues;
     qid_t qid;
-    Thread* gather;
+
 
     bool isCoordinator() { return nodeId == COORDINATOR; }
     Queue* getQueue();
     void barrier();
 
-    Cluster(size_t nodeId, size_t nHosts, char** hosts, size_t nQueues = 16, size_t bufferSize = 64*1024, size_t queueSize = 1024);
+    Cluster(size_t nodeId, size_t nHosts, char** hosts, size_t nQueues = 64, size_t bufferSize = 64*1024, size_t queueSize = 64*1024*1024);
 
     static Cluster* instance;
 };

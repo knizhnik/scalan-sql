@@ -68,16 +68,18 @@ inline void sendToCoordinator(RDD<T>* input, Queue* queue)
     
     while (input->next(data[used])) { 
         if (++used == size) { 
-            cluster->sockets[COORDINATOR]->write(buf, BUF_HDR_SIZE + buf->size);
+            cluster->sendQueues[COORDINATOR]->put(buf);
+            buf = Buffer::create(queue->qid, size*sizeof(T));
+            data = (T*)buf->data;
             used = 0;
         }
     }
     if (used != 0) { 
         buf->size = used*sizeof(T);
-        cluster->sockets[COORDINATOR]->write(buf, BUF_HDR_SIZE + buf->size);
+        cluster->sendQueues[COORDINATOR]->put(buf);
     } 
-    buf->size = 0;
-    cluster->sockets[COORDINATOR]->write(buf, BUF_HDR_SIZE); // send EOF 
+    buf = Buffer::create(queue->qid, 0);
+    cluster->sendQueues[COORDINATOR]->put(buf); // send EOF 
     delete buf;
 }
 
@@ -139,10 +141,10 @@ public:
             if (buffers[node]->size + sizeof(T) > bufferSize) {
                 if (node == nodeId) { 
                     queue->put(buffers[node]);
-                    buffers[node] = Buffer::create(queue->qid, bufferSize);
                 } else { 
-                    cluster->sockets[node]->write(buffers[node], BUF_HDR_SIZE + buffers[node]->size);
+                    cluster->sendQueues[node]->put(buffers[node]);
                 }
+                buffers[node] = Buffer::create(queue->qid, bufferSize);
                 buffers[node]->size = 0;
             }
             memcpy(buffers[node]->data + buffers[node]->size, &record, sizeof(T));
@@ -152,16 +154,16 @@ public:
         for (size_t node = 0; node < nNodes; node++) {
             if (node != nodeId) { 
                 if (buffers[node]->size != 0) { 
-                    cluster->sockets[node]->write(buffers[node], BUF_HDR_SIZE + buffers[node]->size);
-                    buffers[node]->size = 0;
+                    cluster->sendQueues[node]->put(buffers[node]);
+                    buffers[node] = Buffer::create(queue->qid, 0);
                 }
-                cluster->sockets[node]->write(buffers[node], BUF_HDR_SIZE);
-                delete buffers[node];
+                cluster->sendQueues[node]->put(buffers[node]);
             } else { 
-                queue->put(buffers[node]);
                 if (buffers[node]->size != 0) { 
-                    queue->put(Buffer::create(queue->qid, 0));
+                    queue->put(buffers[node]);
+                    buffers[node] = Buffer::create(queue->qid, 0);
                 }
+                queue->put(buffers[node]);
             }
         }
         delete[] buffers;
@@ -465,7 +467,7 @@ class HashJoinRDD : public RDD< Join<O,I> >
 public:
     HashJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t estimation, bool outerJoin) 
     : isOuterJoin(outerJoin), table(new Entry*[estimation]), size(estimation), inner(NULL) {
-        queue = Cluster::instance->getQueue();
+        Queue* queue = Cluster::instance->getQueue();
         Thread loader(new ScatterJob<I,K,innerKey>(innerRDD, queue));
         loadHash(new GatherRDD<I>(queue));
         queue = Cluster::instance->getQueue();
@@ -515,7 +517,6 @@ private:
     };
     
     RDD<O>* outer;
-    Queue*  queue;
     Thread* scatter;
     bool    const isOuterJoin;
     Entry** const table;
