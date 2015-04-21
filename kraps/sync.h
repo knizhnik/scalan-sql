@@ -29,6 +29,12 @@ private:
 class Event
 {
 public:
+    Event() { 
+        pthread_cond_init(&cond, NULL);
+    }
+    ~Event() { 
+        pthread_cond_destroy(&cond);
+    }
     void wait(Mutex& mutex) { 
          pthread_cond_wait(&cond, &mutex.cs);
     }

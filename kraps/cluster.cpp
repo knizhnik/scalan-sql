@@ -7,6 +7,7 @@ void Queue::put(Buffer* buf)
     CriticalSection cs(mutex);
     if (buf->size == 0) { 
         if (++nFinished != Cluster::instance->nNodes) {  
+            delete buf;
             return;
         }
         nFinished = 0; // make it possible to reuse queue
@@ -89,8 +90,25 @@ Cluster::Cluster(size_t id, size_t nHosts, char** hosts, size_t nQueues, size_t 
     }
     delete localGateway;
     delete globalGateway;
+
+    gather = new Thread(new GatherJob());
 }
 
+void Cluster::barrier()
+{
+    Queue* queue = getQueue();
+    Buffer req(queue->qid, 0);
+    for (size_t i = 0; i < nNodes; i++) { 
+        if (i == nodeId) { 
+            queue->put(Buffer::create(queue->qid, 0));
+        } else { 
+            sockets[i]->write(&req, BUF_HDR_SIZE);
+        } 
+    }
+    Buffer* resp = queue->get();
+    delete resp;
+    qid = 0;
+}
 void GatherJob::run()
 {
     Buffer header(0,0);

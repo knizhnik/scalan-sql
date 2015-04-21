@@ -557,8 +557,9 @@ private:
 template<class T>
 void RDD<T>::print(FILE* out) 
 {
-    Queue* queue = Cluster::instance->getQueue();
-    if (Cluster::instance->isCoordinator()) {         
+    Cluster* cluster = Cluster::instance;
+    Queue* queue = cluster->getQueue();
+    if (cluster->isCoordinator()) {         
         Thread(new FetchJob<T>(this, queue));
         GatherRDD<T> gather(queue);
         T record;
@@ -568,6 +569,7 @@ void RDD<T>::print(FILE* out)
     } else {         
         sendToCoordinator<T>(this, queue);
     }
+    cluster->barrier();
 }
 
 template<class T>

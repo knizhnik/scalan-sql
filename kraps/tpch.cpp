@@ -246,7 +246,6 @@ template<class T>
 void execute(char const* name, RDD<T>* (*query)()) 
 {
     time_t start = time(NULL);
-    Cluster::instance->reset();
     RDD<T>* result = query();
     result->print(stdout);
     delete result;

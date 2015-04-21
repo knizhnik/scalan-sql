@@ -202,11 +202,13 @@ Socket* Socket::select(size_t nSockets, Socket** sockets)
         FD_ZERO(&events);
         int max_sd = 0;
         for (size_t i = 0; i < nSockets; i++) { 
-            int sd = sockets[i]->sd;
-            if (sd > max_sd) { 
-                max_sd = sd;
+            if (sockets[i] != NULL) {
+                int sd = sockets[i]->sd;
+                if (sd > max_sd) { 
+                    max_sd = sd;
+                }
+                FD_SET(sd, &events);
             }
-            FD_SET(sd, &events);
         }
         int rc = ::select(max_sd+1, &events, NULL, NULL, NULL);
         if (rc < 0) { 
@@ -215,7 +217,7 @@ Socket* Socket::select(size_t nSockets, Socket** sockets)
             }
         } else { 
             for (size_t i = 0; i < nSockets; i++) { 
-                if (FD_ISSET(sockets[i]->sd, &events)) { 
+                if (sockets[i] && FD_ISSET(sockets[i]->sd, &events)) { 
                     return sockets[i];
                 }
             }

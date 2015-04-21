@@ -83,10 +83,11 @@ class Cluster {
     Socket** sockets;
     Queue** queues;
     qid_t qid;
-        
+    Thread* gather;
+
     bool isCoordinator() { return nodeId == COORDINATOR; }
     Queue* getQueue();
-    void reset() { qid = 0; }
+    void barrier();
 
     Cluster(size_t nodeId, size_t nHosts, char** hosts, size_t nQueues = 16, size_t bufferSize = 64*1024, size_t queueSize = 1024);
 
