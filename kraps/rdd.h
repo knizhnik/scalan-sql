@@ -468,6 +468,7 @@ public:
         queue = Cluster::instance->getQueue();
         Thread loader(new ScatterJob<I,K,innerKey>(innerRDD, queue));
         loadHash(new GatherRDD<I>(queue));
+        queue = Cluster::instance->getQueue();
         scatter = new Thread(new ScatterJob<O,K,outerKey>(outerRDD, queue));
         outer = new GatherRDD<O>(queue);
     }
