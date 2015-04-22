@@ -5,19 +5,11 @@ Cluster* Cluster::instance;
 void Queue::put(Buffer* buf) 
 { 
     CriticalSection cs(mutex);
-    if (buf->size == 0) { 
-        if (++nFinished != Cluster::instance->nNodes) {  
-            delete buf;
-            return;
-        }
-        nFinished = 0; // make it possible to reuse queue
-    } else { 
-        while (size >= limit) { 
-            blockedPut = true;
-            full.wait(mutex);
-        }
-        size += buf->size;
+    while (size >= limit) { 
+        blockedPut = true;
+        full.wait(mutex);
     }
+    size += buf->size;
     Message* msg = new Message(buf);
     *tail = msg;
     tail = &msg->next;
@@ -110,8 +102,11 @@ void Cluster::barrier()
         Queue* dst = (i == nodeId) ? queue : sendQueues[i];
         dst->put(Buffer::eof(queue->qid));
     }
-    Buffer* resp = queue->get();
-    delete resp;
+    for (size_t i = 0; i < nNodes; i++) { 
+        Buffer* resp = queue->get();
+        assert(resp->isEof());
+        delete resp;
+    }
     qid = 0;
 }
 

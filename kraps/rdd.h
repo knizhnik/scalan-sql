@@ -155,11 +155,14 @@ class GatherRDD : public RDD<T>
 {
 public:
     bool next(T& record) {
-        if (used == size) { 
+        while (used == size) { 
             delete buf;
             buf = queue->get();
             if (buf->isEof()) {
-                return false;
+                if (--nWorkers == 0) { 
+                    return false;
+                }
+                continue;
             }
             used = 0;
             size = buf->size / sizeof(T);
@@ -170,13 +173,14 @@ public:
         return true;
     }
 
-    GatherRDD(Queue* q) : buf(NULL), used(0), size(0), queue(q) {}
+    GatherRDD(Queue* q) : buf(NULL), used(0), size(0), queue(q), nWorkers(Cluster::instance->nNodes) {}
     ~GatherRDD() { delete buf; }
 private:
     Buffer* buf;
     size_t used;
     size_t size;
     Queue* queue;
+    size_t nWorkers;
 };
 
 

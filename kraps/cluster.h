@@ -50,7 +50,7 @@ class Queue
     Buffer* get();
 
     Queue(qid_t id, size_t maxSize) 
-    : qid(id), head(NULL), tail(&head), size(0), limit(maxSize), nFinished(0), blockedPut(false), blockedGet(false) {}
+    : qid(id), head(NULL), tail(&head), size(0), limit(maxSize), blockedPut(false), blockedGet(false) {}
 
   private:
     struct Message { 
@@ -67,7 +67,6 @@ class Queue
     Event full;
     size_t size;
     size_t limit;
-    size_t nFinished;
     bool blockedPut;
     bool blockedGet;
 };
