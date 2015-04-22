@@ -160,7 +160,7 @@ void Socket::read(void* buf, size_t size)
     size_t offs = 0;
     while (offs < size) { 
         int rc = recv(sd, (char*)buf + offs, size - offs, 0);
-        if (rc < 0) { 
+        if (rc <= 0) { 
             if (errno == EINTR) { 
                 continue;
             }
@@ -175,11 +175,11 @@ void Socket::write(void const* buf, size_t size)
     size_t offs = 0;
     while (offs < size) { 
         int rc = send(sd, (char const*)buf + offs, size - offs, 0);
-        if (rc < 0) { 
+        if (rc <= 0) { 
             if (errno == EINTR) { 
                 continue;
             }
-            throw SocketError("Failed to read data from socket");
+            throw SocketError("Failed to write data to socket");
         }
         offs += rc;
     }

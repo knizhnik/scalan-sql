@@ -137,7 +137,7 @@ void ReceiveJob::run()
 void SendJob::run()
 {
     Cluster* cluster = Cluster::instance;
-    Buffer ping(MSG_PING, node);
+    Buffer ping(MSG_PING, cluster->nodeId);
     size_t sent = 0;
 
     while (true) { 
