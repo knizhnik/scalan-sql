@@ -455,20 +455,21 @@ class HashJoinRDD : public RDD< Join<O,I> >
 {
 public:
     HashJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t estimation, bool outerJoin) 
-    : isOuterJoin(outerJoin), table(new Entry*[estimation]), size(estimation), inner(NULL) {
+    : isOuterJoin(outerJoin), table(new Entry*[estimation]), size(estimation), inner(NULL), outer(outerRDD), scatter(NULL) {
         // First load inner relation in hash...
-        Queue* queue = Cluster::instance->getQueue();
+        queue = Cluster::instance->getQueue();
         Thread loader(new ScatterJob<I,K,innerKey>(innerRDD, queue));
         loadHash(new GatherRDD<I>(queue));
-
-        // .. and then start fetching of outer relation and perform hash lookup
         queue = Cluster::instance->getQueue();
-        scatter = new Thread(new ScatterJob<O,K,outerKey>(outerRDD, queue));
-        outer = new GatherRDD<O>(queue);
     }
 
     bool next(Join<O,I>& record)
     {
+        if (scatter == NULL) { 
+            // .. and then start fetching of outer relation and perform hash lookup
+            scatter = new Thread(new ScatterJob<O,K,outerKey>(outer, queue));
+            outer = new GatherRDD<O>(queue);
+        }
         if (inner == NULL) { 
             do { 
                 if (!outer->next(outerRec)) { 
@@ -508,8 +509,6 @@ private:
         size_t hash;
     };
     
-    RDD<O>* outer;
-    Thread* scatter;
     bool    const isOuterJoin;
     Entry** const table;
     size_t  const size;
@@ -518,6 +517,9 @@ private:
     K       key;
     size_t  hash;
     Entry*  inner;
+    RDD<O>* outer;
+    Queue*  queue;
+    Thread* scatter;
 
     void loadHash(RDD<I>* gather) {
         Entry* entry = new Entry();
