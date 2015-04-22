@@ -56,57 +56,45 @@ class RDD
     virtual~RDD() {}
 };
 
+//
+// Tranfer data from RDD to queue
+//
+template<class T>
+inline void enqueue(RDD<T>* input, Queue* queue, qid_t qid) 
+{
+    size_t size = Cluster::instance->bufferSize/sizeof(T);
+    Buffer* buf = Buffer::create(qid, size*sizeof(T));
+    size_t used = 0;
+    
+    while (input->next(*((T*)buf->data + used))) { 
+        if (++used == size) { 
+            queue->put(buf);
+            buf = Buffer::create(qid, size*sizeof(T));
+            used = 0;
+        }
+    }
+    buf->size = used*sizeof(T);
+    queue->put(buf);
+    if (used != 0) { 
+        queue->put(Buffer::eof(qid));
+    }
+}
 
 template<class T>
 inline void sendToCoordinator(RDD<T>* input, Queue* queue) 
 {
-    Cluster* cluster = Cluster::instance;
-    size_t size = cluster->bufferSize/sizeof(T);
-    Buffer* buf = Buffer::create(queue->qid, size*sizeof(T));
-    T* data = (T*)buf->data;
-    size_t used = 0;
-    
-    while (input->next(data[used])) { 
-        if (++used == size) { 
-            cluster->sendQueues[COORDINATOR]->put(buf);
-            buf = Buffer::create(queue->qid, size*sizeof(T));
-            data = (T*)buf->data;
-            used = 0;
-        }
-    }
-    if (used != 0) { 
-        buf->size = used*sizeof(T);
-        cluster->sendQueues[COORDINATOR]->put(buf);
-    } 
-    buf = Buffer::create(queue->qid, 0);
-    cluster->sendQueues[COORDINATOR]->put(buf); // send EOF 
-    delete buf;
+    enqueue(input, Cluster::instance->sendQueues[COORDINATOR], queue->qid);
 }
 
 template<class T>
 class FetchJob : public Job
 {
 public:
-    FetchJob(RDD<T>* in,  Queue* q) : input(in), queue(q) {}
+    FetchJob(RDD<T>* in, Queue* q) : input(in), queue(q) {}
 
     void run()
     {        
-        size_t size = Cluster::instance->bufferSize/sizeof(T);
-        Buffer* buf = Buffer::create(queue->qid, size*sizeof(T));
-        size_t used = 0;
-        while (input->next(*((T*)buf->data + used))) { 
-            if (++used == size) { 
-                queue->put(buf);
-                buf = Buffer::create(queue->qid, size*sizeof(T));
-                used = 0;
-            }
-        }
-        buf->size = used*sizeof(T);
-        queue->put(buf);
-        if (used != 0) { 
-            buf = Buffer::create(queue->qid, 0); // EOF
-            queue->put(buf);
-        }
+        enqueue(input, queue, queue->qid);
     }
 private:
     RDD<T>* const input;
@@ -139,11 +127,8 @@ public:
             size_t hash = hashCode(key);
             size_t node = hash % nNodes;
             if (buffers[node]->size + sizeof(T) > bufferSize) {
-                if (node == nodeId) { 
-                    queue->put(buffers[node]);
-                } else { 
-                    cluster->sendQueues[node]->put(buffers[node]);
-                }
+                Queue* dst = (node == nodeId) ? queue : cluster->sendQueues[node];
+                dst->put(buffers[node]);
                 buffers[node] = Buffer::create(queue->qid, bufferSize);
                 buffers[node]->size = 0;
             }
@@ -152,18 +137,10 @@ public:
         }
 
         for (size_t node = 0; node < nNodes; node++) {
-            if (node != nodeId) { 
-                if (buffers[node]->size != 0) { 
-                    cluster->sendQueues[node]->put(buffers[node]);
-                    buffers[node] = Buffer::create(queue->qid, 0);
-                }
-                cluster->sendQueues[node]->put(buffers[node]);
-            } else { 
-                if (buffers[node]->size != 0) { 
-                    queue->put(buffers[node]);
-                    buffers[node] = Buffer::create(queue->qid, 0);
-                }
-                queue->put(buffers[node]);
+            Queue* dst = (node == nodeId) ? queue : cluster->sendQueues[node];
+            dst->put(buffers[node]);
+            if (buffers[node]->size != 0) { 
+                dst->put(Buffer::eof(queue->qid));
             }
         }
         delete[] buffers;
@@ -207,7 +184,9 @@ template<class T>
 class FileRDD : public RDD<T>
 {
   public:
-    FileRDD(char const* path) : f(fopen(path, "rb")) {}
+    FileRDD(char const* path) : f(fopen(path, "rb")) {
+        assert(f != NULL);
+    }
 
     bool next(T& record) {
         return fread(&record, sizeof(T), 1, f) == 1;
@@ -353,7 +332,7 @@ class MapReduceRDD : public RDD< Pair<K,V> >
         Queue* queue = Cluster::instance->getQueue();
         if (Cluster::instance->isCoordinator()) { 
             GatherRDD< Pair<K,V> > gather(queue);
-            queue->put(Buffer::create(queue->qid, 0)); // do not wait for this node
+            queue->put(Buffer::create(queue->qid, 0)); // do not wait for self node
             Pair<K,V> pair;
             while (gather.next(pair)) {
                 size_t hash = hashCode(pair.key);
@@ -467,9 +446,12 @@ class HashJoinRDD : public RDD< Join<O,I> >
 public:
     HashJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t estimation, bool outerJoin) 
     : isOuterJoin(outerJoin), table(new Entry*[estimation]), size(estimation), inner(NULL) {
+        // First load inner relation in hash...
         Queue* queue = Cluster::instance->getQueue();
         Thread loader(new ScatterJob<I,K,innerKey>(innerRDD, queue));
         loadHash(new GatherRDD<I>(queue));
+
+        // .. and then start fetching of outer relation and perform hash lookup
         queue = Cluster::instance->getQueue();
         scatter = new Thread(new ScatterJob<O,K,outerKey>(outerRDD, queue));
         outer = new GatherRDD<O>(queue);

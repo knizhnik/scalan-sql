@@ -22,7 +22,11 @@ struct Buffer
     static Buffer* create(qid_t qid, size32_t size) {
         return new (size) Buffer(qid, size);
     }
-    
+
+    static Buffer* eof(qid_t qid) { 
+        return create(qid, 0);
+    }
+
     Buffer(qid_t id, size32_t len) : size(len), qid(id) {}
 
     void* operator new(size_t hdrSize, size_t bufSize) { 

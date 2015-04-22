@@ -55,8 +55,8 @@ Queue* Cluster::getQueue()
     return recvQueues[qid++];
 }
 
-Cluster::Cluster(size_t id, size_t nHosts, char** hosts, size_t nQueues, size_t bufSize, size_t queueSize) 
-: nNodes(nHosts), nodeId(id), bufferSize(bufSize)
+Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nQueues, size_t bufSize, size_t queueSize) 
+: nNodes(nHosts), nodeId(selfId), bufferSize(bufSize)
 {
     instance = this;
 
@@ -70,21 +70,24 @@ Cluster::Cluster(size_t id, size_t nHosts, char** hosts, size_t nQueues, size_t 
     }
     sendQueues = new Queue*[nHosts];
     for (size_t i = 0; i < nHosts; i++) { 
-        sendQueues[i] = new Queue((qid_t)i, queueSize);
-        new Thread(new SendJob(i));
+        if (i != selfId) { 
+            sendQueues[i] = new Queue((qid_t)i, queueSize);
+            new Thread(new SendJob(i));
+        }
     }
+    sendQueues[selfId] = NULL;
 
-    for (size_t i = 0; i < id; i++) { 
+    for (size_t i = 0; i < selfId; i++) { 
         sockets[i] = Socket::connect(hosts[i]);
         sockets[i]->write(&nodeId, sizeof nodeId);
     }
-    sockets[id] = NULL;
+    sockets[selfId] = NULL;
 
-    char* sep = strchr(hosts[id], ':');
+    char* sep = strchr(hosts[selfId], ':');
     int port = atoi(sep+1);
     Socket* localGateway = Socket::createLocal(port, nHosts);
     Socket* globalGateway = Socket::createGlobal(port, nHosts);
-    for (size_t i = id+1; i < nHosts; i++) {
+    for (size_t i = selfId+1; i < nHosts; i++) {
         size_t node;
         Socket* s = (strncmp(hosts[i], "localhost:", 10) == 0) 
             ? localGateway->accept()
@@ -104,12 +107,8 @@ void Cluster::barrier()
 {
     Queue* queue = getQueue();
     for (size_t i = 0; i < nNodes; i++) { 
-        Buffer* req = Buffer::create(queue->qid, 0);
-        if (i == nodeId) { 
-            queue->put(req);
-        } else { 
-            sendQueues[i]->put(req);
-        } 
+        Queue* dst = (i == nodeId) ? queue : sendQueues[i];
+        dst->put(Buffer::eof(queue->qid));
     }
     Buffer* resp = queue->get();
     delete resp;
@@ -127,7 +126,7 @@ void ReceiveJob::run()
         if (buf->size != 0) { 
             socket->read(buf->data, buf->size);
         }
-        cluster->sendQueues[buf->qid]->put(buf);
+        cluster->recvQueues[buf->qid]->put(buf);
     }
 }
 
