@@ -15,7 +15,7 @@ void Queue::put(Buffer* buf)
     tail = &msg->next;
     if (blockedGet) { 
         blockedGet = false;
-        empty.signal();
+        empty.broadcast();
     }
 }
 
@@ -47,8 +47,8 @@ Queue* Cluster::getQueue()
     return recvQueues[qid++];
 }
 
-Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nQueues, size_t bufSize, size_t queueSize) 
-: nNodes(nHosts), nodeId(selfId), bufferSize(bufSize)
+Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nQueues, size_t bufSize, size_t queueSize, size_t syncInterval) 
+: nNodes(nHosts), nodeId(selfId), bufferSize(bufSize), pingPongInterval(syncInterval)
 {
     instance = this;
 
@@ -56,6 +56,7 @@ Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nQueues, siz
     memset(sockets, 0, nHosts*sizeof(Socket*));
 
     qid = 0;
+    syncQueue = new Queue(0, queueSize);
     recvQueues = new Queue*[nQueues];
     for (size_t i = 0; i < nQueues; i++) { 
         recvQueues[i] = new Queue((qid_t)i, queueSize);
@@ -100,11 +101,11 @@ void Cluster::barrier()
     Queue* queue = getQueue();
     for (size_t i = 0; i < nNodes; i++) { 
         Queue* dst = (i == nodeId) ? queue : sendQueues[i];
-        dst->put(Buffer::eof(queue->qid));
+        dst->put(Buffer::barrier(queue->qid));
     }
     for (size_t i = 0; i < nNodes; i++) { 
         Buffer* resp = queue->get();
-        assert(resp->isEof());
+        assert(resp->kind == MSG_BARRIER);
         delete resp;
     }
     qid = 0;
@@ -112,16 +113,23 @@ void Cluster::barrier()
 
 void ReceiveJob::run()
 {
-    Buffer header(0,0);
+    Buffer header(MSG_DATA,0);
     Cluster* cluster = Cluster::instance;
     while (true) {
         Socket* socket = Socket::select(cluster->nNodes, cluster->sockets);
         socket->read(&header, BUF_HDR_SIZE);
-        Buffer* buf = Buffer::create(header.qid, header.size);
+        Buffer* buf = Buffer::create(header.qid, header.size, (MessageKind)header.kind);
         if (buf->size != 0) { 
             socket->read(buf->data, buf->size);
         }
-        cluster->recvQueues[buf->qid]->put(buf);
+        if (buf->kind == MSG_PING) { 
+            buf->kind = MSG_PONG;
+            cluster->sendQueues[buf->qid]->put(buf);
+        } else if (buf->kind == MSG_PONG) { 
+            cluster->syncQueue->put(buf);
+        } else { 
+            cluster->recvQueues[buf->qid]->put(buf);
+        }
     }
 }
 
@@ -129,9 +137,22 @@ void ReceiveJob::run()
 void SendJob::run()
 {
     Cluster* cluster = Cluster::instance;
-    while (true) {
+    Buffer ping(MSG_PING, node);
+    size_t sent = 0;
+
+    while (true) { 
         Buffer* buf = cluster->sendQueues[node]->get();
+        sent += buf->size;
         cluster->sockets[node]->write(buf, BUF_HDR_SIZE + buf->size);
         delete buf;
+
+        // try to avoid socket and buffer overflow 
+        if (sent >= cluster->pingPongInterval) { 
+            cluster->sockets[node]->write(&ping, BUF_HDR_SIZE);
+            Buffer* pong = cluster->syncQueue->get();
+            assert(pong->kind == MSG_PONG);
+            delete pong;
+            sent = 0;
+        }
     }
 }

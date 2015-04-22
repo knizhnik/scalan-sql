@@ -197,6 +197,7 @@ Socket* Socket::accept()
 
 Socket* Socket::select(size_t nSockets, Socket** sockets)
 {
+    static size_t rr = 0;
     while (true) { 
         fd_set events;
         FD_ZERO(&events);
@@ -215,10 +216,12 @@ Socket* Socket::select(size_t nSockets, Socket** sockets)
             if (rc != EINTR) {
                 throw SocketError("Failed to select socket");
             }
-        } else { 
-            for (size_t i = 0; i < nSockets; i++) { 
-                if (sockets[i] && FD_ISSET(sockets[i]->sd, &events)) { 
-                    return sockets[i];
+        } else {                         
+            for (size_t i = 0, j = rr; i < nSockets; i++) {
+                j = (j + 1) % nSockets;  // round robin
+                if (sockets[j] && FD_ISSET(sockets[j]->sd, &events)) { 
+                    rr = j;
+                    return sockets[j];
                 }
             }
         }

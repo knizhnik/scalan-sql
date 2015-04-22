@@ -1,3 +1,4 @@
+#include <inttypes.h>
 #include "sync.h"
 #include "sockio.h"
 
@@ -6,28 +7,37 @@ const size_t BUF_HDR_SIZE = 8;
 
 class Cluster;
 
-typedef unsigned size32_t;
-typedef size32_t qid_t;
+typedef size_t qid_t;
+
+enum MessageKind 
+{ 
+    MSG_DATA,
+    MSG_PING,
+    MSG_PONG,
+    MSG_EOF,
+    MSG_BARRIER
+};
 
 struct Buffer 
 { 
-    size32_t size;
-    qid_t    qid;
+    uint32_t size; // size without header
+    uint16_t qid;  // identifier of destination queue
+    uint16_t kind; // message kind
     char     data[1];
-
-    bool isEof() { 
-        return size == 0;
-    }
     
-    static Buffer* create(qid_t qid, size32_t size) {
-        return new (size) Buffer(qid, size);
+    static Buffer* create(qid_t qid, size_t size, MessageKind type = MSG_DATA) {
+        return new (size) Buffer(type, qid, size);
     }
 
     static Buffer* eof(qid_t qid) { 
-        return create(qid, 0);
+        return create(qid, 0, MSG_EOF);
     }
 
-    Buffer(qid_t id, size32_t len) : size(len), qid(id) {}
+    static Buffer* barrier(qid_t qid) { 
+        return create(qid, 0, MSG_BARRIER);
+    }
+
+    Buffer(MessageKind type, qid_t id, size_t len = 0) : size((uint32_t)len), qid((uint16_t)id), kind((uint16_t)type) {}
 
     void* operator new(size_t hdrSize, size_t bufSize) { 
         return new char[BUF_HDR_SIZE + bufSize];
@@ -40,7 +50,7 @@ struct Buffer
     }
 };
 
-// FIFO queue, one consumer, multipler producers
+// FIFO blocking queue, multiple consumers/producers
 class Queue
 {
   public:
@@ -95,6 +105,8 @@ class Cluster {
     Socket** sockets;
     Queue** recvQueues;
     Queue** sendQueues;
+    Queue*  syncQueue;
+    size_t  pingPongInterval;
     qid_t qid;
 
 
@@ -102,7 +114,7 @@ class Cluster {
     Queue* getQueue();
     void barrier();
 
-    Cluster(size_t nodeId, size_t nHosts, char** hosts, size_t nQueues = 64, size_t bufferSize = 64*1024, size_t queueSize = 64*1024*1024);
+    Cluster(size_t nodeId, size_t nHosts, char** hosts, size_t nQueues = 64, size_t bufferSize = 64*1024, size_t queueSize = 64*1024*1024, size_t syncInterval = 1024*1024);
 
     static Cluster* instance;
 };

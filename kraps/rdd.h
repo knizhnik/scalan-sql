@@ -74,9 +74,12 @@ inline void enqueue(RDD<T>* input, Queue* queue, qid_t qid)
         }
     }
     buf->size = used*sizeof(T);
-    queue->put(buf);
     if (used != 0) { 
+        queue->put(buf);
         queue->put(Buffer::eof(qid));
+    } else { 
+        buf->kind = MSG_EOF;
+        queue->put(buf);
     }
 }
 
@@ -138,10 +141,13 @@ public:
 
         for (size_t node = 0; node < nNodes; node++) {
             Queue* dst = (node == nodeId) ? queue : cluster->sendQueues[node];
-            dst->put(buffers[node]);
             if (buffers[node]->size != 0) { 
+                dst->put(buffers[node]);
                 dst->put(Buffer::eof(queue->qid));
-            }
+            } else { 
+                buffers[node]->kind = MSG_EOF;
+                dst->put(buffers[node]);
+            }                
         }
         delete[] buffers;
     }
@@ -158,7 +164,7 @@ public:
         while (used == size) { 
             delete buf;
             buf = queue->get();
-            if (buf->isEof()) {
+            if (buf->kind == MSG_EOF) {
                 if (--nWorkers == 0) { 
                     return false;
                 }
@@ -336,7 +342,7 @@ class MapReduceRDD : public RDD< Pair<K,V> >
         Queue* queue = Cluster::instance->getQueue();
         if (Cluster::instance->isCoordinator()) { 
             GatherRDD< Pair<K,V> > gather(queue);
-            queue->put(Buffer::create(queue->qid, 0)); // do not wait for self node
+            queue->put(Buffer::eof(queue->qid)); // do not wait for self node
             Pair<K,V> pair;
             while (gather.next(pair)) {
                 size_t hash = hashCode(pair.key);
