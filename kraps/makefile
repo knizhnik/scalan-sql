@@ -1,7 +1,24 @@
 all: tpch csv2rdd
+CPP=g++ -pthread -O3 -g -Wall
+#CPP=g++ -pthread -O0 -g -Wall
 
-tpch: tpch.cpp rdd.h tpch.h
-	g++ -O3 -o tpch tpch.cpp
+tpch.o: tpch.cpp rdd.h cluster.h tpch.h sync.h sockio.h
+	$(CPP) -c tpch.cpp
+
+cluster.o: cluster.cpp cluster.h sync.h sockio.h
+	$(CPP) -c cluster.cpp
+
+sockio.o: sockio.cpp sockio.h
+	$(CPP) -c sockio.cpp
+
+tpch: tpch.o cluster.o sockio.o
+	$(CPP) -o tpch tpch.o cluster.o sockio.o
 
 csv2rdd: csv2rdd.cpp tpch.h
-	g++ -O3 -o csv2rdd csv2rdd.cpp
+	$(CPP) -o csv2rdd csv2rdd.cpp
+
+clean:
+	rm -f *.o tpch csv2rdd
+
+tgz: clean 
+	cd .. ; tar cvzf kraps.tgz kraps
