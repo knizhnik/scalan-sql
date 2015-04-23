@@ -556,7 +556,7 @@ void RDD<T>::print(FILE* out)
     Cluster* cluster = Cluster::instance;
     Queue* queue = cluster->getQueue();
     if (cluster->isCoordinator()) {         
-        Thread(new FetchJob<T>(this, queue));
+        Thread fetch(new FetchJob<T>(this, queue));
         GatherRDD<T> gather(queue);
         T record;
         while (gather.next(record)) { 

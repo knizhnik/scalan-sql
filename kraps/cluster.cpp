@@ -19,6 +19,22 @@ void Queue::put(Buffer* buf)
     }
 }
 
+void Queue::putFirst(Buffer* buf) 
+{ 
+    CriticalSection cs(mutex);
+    size += buf->size;
+    Message* msg = new Message(buf);
+    if (head == NULL) { 
+        tail = &msg->next;
+    }
+    msg->next = head;
+    head = msg;
+    if (blockedGet) { 
+        blockedGet = false;
+        empty.broadcast();
+    }
+}
+
 Buffer* Queue::get() 
 {
     CriticalSection cs(mutex);
@@ -48,7 +64,7 @@ Queue* Cluster::getQueue()
 }
 
 Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nQueues, size_t bufSize, size_t queueSize, size_t syncInterval) 
-: nNodes(nHosts), nodeId(selfId), bufferSize(bufSize), pingPongInterval(syncInterval)
+  : nNodes(nHosts), maxQueues(nQueues), nodeId(selfId), bufferSize(bufSize), pingPongInterval(syncInterval)
 {
     instance = this;
 
@@ -62,10 +78,11 @@ Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nQueues, siz
         recvQueues[i] = new Queue((qid_t)i, queueSize);
     }
     sendQueues = new Queue*[nHosts];
+    senders = new Thread*[nHosts];
     for (size_t i = 0; i < nHosts; i++) { 
         if (i != selfId) { 
             sendQueues[i] = new Queue((qid_t)i, queueSize);
-            new Thread(new SendJob(i));
+            senders[i] = new Thread(new SendJob(i));
         }
     }
     sendQueues[selfId] = NULL;
@@ -92,10 +109,40 @@ Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nQueues, siz
     delete localGateway;
     delete globalGateway;
 
-    new Thread(new ReceiveJob());
+    receiver = new Thread(new ReceiveJob());
         
 }
 
+Cluster::~Cluster()
+{
+    Buffer shutdown(MSG_SHUTDOWN, 0);
+    for (size_t i = 0; i < nNodes; i++) { 
+        if (i != nodeId) { 
+            sendQueues[i]->put(&shutdown);
+            delete senders[i];
+            delete sendQueues[i];
+        }
+    }
+    delete receiver;
+    // at this moment all threads should finish
+    
+    delete[] senders;
+    delete syncQueue;
+
+    for (size_t i = 0; i < maxQueues; i++) { 
+        delete recvQueues[i];
+    }
+    delete[] recvQueues;
+
+    for (size_t i = 0; i < nNodes; i++) { 
+        if (i != nodeId) { 
+            delete sockets[i];
+        }
+    }
+    delete[] sockets;
+}
+
+     
 void Cluster::barrier()
 {
     Queue* queue = getQueue();
@@ -122,12 +169,17 @@ void ReceiveJob::run()
         if (buf->size != 0) { 
             socket->read(buf->data, buf->size);
         }
-        if (buf->kind == MSG_PING) { 
+        switch (buf->kind) {
+        case MSG_PING:
             buf->kind = MSG_PONG;
             cluster->sendQueues[buf->qid]->put(buf);
-        } else if (buf->kind == MSG_PONG) { 
-            cluster->syncQueue->put(buf);
-        } else { 
+            break;
+        case MSG_PONG:
+            cluster->syncQueue->putFirst(buf);
+            break;
+        case MSG_SHUTDOWN:
+            return;
+        default:
             cluster->recvQueues[buf->qid]->put(buf);
         }
     }
@@ -142,6 +194,12 @@ void SendJob::run()
 
     while (true) { 
         Buffer* buf = cluster->sendQueues[node]->get();
+        if (buf->kind == MSG_SHUTDOWN) { 
+            if (node == (cluster->nodeId + 1) % cluster->nNodes) { // shutdown neighbour receiver
+                cluster->sockets[node]->write(buf, BUF_HDR_SIZE);
+            }
+            return;
+        }
         sent += buf->size;
         cluster->sockets[node]->write(buf, BUF_HDR_SIZE + buf->size);
         delete buf;

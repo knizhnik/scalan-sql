@@ -72,7 +72,9 @@ class Thread
 public:    
     Thread(Job* job) { 
         pthread_create(&thread,  NULL, trampoline, job);
-        pthread_detach(thread);
+    }
+    ~Thread() { 
+        pthread_join(thread, NULL);
     }
 
 private:

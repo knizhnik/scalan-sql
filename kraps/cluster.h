@@ -15,7 +15,8 @@ enum MessageKind
     MSG_PING,
     MSG_PONG,
     MSG_EOF,
-    MSG_BARRIER
+    MSG_BARRIER,
+    MSG_SHUTDOWN
 };
 
 struct Buffer 
@@ -56,6 +57,7 @@ class Queue
   public:
     qid_t const qid;
 
+    void putFirst(Buffer* buf);
     void put(Buffer* buf);
     Buffer* get();
 
@@ -100,21 +102,24 @@ private:
 class Cluster {
   public:
     size_t const nNodes;
+    size_t const maxQueues;
     size_t const nodeId;
     size_t const bufferSize;
     Socket** sockets;
     Queue** recvQueues;
     Queue** sendQueues;
     Queue*  syncQueue;
+    Thread** senders;
     size_t  pingPongInterval;
     qid_t qid;
-
+    Thread* receiver;
 
     bool isCoordinator() { return nodeId == COORDINATOR; }
     Queue* getQueue();
     void barrier();
 
     Cluster(size_t nodeId, size_t nHosts, char** hosts, size_t nQueues = 64, size_t bufferSize = 64*1024, size_t queueSize = 64*1024*1024, size_t syncInterval = 1024*1024);
+    ~Cluster();
 
     static Cluster* instance;
 };
