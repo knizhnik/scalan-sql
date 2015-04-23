@@ -64,7 +64,7 @@ Queue* Cluster::getQueue()
 }
 
 Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nQueues, size_t bufSize, size_t queueSize, size_t syncInterval) 
-  : nNodes(nHosts), maxQueues(nQueues), nodeId(selfId), bufferSize(bufSize), pingPongInterval(syncInterval)
+: nNodes(nHosts), maxQueues(nQueues), nodeId(selfId), bufferSize(bufSize), pingPongInterval(syncInterval), shutdown(false)
 {
     instance = this;
 
@@ -115,10 +115,11 @@ Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nQueues, siz
 
 Cluster::~Cluster()
 {
-    Buffer shutdown(MSG_SHUTDOWN, 0);
+    Buffer shutdownMsg(MSG_SHUTDOWN, 0);
+    shutdown = true;
     for (size_t i = 0; i < nNodes; i++) { 
         if (i != nodeId) { 
-            sendQueues[i]->put(&shutdown);
+            sendQueues[i]->put(&shutdownMsg);
             delete senders[i];
             delete sendQueues[i];
         }
@@ -164,6 +165,9 @@ void ReceiveJob::run()
     Cluster* cluster = Cluster::instance;
     while (true) {
         Socket* socket = Socket::select(cluster->nNodes, cluster->sockets);
+        if (cluster->shutdown) {
+            return;
+        }
         socket->read(&header, BUF_HDR_SIZE);
         Buffer* buf = Buffer::create(header.qid, header.size, (MessageKind)header.kind);
         if (buf->size != 0) { 
@@ -203,7 +207,7 @@ void SendJob::run()
         sent += buf->size;
         cluster->sockets[node]->write(buf, BUF_HDR_SIZE + buf->size);
         delete buf;
-
+        #if 0 // unfortunatelly it cause distributed deadlock
         // try to avoid socket and buffer overflow 
         if (sent >= cluster->pingPongInterval) { 
             cluster->sockets[node]->write(&ping, BUF_HDR_SIZE);
@@ -212,5 +216,6 @@ void SendJob::run()
             delete pong;
             sent = 0;
         }
+        #endif
     }
 }

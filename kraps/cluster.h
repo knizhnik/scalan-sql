@@ -113,6 +113,7 @@ class Cluster {
     size_t  pingPongInterval;
     qid_t qid;
     Thread* receiver;
+    bool shutdown;
 
     bool isCoordinator() { return nodeId == COORDINATOR; }
     Queue* getQueue();
