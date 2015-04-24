@@ -2,7 +2,29 @@
 #include "rdd.h"
 #include "tpch.h"
 
-const size_t SF = 1000;
+const size_t SF = 100;
+
+class CachedData
+{
+  public:
+    CachedRDD<Lineitem> lineitem;
+    CachedRDD<Orders> orders;
+    CachedRDD<Supplier> supplier;
+    CachedRDD<Customer> customer;
+    CachedRDD<Nation> nation;
+    CachedRDD<Region> region;
+
+    CachedData(size_t nNodes) : 
+    lineitem(FileManager::load<Lineitem>("lineitem"), (6000000*SF+nNodes-1)/nNodes),
+    orders(FileManager::load<Orders>("orders"), (1500000*SF+nNodes-1)/nNodes),
+    supplier(FileManager::load<Supplier>("supplier"), (10000*SF+nNodes-1)/nNodes),
+    customer(FileManager::load<Customer>("customer"), (150000*SF+nNodes-1)/nNodes),
+    nation(FileManager::load<Nation>("nation"), 25),
+    region(FileManager::load<Region>("region"), 5) {}
+
+};
+
+CachedData* cache;
 
 namespace Q1
 {
@@ -102,6 +124,15 @@ namespace Q1
     { 
         return
             FileManager::load<Lineitem>("lineitem")->
+            filter<predicate>()->
+            mapReduce<GroupBy,Aggregate,map,reduce>(10000)->
+            project<Projection, projection>()->
+            sort<compare>(100);
+    }
+    RDD<Projection>* cachedQuery() 
+    { 
+        return
+            cache->lineitem.
             filter<predicate>()->
             mapReduce<GroupBy,Aggregate,map,reduce>(10000)->
             project<Projection, projection>()->
@@ -227,14 +258,31 @@ namespace Q5
 
     RDD<Revenue>* query() 
     { 
+        size_t nNodes = Cluster::instance->nNodes;
         return
             FileManager::load<Lineitem>("lineitem")->            
-            join<Orders, long, lineitemOrderKey, orderKey>(FileManager::load<Orders>("orders")->filter<orderRange>(), 1500000*SF)->
-            join<Supplier, int, lineitemSupplierKey, supplierKey>(FileManager::load<Supplier>("supplier"), 10000*SF)->
-            join<Customer, int, orderCustomerKey, customerKey>(FileManager::load<Customer>("customer"), 150000*SF)->
+            join<Orders, long, lineitemOrderKey, orderKey>(FileManager::load<Orders>("orders")->filter<orderRange>(), 1500000*SF/nNodes)->
+            join<Supplier, int, lineitemSupplierKey, supplierKey>(FileManager::load<Supplier>("supplier"), 10000*SF/nNodes)->
+            join<Customer, int, orderCustomerKey, customerKey>(FileManager::load<Customer>("customer"), 150000*SF/nNodes)->
             filter<sameNation>()->
             join<Nation, int, customerNationKey, nationKey>(FileManager::load<Nation>("nation"), 25)->
             join<Region, int, nationRegionKey, regionKey>(FileManager::load<Region>("region"), 5)->
+            filter<asiaRegion>()->
+            mapReduce<Name, double, map, reduce>(25)->
+            project<Revenue, revenue>()->
+            sort<byRevenue>(25);
+    }    
+    RDD<Revenue>* cachedQuery() 
+    { 
+        size_t nNodes = Cluster::instance->nNodes;
+        return
+            cache->lineitem.            
+            join<Orders, long, lineitemOrderKey, orderKey>(cache->orders.filter<orderRange>(), 1500000*SF/nNodes)->
+            join<Supplier, int, lineitemSupplierKey, supplierKey>(&cache->supplier, 10000*SF/nNodes)->
+            join<Customer, int, orderCustomerKey, customerKey>(&cache->customer, 150000*SF/nNodes)->
+            filter<sameNation>()->
+            join<Nation, int, customerNationKey, nationKey>(&cache->nation, 25)->
+            join<Region, int, nationRegionKey, regionKey>(&cache->region, 5)->
             filter<asiaRegion>()->
             mapReduce<Name, double, map, reduce>(25)->
             project<Revenue, revenue>()->
@@ -270,8 +318,18 @@ int main(int argc, char* argv[])
     }
     printf("Node %d started...\n", nodeId);
     Cluster cluster(nodeId, nNodes, &argv[3]);
+
     execute("Q1", Q1::query);
     execute("Q5", Q5::query);
+    /*    
+    time_t start = time(NULL);
+    cache = new CachedData(nNodes);
+    printf("Elapsed time for loading all data in memory: %d seconds\n", (int)(time(NULL) - start));
+
+    execute("Q1", Q1::cachedQuery);
+    execute("Q5", Q5::cachedQuery);
+    delete cache;
+    */
     printf("Node %d finished.\n", nodeId);
     return 0;
 }

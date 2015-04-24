@@ -532,6 +532,7 @@ private:
             entry->collision = table[h]; 
             table[h] = entry;
             entry = new Entry();
+            realSize += 1;
         }
         printf("HashJoin: estimated size=%ld, real size=%ld\n", size, realSize);
         delete entry;
@@ -549,6 +550,46 @@ private:
     }
 };
     
+
+template<class T>
+class CachedRDD : public RDD<T>
+{
+  public:
+    CachedRDD(RDD<T>* input, size_t estimation) { 
+        cacheData(input, estimation);
+    }
+    bool next(T& record) { 
+        if (curr == size) { 
+            return false;
+        }
+        record = buf[curr++];
+        return true;
+    }
+    ~CachedRDD() { 
+        delete[] buf;
+    }
+
+  private:
+    void cacheData(RDD<T>* input, size_t estimation) { 
+        buf = new T[estimation];
+        size_t i = 0;
+        while (input->next(buf[i])) { 
+            if (++i == estimation) {
+                T* newBuf = new T[estimation *= 2];
+                memcpy(newBuf, buf, i*sizeof(T));
+                delete[] buf;
+                buf = newBuf;
+            }
+        }
+        size = i;
+        curr = 0;
+        delete input;
+    }
+
+    T* buf;
+    size_t curr;
+    size_t size;
+};
 
 template<class T>
 void RDD<T>::print(FILE* out) 
