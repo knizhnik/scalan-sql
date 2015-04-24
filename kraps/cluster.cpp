@@ -63,7 +63,7 @@ Queue* Cluster::getQueue()
     return recvQueues[qid++];
 }
 
-Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nQueues, size_t bufSize, size_t queueSize, size_t syncInterval) 
+Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nQueues, size_t bufSize, size_t recvQueueSize, size_t sendQueueSize, size_t syncInterval) 
 : nNodes(nHosts), maxQueues(nQueues), nodeId(selfId), bufferSize(bufSize), pingPongInterval(syncInterval), shutdown(false)
 {
     instance = this;
@@ -72,16 +72,16 @@ Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nQueues, siz
     memset(sockets, 0, nHosts*sizeof(Socket*));
 
     qid = 0;
-    syncQueue = new Queue(0, queueSize);
+    syncQueue = new Queue(0, sendQueueSize);
     recvQueues = new Queue*[nQueues];
     for (size_t i = 0; i < nQueues; i++) { 
-        recvQueues[i] = new Queue((qid_t)i, queueSize);
+        recvQueues[i] = new Queue((qid_t)i, recvQueueSize);
     }
     sendQueues = new Queue*[nHosts];
     senders = new Thread*[nHosts];
     for (size_t i = 0; i < nHosts; i++) { 
         if (i != selfId) { 
-            sendQueues[i] = new Queue((qid_t)i, queueSize);
+            sendQueues[i] = new Queue((qid_t)i, sendQueueSize);
             senders[i] = new Thread(new SendJob(i));
         }
     }
