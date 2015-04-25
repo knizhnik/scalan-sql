@@ -321,15 +321,16 @@ int main(int argc, char* argv[])
 
     execute("Q1", Q1::query);
     execute("Q5", Q5::query);
-    /*    
+
     time_t start = time(NULL);
     cache = new CachedData(nNodes);
     printf("Elapsed time for loading all data in memory: %d seconds\n", (int)(time(NULL) - start));
+    cluster.barrier(); 
 
     execute("Q1", Q1::cachedQuery);
     execute("Q5", Q5::cachedQuery);
     delete cache;
-    */
+
     printf("Node %d finished.\n", nodeId);
     return 0;
 }
