@@ -132,7 +132,7 @@ namespace Q1
     RDD<Projection>* cachedQuery() 
     { 
         return
-            cache->lineitem.
+            cache->lineitem.get()->
             filter<predicate>()->
             mapReduce<GroupBy,Aggregate,map,reduce>(10000)->
             project<Projection, projection>()->
@@ -276,13 +276,13 @@ namespace Q5
     { 
         size_t nNodes = Cluster::instance->nNodes;
         return
-            cache->lineitem.            
-            join<Orders, long, lineitemOrderKey, orderKey>(cache->orders.filter<orderRange>(), 1500000*SF/nNodes)->
-            join<Supplier, int, lineitemSupplierKey, supplierKey>(&cache->supplier, 10000*SF/nNodes)->
-            join<Customer, int, orderCustomerKey, customerKey>(&cache->customer, 150000*SF/nNodes)->
+            cache->lineitem.get()->            
+            join<Orders, long, lineitemOrderKey, orderKey>(cache->orders.get()->filter<orderRange>(), 1500000*SF/nNodes)->
+            join<Supplier, int, lineitemSupplierKey, supplierKey>(cache->supplier.get(), 10000*SF/nNodes)->
+            join<Customer, int, orderCustomerKey, customerKey>(cache->customer.get(), 150000*SF/nNodes)->
             filter<sameNation>()->
-            join<Nation, int, customerNationKey, nationKey>(&cache->nation, 25)->
-            join<Region, int, nationRegionKey, regionKey>(&cache->region, 5)->
+            join<Nation, int, customerNationKey, nationKey>(cache->nation.get(), 25)->
+            join<Region, int, nationRegionKey, regionKey>(cache->region.get(), 5)->
             filter<asiaRegion>()->
             mapReduce<Name, double, map, reduce>(25)->
             project<Revenue, revenue>()->
@@ -319,9 +319,10 @@ int main(int argc, char* argv[])
     printf("Node %d started...\n", nodeId);
     Cluster cluster(nodeId, nNodes, &argv[3]);
 
-    execute("Q1", Q1::query);
+    //execute("Q1", Q1::query);
+ 
     execute("Q5", Q5::query);
-
+    /*
     time_t start = time(NULL);
     cache = new CachedData(nNodes);
     printf("Elapsed time for loading all data in memory: %d seconds\n", (int)(time(NULL) - start));
@@ -330,7 +331,7 @@ int main(int argc, char* argv[])
     execute("Q1", Q1::cachedQuery);
     execute("Q5", Q5::cachedQuery);
     delete cache;
-
+    */
     printf("Node %d finished.\n", nodeId);
     return 0;
 }

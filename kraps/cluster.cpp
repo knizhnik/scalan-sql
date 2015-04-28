@@ -1,4 +1,8 @@
+#include <unistd.h>
 #include "rdd.h"
+
+const unsigned shutdownDelay = 5;
+const size_t MB = 1024*1024;
 
 Cluster* Cluster::instance;
 
@@ -117,6 +121,7 @@ Cluster::~Cluster()
 {
     Buffer shutdownMsg(MSG_SHUTDOWN, 0);
     shutdown = true;
+    sleep(shutdownDelay);
     for (size_t i = 0; i < nNodes; i++) { 
         if (i != nodeId) { 
             sendQueues[i]->put(&shutdownMsg);
@@ -163,13 +168,15 @@ void ReceiveJob::run()
 {
     Buffer header(MSG_DATA,0);
     Cluster* cluster = Cluster::instance;
+    size_t totalReceived = 0;
     while (true) {
         Socket* socket = Socket::select(cluster->nNodes, cluster->sockets);
         if (cluster->shutdown) {
-            return;
+            break;
         }
         socket->read(&header, BUF_HDR_SIZE);
         Buffer* buf = Buffer::create(header.qid, header.size, (MessageKind)header.kind);
+        totalReceived += BUF_HDR_SIZE + buf->size;
         if (buf->size != 0) { 
             socket->read(buf->data, buf->size);
         }
@@ -177,16 +184,19 @@ void ReceiveJob::run()
         case MSG_PING:
             buf->kind = MSG_PONG;
             cluster->sendQueues[buf->qid]->put(buf);
-            break;
+            continue;
         case MSG_PONG:
             cluster->syncQueue->putFirst(buf);
-            break;
+            continue;
         case MSG_SHUTDOWN:
-            return;
+            break;
         default:
             cluster->recvQueues[buf->qid]->put(buf);
+            continue;
         }
+        break;
     }
+    printf("Totally received %ldMb\n", totalReceived/MB);
 }
 
 

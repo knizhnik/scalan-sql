@@ -555,7 +555,7 @@ template<class T>
 class CachedRDD : public RDD<T>
 {
   public:
-    CachedRDD(RDD<T>* input, size_t estimation) { 
+    CachedRDD(RDD<T>* input, size_t estimation) : copy(false) { 
         cacheData(input, estimation);
     }
     bool next(T& record) { 
@@ -566,10 +566,18 @@ class CachedRDD : public RDD<T>
         return true;
     }
     ~CachedRDD() { 
-        delete[] buf;
+        if (!copy) { 
+            delete[] buf;
+        }
+    }
+
+    CachedRDD* get() { 
+        return new CachedRDD(buf, size);
     }
 
   private:
+    CachedRDD(T* buffer, size_t bufSize) : buf(buffer), curr(0), size(bufSize), copy(true) {}
+
     void cacheData(RDD<T>* input, size_t estimation) { 
         buf = new T[estimation];
         size_t i = 0;
@@ -589,6 +597,7 @@ class CachedRDD : public RDD<T>
     T* buf;
     size_t curr;
     size_t size;
+    bool copy;
 };
 
 template<class T>

@@ -119,7 +119,7 @@ class Cluster {
     Queue* getQueue();
     void barrier();
 
-    Cluster(size_t nodeId, size_t nHosts, char** hosts, size_t nQueues = 64, size_t bufferSize = 64*1024, size_t recvQueueSize = 64*1024*1024,  size_t sendQueueSize = 16*1024*1024, size_t syncInterval = 1024*1024);
+    Cluster(size_t nodeId, size_t nHosts, char** hosts, size_t nQueues = 64, size_t bufferSize = 64*1024, size_t recvQueueSize = 64*1024*1024,  size_t sendQueueSize = 8*1024*1024, size_t syncInterval = 1024*1024);
     ~Cluster();
 
     static Cluster* instance;
