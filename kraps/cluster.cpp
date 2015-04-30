@@ -63,7 +63,7 @@ Buffer* Queue::get()
 
 Queue* Cluster::getQueue()
 {
-    assert(qid < nNodes);
+    assert(qid < maxQueues);
     return recvQueues[qid++];
 }
 
@@ -161,7 +161,6 @@ void Cluster::barrier()
         assert(resp->kind == MSG_BARRIER);
         delete resp;
     }
-    qid = 0;
 }
 
 void ReceiveJob::run()
@@ -204,7 +203,6 @@ void SendJob::run()
 {
     Cluster* cluster = Cluster::instance;
     Buffer ping(MSG_PING, cluster->nodeId);
-    size_t sent = 0;
 
     while (true) { 
         Buffer* buf = cluster->sendQueues[node]->get();

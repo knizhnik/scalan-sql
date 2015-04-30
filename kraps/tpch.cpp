@@ -145,7 +145,7 @@ namespace Q5
 {
     bool orderRange(Orders const& orders) 
     {
-        return orders.o_orderdate >= 19960101 && orders.o_orderdate < 19970101;
+        return true;//orders.o_orderdate >= 19960101 && orders.o_orderdate < 19970101;
     }
 
     void orderKey(long& key, Orders const& order)

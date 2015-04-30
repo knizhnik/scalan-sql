@@ -460,8 +460,11 @@ public:
         queue = Cluster::instance->getQueue();
         Thread loader(new ScatterJob<I,K,innerKey>(innerRDD, queue));
         loadHash(new GatherRDD<I>(queue));
+        Cluster::instance->barrier();
         queue = Cluster::instance->getQueue();
+        maxCollisions = 0;
     }
+    size_t maxCollisions;
 
     bool next(Join<O,I>& record)
     {
@@ -478,7 +481,9 @@ public:
                 outerKey(key, outerRec);
                 hash = hashCode(key);
                 size_t h = hash % size;
-                for (inner = table[h]; inner != NULL && !(inner->hash == hash && key == inner->key); inner = inner->collision);
+                size_t tries = 0;
+                for (inner = table[h]; inner != NULL && !(inner->hash == hash && key == inner->key); inner = inner->collision) tries += 1;
+                if (tries > maxCollisions) maxCollisions = tries;
             } while (inner == NULL && !isOuterJoin);
             
             if (inner == NULL) { 
@@ -489,14 +494,18 @@ public:
         }
         (O&)record = outerRec;
         (I&)record = inner->record;
+        size_t tries = 0;
         do {
             inner = inner->collision;
+            tries += 1;
         } while (inner != NULL && !(inner->hash == hash && key == inner->key));
+        if (tries > maxCollisions) maxCollisions = tries;
 
         return true;
     }
 
     ~HashJoinRDD() { 
+        printf("Max collision chain length %ld\n", maxCollisions);
         deleteHash();
         delete outer;
         delete scatter;
@@ -616,6 +625,7 @@ void RDD<T>::print(FILE* out)
         sendToCoordinator<T>(this, queue);
     }
     cluster->barrier();
+    cluster->reset(); // print is assumed to be the final step of the pipe
 }
 
 template<class T>
