@@ -120,6 +120,7 @@ public:
         size_t nodeId = cluster->nodeId;
         size_t bufferSize = cluster->bufferSize;
         Buffer** buffers = new Buffer*[nNodes];
+        size_t sent = 0;
         for (size_t i = 0; i < nNodes; i++) { 
             buffers[i] = Buffer::create(queue->qid, bufferSize);
             buffers[i]->size = 0;
@@ -139,6 +140,16 @@ public:
             buffers[node]->size += sizeof(T);
         }
 
+        if (sent > cluster->syncInterval) { 
+            for (size_t node = 0; node < nNodes; node++) {
+                if (node != cluster->nodeId) { 
+                    cluster->sendQueues[node]->put(Buffer::ping(queue->qid));
+                }
+            }
+            queue->wait(nNodes-1);
+            sent = 0;
+        }
+            
         for (size_t node = 0; node < nNodes; node++) {
             Queue* dst = (node == nodeId) ? queue : cluster->sendQueues[node];
             if (buffers[node]->size != 0) { 
@@ -164,15 +175,22 @@ public:
         while (used == size) { 
             delete buf;
             buf = queue->get();
-            if (buf->kind == MSG_EOF) {
+            switch (buf->kind) { 
+            case MSG_EOF:
                 if (--nWorkers == 0) { 
                     return false;
-                }
+                }                
                 continue;
+            case MSG_PING:
+                buf->kind = MSG_PONG;
+                Cluster::instance->sendQueues[buf->node]->put(buf);
+                buf = NULL; // will be deleted by sender
+                continue;
+            default:
+                used = 0;
+                size = buf->size / sizeof(T);
+                assert(size*sizeof(T) == buf->size);
             }
-            used = 0;
-            size = buf->size / sizeof(T);
-            assert(size*sizeof(T) == buf->size);
         }
         record = *((T*)buf->data + used);
         used += 1;
@@ -460,11 +478,8 @@ public:
         queue = Cluster::instance->getQueue();
         Thread loader(new ScatterJob<I,K,innerKey>(innerRDD, queue));
         loadHash(new GatherRDD<I>(queue));
-        Cluster::instance->barrier();
         queue = Cluster::instance->getQueue();
-        maxCollisions = 0;
     }
-    size_t maxCollisions;
 
     bool next(Join<O,I>& record)
     {
@@ -481,9 +496,7 @@ public:
                 outerKey(key, outerRec);
                 hash = hashCode(key);
                 size_t h = hash % size;
-                size_t tries = 0;
-                for (inner = table[h]; inner != NULL && !(inner->hash == hash && key == inner->key); inner = inner->collision) tries += 1;
-                if (tries > maxCollisions) maxCollisions = tries;
+                for (inner = table[h]; inner != NULL && !(inner->hash == hash && key == inner->key); inner = inner->collision);
             } while (inner == NULL && !isOuterJoin);
             
             if (inner == NULL) { 
@@ -494,18 +507,14 @@ public:
         }
         (O&)record = outerRec;
         (I&)record = inner->record;
-        size_t tries = 0;
         do {
             inner = inner->collision;
-            tries += 1;
         } while (inner != NULL && !(inner->hash == hash && key == inner->key));
-        if (tries > maxCollisions) maxCollisions = tries;
 
         return true;
     }
 
     ~HashJoinRDD() { 
-        printf("Max collision chain length %ld\n", maxCollisions);
         deleteHash();
         delete outer;
         delete scatter;
@@ -625,7 +634,6 @@ void RDD<T>::print(FILE* out)
         sendToCoordinator<T>(this, queue);
     }
     cluster->barrier();
-    cluster->reset(); // print is assumed to be the final step of the pipe
 }
 
 template<class T>

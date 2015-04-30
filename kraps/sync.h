@@ -26,6 +26,19 @@ private:
     pthread_mutex_t cs;
 };
 
+class CriticalSection
+{
+public:
+    CriticalSection(Mutex& cs) : mutex(cs) {
+        mutex.lock();
+    }
+    ~CriticalSection() {
+        mutex.unlock();
+    }
+private:
+    Mutex& mutex;
+};
+
 class Event
 {
 public:
@@ -48,18 +61,28 @@ private:
     pthread_cond_t cond;
 };   
 
-class CriticalSection
-{
+class Semaphore 
+{ 
 public:
-    CriticalSection(Mutex& cs) : mutex(cs) {
-        mutex.lock();
+    void wait(Mutex& mutex, size_t n) { 
+        CriticalSection cs(mutex);
+        while (n != count) { 
+            event.wait(mutex);
+        }
+        count = 0;
     }
-    ~CriticalSection() {
-        mutex.unlock();
+    void signal(Mutex& mutex) {
+        CriticalSection cs(mutex);
+        count += 1;
+        event.signal();
     }
+
+    Semaphore() : count(0) {}
 private:
-    Mutex& mutex;
+    Event event;
+    size_t count;
 };
+
 
 class Job {
 public:

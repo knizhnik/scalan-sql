@@ -67,8 +67,8 @@ Queue* Cluster::getQueue()
     return recvQueues[qid++];
 }
 
-Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nQueues, size_t bufSize, size_t recvQueueSize, size_t sendQueueSize, size_t syncInterval) 
-: nNodes(nHosts), maxQueues(nQueues), nodeId(selfId), bufferSize(bufSize), pingPongInterval(syncInterval), shutdown(false)
+Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nQueues, size_t bufSize, size_t recvQueueSize, size_t sendQueueSize, size_t syncPeriod) 
+: nNodes(nHosts), maxQueues(nQueues), nodeId(selfId), bufferSize(bufSize), syncInterval(syncPeriod), shutdown(false)
 {
     instance = this;
 
@@ -161,6 +161,7 @@ void Cluster::barrier()
         assert(resp->kind == MSG_BARRIER);
         delete resp;
     }
+    qid = 0;
 }
 
 void ReceiveJob::run()
@@ -180,14 +181,12 @@ void ReceiveJob::run()
             socket->read(buf->data, buf->size);
         }
         switch (buf->kind) {
-        case MSG_PING:
-            buf->kind = MSG_PONG;
-            cluster->sendQueues[buf->qid]->put(buf);
-            continue;
         case MSG_PONG:
-            cluster->syncQueue->putFirst(buf);
+            delete buf;
+            cluster->recvQueues[buf->qid]->signal();            
             continue;
         case MSG_SHUTDOWN:
+            delete buf;
             break;
         default:
             cluster->recvQueues[buf->qid]->put(buf);
@@ -202,10 +201,10 @@ void ReceiveJob::run()
 void SendJob::run()
 {
     Cluster* cluster = Cluster::instance;
-    Buffer ping(MSG_PING, cluster->nodeId);
 
     while (true) { 
         Buffer* buf = cluster->sendQueues[node]->get();
+        buf->node = (uint16_t)cluster->nodeId;
         if (buf->kind == MSG_SHUTDOWN) { 
             if (node == (cluster->nodeId + 1) % cluster->nNodes) { // shutdown neighbour receiver
                 cluster->sockets[node]->write(buf, BUF_HDR_SIZE);
@@ -215,15 +214,5 @@ void SendJob::run()
         sent += buf->size;
         cluster->sockets[node]->write(buf, BUF_HDR_SIZE + buf->size);
         delete buf;
-        #if 0 // unfortunatelly it cause distributed deadlock
-        // try to avoid socket and buffer overflow 
-        if (sent >= cluster->pingPongInterval) { 
-            cluster->sockets[node]->write(&ping, BUF_HDR_SIZE);
-            Buffer* pong = cluster->syncQueue->get();
-            assert(pong->kind == MSG_PONG);
-            delete pong;
-            sent = 0;
-        }
-        #endif
     }
 }
