@@ -7,3 +7,68 @@ sys	4m38.355s
 863998518096 bytes (864 GB) copied, 1516.64 s, 570 MB/s
 
 real	25m16.660s
+
+Sync interval 1Mb
+------------------------------------------
+
+MURMUR hash, prime hash table size:
+HashJoin: estimated size=9375000, real size=1425755, collitions=(9 max, 1.726652 avg)
+HashJoin: estimated size=100003, real size=62552, collitions=(6 max, 1.340592 avg)
+HashJoin: estimated size=1000003, real size=936948, collitions=(9 max, 1.538889 avg)
+HashJoin: estimated size=25, real size=1, collitions=(1 max, 1.000000 avg)
+HashJoin: estimated size=5, real size=0, collitions=(0 max, 0.000000 avg)
+HashAggregate: estimated size=25, real size=5
+Elapsed time for Q5: 580 seconds
+
+MURMUR hash, hash table size equals to number of records
+HashJoin: estimated size=62500, real size=62552, collitions=(14 max, 4.076908 avg)
+HashJoin: estimated size=937500, real size=936948, collitions=(17 max, 4.072129 avg)
+HashJoin: estimated size=25, real size=1, collitions=(1 max, 1.000000 avg)
+HashJoin: estimated size=5, real size=0, collitions=(0 max, 0.000000 avg)
+HashAggregate: estimated size=25, real size=5
+Elapsed time for Q5: 582 seconds
+
+
+Simple hash (key >> 8) ^ (key << (sizeof(key)*8 - 8)), prime hash table size
+HashJoin: estimated size=9375000, real size=1425443, collitions=(9 max, 1.695452 avg)
+HashJoin: estimated size=100003, real size=62719, collitions=(3 max, 1.702470 avg)
+HashJoin: estimated size=1000003, real size=937727, collitions=(2 max, 1.244702 avg)
+HashJoin: estimated size=25, real size=25, collitions=(1 max, 1.000000 avg)
+HashJoin: estimated size=5, real size=5, collitions=(1 max, 1.000000 avg)
+HashAggregate: estimated size=25, real size=5
+Elapsed time for Q5: 580 seconds
+
+
+Identical hash function, prime table size
+HashJoin: estimated size=9375000, real size=2852976, collitions=(11 max, 2.621382 avg)
+HashJoin: estimated size=100003, real size=62500, collitions=(1 max, 1.000000 avg)
+HashJoin: estimated size=1000003, real size=937500, collitions=(1 max, 1.000000 avg)
+HashJoin: estimated size=25, real size=2, collitions=(1 max, 1.000000 avg)
+HashJoin: estimated size=5, real size=1, collitions=(1 max, 1.000000 avg)
+Elapsed time for Q5: 608 seconds
+
+
+Sync interval 16Mb
+----------------------------
+
+MURMUR hash, prime hash table size
+HashJoin: estimated size=9375000, real size=1425755, collitions=(9 max, 1.726652 avg)
+HashJoin: estimated size=100003, real size=62552, collitions=(6 max, 1.340592 avg)
+HashJoin: estimated size=1000003, real size=936948, collitions=(9 max, 1.538889 avg)
+HashJoin: estimated size=25, real size=1, collitions=(1 max, 1.000000 avg)
+HashJoin: estimated size=5, real size=0, collitions=(0 max, 0.000000 avg)
+HashAggregate: estimated size=25, real size=5
+Elapsed time for Q5: 361 seconds
+
+Sync interval 64Mb
+----------------------------
+
+HashJoin: estimated size=9375000, real size=1425755, collitions=(9 max, 1.726652 avg)
+HashJoin: estimated size=100003, real size=62552, collitions=(6 max, 1.340592 avg)
+HashJoin: estimated size=1000003, real size=936948, collitions=(9 max, 1.538889 avg)
+HashJoin: estimated size=25, real size=1, collitions=(1 max, 1.000000 avg)
+HashJoin: estimated size=5, real size=0, collitions=(0 max, 0.000000 avg)
+HashAggregate: estimated size=25, real size=5
+Elapsed time for Q5: 338 seconds
+
+

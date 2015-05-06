@@ -145,7 +145,7 @@ namespace Q5
 {
     bool orderRange(Orders const& orders) 
     {
-        return true;//orders.o_orderdate >= 19960101 && orders.o_orderdate < 19970101;
+        return orders.o_orderdate >= 19960101 && orders.o_orderdate < 19970101;
     }
 
     void orderKey(long& key, Orders const& order)
@@ -262,8 +262,8 @@ namespace Q5
         return
             FileManager::load<Lineitem>("lineitem")->            
             join<Orders, long, lineitemOrderKey, orderKey>(FileManager::load<Orders>("orders")->filter<orderRange>(), 1500000*SF/nNodes)->
-            join<Supplier, int, lineitemSupplierKey, supplierKey>(FileManager::load<Supplier>("supplier"), 10000*SF/nNodes)->
-            join<Customer, int, orderCustomerKey, customerKey>(FileManager::load<Customer>("customer"), 150000*SF/nNodes)->
+            join<Supplier, int, lineitemSupplierKey, supplierKey>(FileManager::load<Supplier>("supplier"), 100003/*10000*SF/nNodes*/)->
+            join<Customer, int, orderCustomerKey, customerKey>(FileManager::load<Customer>("customer"), 1000003/*150000*SF/nNodes*/)->
             filter<sameNation>()->
             join<Nation, int, customerNationKey, nationKey>(FileManager::load<Nation>("nation"), 25)->
             join<Region, int, nationRegionKey, regionKey>(FileManager::load<Region>("region"), 5)->
@@ -278,8 +278,8 @@ namespace Q5
         return
             cache->lineitem.get()->            
             join<Orders, long, lineitemOrderKey, orderKey>(cache->orders.get()->filter<orderRange>(), 1500000*SF/nNodes)->
-            join<Supplier, int, lineitemSupplierKey, supplierKey>(cache->supplier.get(), 10000*SF/nNodes)->
-            join<Customer, int, orderCustomerKey, customerKey>(cache->customer.get(), 150000*SF/nNodes)->
+            join<Supplier, int, lineitemSupplierKey, supplierKey>(cache->supplier.get(), 100003/*10000*SF/nNodes*/)->
+            join<Customer, int, orderCustomerKey, customerKey>(cache->customer.get(), 1000003/*150000*SF/nNodes*/)->
             filter<sameNation>()->
             join<Nation, int, customerNationKey, nationKey>(cache->nation.get(), 25)->
             join<Region, int, nationRegionKey, regionKey>(cache->region.get(), 5)->

@@ -14,12 +14,11 @@ struct Pair
 template<class Outer, class Inner>
 struct Join : Outer, Inner {};
 
-inline size_t hashCode(int key) { 
-    return (size_t)key;
-}
-
-inline size_t hashCode(long key) { 
-    return (size_t)key;
+template<class T>
+inline size_t hashCode(T key) { 
+//    return key;
+//    return (key >> 8) ^ (key << (sizeof(key)*8 - 8));
+    return murmur_hash3_32(&key, sizeof key);
 }
 
 inline size_t hashCode(char const* key) { 
@@ -138,16 +137,17 @@ public:
             }
             memcpy(buffers[node]->data + buffers[node]->size, &record, sizeof(T));
             buffers[node]->size += sizeof(T);
-        }
+            sent += sizeof(T);
 
-        if (sent > cluster->syncInterval) { 
-            for (size_t node = 0; node < nNodes; node++) {
-                if (node != cluster->nodeId) { 
-                    cluster->sendQueues[node]->put(Buffer::ping(queue->qid));
+            if (sent > cluster->syncInterval) { 
+                for (size_t node = 0; node < nNodes; node++) {
+                    if (node != nodeId) { 
+                        cluster->sendQueues[node]->put(Buffer::ping(queue->qid));
+                    }
                 }
+                queue->wait(nNodes-1);
+                sent = 0;
             }
-            queue->wait(nNodes-1);
-            sent = 0;
         }
             
         for (size_t node = 0; node < nNodes; node++) {
@@ -172,6 +172,7 @@ class GatherRDD : public RDD<T>
 {
 public:
     bool next(T& record) {
+        Cluster* cluster = Cluster::instance;
         while (used == size) { 
             delete buf;
             buf = queue->get();
@@ -183,7 +184,8 @@ public:
                 continue;
             case MSG_PING:
                 buf->kind = MSG_PONG;
-                Cluster::instance->sendQueues[buf->node]->put(buf);
+                assert(buf->node < cluster->nNodes && buf->node != cluster->nodeId);
+                Cluster::instance->sendQueues[buf->node]->putFirst(buf);
                 buf = NULL; // will be deleted by sender
                 continue;
             default:
@@ -539,7 +541,8 @@ private:
     Queue*  queue;
     Thread* scatter;
 
-    void loadHash(RDD<I>* gather) {
+    void loadHash(RDD<I>* gather) 
+    {
         Entry* entry = new Entry();
         memset(table, 0, size*sizeof(Entry*));
         size_t realSize = 0;
@@ -552,7 +555,19 @@ private:
             entry = new Entry();
             realSize += 1;
         }
-        printf("HashJoin: estimated size=%ld, real size=%ld\n", size, realSize);
+        size_t totalLen = 0;
+        size_t nChains = 0;
+        size_t maxLen = 0;
+        for (size_t i = 0; i < size; i++) { 
+            size_t chainLen = 0;
+            for (Entry* entry = table[i]; entry != NULL; entry = entry->collision) chainLen += 1;
+            if (chainLen > maxLen) { 
+                maxLen = chainLen;
+            }
+            totalLen += chainLen;
+            nChains += chainLen != 0;                
+        }
+        printf("HashJoin: estimated size=%ld, real size=%ld, collitions=(%ld max, %f avg)\n", size, realSize, maxLen, nChains != 0 ? (double)totalLen/nChains : 0.0);
         delete entry;
         delete gather;
     }
