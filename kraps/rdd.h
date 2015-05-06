@@ -120,6 +120,7 @@ public:
         size_t nodeId = cluster->nodeId;
         size_t bufferSize = cluster->bufferSize;
         Buffer** buffers = new Buffer*[nNodes];
+        size_t sent = 0;
         for (size_t i = 0; i < nNodes; i++) { 
             buffers[i] = Buffer::create(queue->qid, bufferSize);
             buffers[i]->size = 0;
@@ -139,6 +140,16 @@ public:
             buffers[node]->size += sizeof(T);
         }
 
+        if (sent > cluster->syncInterval) { 
+            for (size_t node = 0; node < nNodes; node++) {
+                if (node != cluster->nodeId) { 
+                    cluster->sendQueues[node]->put(Buffer::ping(queue->qid));
+                }
+            }
+            queue->wait(nNodes-1);
+            sent = 0;
+        }
+            
         for (size_t node = 0; node < nNodes; node++) {
             Queue* dst = (node == nodeId) ? queue : cluster->sendQueues[node];
             if (buffers[node]->size != 0) { 
@@ -164,15 +175,22 @@ public:
         while (used == size) { 
             delete buf;
             buf = queue->get();
-            if (buf->kind == MSG_EOF) {
+            switch (buf->kind) { 
+            case MSG_EOF:
                 if (--nWorkers == 0) { 
                     return false;
-                }
+                }                
                 continue;
+            case MSG_PING:
+                buf->kind = MSG_PONG;
+                Cluster::instance->sendQueues[buf->node]->put(buf);
+                buf = NULL; // will be deleted by sender
+                continue;
+            default:
+                used = 0;
+                size = buf->size / sizeof(T);
+                assert(size*sizeof(T) == buf->size);
             }
-            used = 0;
-            size = buf->size / sizeof(T);
-            assert(size*sizeof(T) == buf->size);
         }
         record = *((T*)buf->data + used);
         used += 1;
@@ -532,6 +550,7 @@ private:
             entry->collision = table[h]; 
             table[h] = entry;
             entry = new Entry();
+            realSize += 1;
         }
         printf("HashJoin: estimated size=%ld, real size=%ld\n", size, realSize);
         delete entry;
@@ -551,12 +570,61 @@ private:
     
 
 template<class T>
+class CachedRDD : public RDD<T>
+{
+  public:
+    CachedRDD(RDD<T>* input, size_t estimation) : copy(false) { 
+        cacheData(input, estimation);
+    }
+    bool next(T& record) { 
+        if (curr == size) { 
+            return false;
+        }
+        record = buf[curr++];
+        return true;
+    }
+    ~CachedRDD() { 
+        if (!copy) { 
+            delete[] buf;
+        }
+    }
+
+    CachedRDD* get() { 
+        return new CachedRDD(buf, size);
+    }
+
+  private:
+    CachedRDD(T* buffer, size_t bufSize) : buf(buffer), curr(0), size(bufSize), copy(true) {}
+
+    void cacheData(RDD<T>* input, size_t estimation) { 
+        buf = new T[estimation];
+        size_t i = 0;
+        while (input->next(buf[i])) { 
+            if (++i == estimation) {
+                T* newBuf = new T[estimation *= 2];
+                memcpy(newBuf, buf, i*sizeof(T));
+                delete[] buf;
+                buf = newBuf;
+            }
+        }
+        size = i;
+        curr = 0;
+        delete input;
+    }
+
+    T* buf;
+    size_t curr;
+    size_t size;
+    bool copy;
+};
+
+template<class T>
 void RDD<T>::print(FILE* out) 
 {
     Cluster* cluster = Cluster::instance;
     Queue* queue = cluster->getQueue();
     if (cluster->isCoordinator()) {         
-        Thread(new FetchJob<T>(this, queue));
+        Thread fetch(new FetchJob<T>(this, queue));
         GatherRDD<T> gather(queue);
         T record;
         while (gather.next(record)) { 

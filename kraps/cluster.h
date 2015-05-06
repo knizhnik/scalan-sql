@@ -15,14 +15,16 @@ enum MessageKind
     MSG_PING,
     MSG_PONG,
     MSG_EOF,
-    MSG_BARRIER
+    MSG_BARRIER,
+    MSG_SHUTDOWN
 };
 
 struct Buffer 
 { 
     uint32_t size; // size without header
-    uint16_t qid;  // identifier of destination queue
-    uint16_t kind; // message kind
+    uint16_t node; // sender
+    uint8_t  qid;  // identifier of destination queue
+    uint8_t  kind; // message kind
     char     data[1];
     
     static Buffer* create(qid_t qid, size_t size, MessageKind type = MSG_DATA) {
@@ -35,6 +37,10 @@ struct Buffer
 
     static Buffer* barrier(qid_t qid) { 
         return create(qid, 0, MSG_BARRIER);
+    }
+
+    static Buffer* ping(qid_t qid) { 
+        return create(qid, 0, MSG_PING);
     }
 
     Buffer(MessageKind type, qid_t id, size_t len = 0) : size((uint32_t)len), qid((uint16_t)id), kind((uint16_t)type) {}
@@ -56,11 +62,19 @@ class Queue
   public:
     qid_t const qid;
 
+    void putFirst(Buffer* buf);
     void put(Buffer* buf);
     Buffer* get();
 
+    void wait(size_t n) { 
+        semaphore.wait(mutex, n);
+    }
+    void signal() { 
+        semaphore.signal(mutex);
+    }
+
     Queue(qid_t id, size_t maxSize) 
-    : qid(id), head(NULL), tail(&head), size(0), limit(maxSize), blockedPut(false), blockedGet(false) {}
+    : qid(id), head(NULL), tail(&head), size(0), limit(maxSize), nSignals(0), blockedPut(false), blockedGet(false) {}
 
   private:
     struct Message { 
@@ -75,10 +89,13 @@ class Queue
     Mutex mutex;
     Event empty;
     Event full;
+    Event sync;
     size_t size;
     size_t limit;
+    size_t nSignals;
     bool blockedPut;
     bool blockedGet;
+    Semaphore semaphore;
 };
         
 class ReceiveJob : public Job
@@ -91,30 +108,35 @@ class SendJob : public Job
 {
 public:
     void run();
-    SendJob(size_t id) : node(id) {}
+    SendJob(size_t id) : node(id), sent(0) {}
 
 private:
     size_t const node;
+    size_t sent;
 };
 
 class Cluster {
   public:
     size_t const nNodes;
+    size_t const maxQueues;
     size_t const nodeId;
     size_t const bufferSize;
     Socket** sockets;
     Queue** recvQueues;
     Queue** sendQueues;
     Queue*  syncQueue;
-    size_t  pingPongInterval;
+    Thread** senders;
+    size_t  syncInterval;
     qid_t qid;
-
+    Thread* receiver;
+    bool shutdown;
 
     bool isCoordinator() { return nodeId == COORDINATOR; }
     Queue* getQueue();
     void barrier();
 
-    Cluster(size_t nodeId, size_t nHosts, char** hosts, size_t nQueues = 64, size_t bufferSize = 64*1024, size_t queueSize = 64*1024*1024, size_t syncInterval = 1024*1024);
+    Cluster(size_t nodeId, size_t nHosts, char** hosts, size_t nQueues = 64, size_t bufferSize = 64*1024, size_t recvQueueSize = 64*1024*1024,  size_t sendQueueSize = 4*1024*1024, size_t syncInterval = 1024*1024);
+    ~Cluster();
 
     static Cluster* instance;
 };
