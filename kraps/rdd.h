@@ -12,8 +12,21 @@ struct Pair
 };
 
 template<class Outer, class Inner>
-struct Join : Outer, Inner {};
+struct Join : Outer, Inner {
+    friend size_t pack(Join const& src, char* dst) {
+        size_t size = pack((Outer const&)src, dst);
+        return size + pack((Inner const&)src, dst + size);
+    }
+    friend size_t unpack(Join& dst, char const* src) {
+        size_t size = unpack((Outer&)dst, src);
+        return size + unpack((Inner&)dst, src + size);
+    }
+    
+};
 
+//
+// Hash function for scalar fields
+//
 template<class T>
 inline size_t hashCode(T key) { 
 //    return key;
@@ -21,6 +34,9 @@ inline size_t hashCode(T key) {
     return murmur_hash3_32(&key, sizeof key);
 }
 
+//
+// Hash function for string fields
+//
 inline size_t hashCode(char const* key) { 
     size_t h = 0;
     while (*key != '\0') { 
@@ -28,6 +44,22 @@ inline size_t hashCode(char const* key) {
     }
     return h;
 }
+
+//
+// Default pack/unpack functions
+//
+template<class T>
+size_t pack(T const& src, char* dst) { 
+    *(T*)dst = src;
+    return sizeof(T);
+}
+template<class T>
+size_t unpack(T& dst, char const* src) { 
+    dst = *(T const*)src;
+    return sizeof(T);
+}
+
+
 
 template<class T>
 class RDD
@@ -61,18 +93,20 @@ class RDD
 template<class T>
 inline void enqueue(RDD<T>* input, Queue* queue, qid_t qid) 
 {
-    size_t size = Cluster::instance->bufferSize/sizeof(T);
-    Buffer* buf = Buffer::create(qid, size*sizeof(T));
+    size_t size = Cluster::instance->bufferSize;
+    Buffer* buf = Buffer::create(qid, size);
     size_t used = 0;
-    
-    while (input->next(*((T*)buf->data + used))) { 
-        if (++used == size) { 
+    T record;
+    while (input->next(record)) { 
+        if (used + sizeof(T) > size) { 
+            buf->size = used;
             queue->put(buf);
             buf = Buffer::create(qid, size*sizeof(T));
             used = 0;
         }
+        used += pack(record, buf->data + used); 
     }
-    buf->size = used*sizeof(T);
+    buf->size = used;
     if (used != 0) { 
         queue->put(buf);
         queue->put(Buffer::eof(qid));
@@ -133,26 +167,26 @@ public:
                 Queue* dst = (node == nodeId) ? queue : cluster->sendQueues[node];
                 dst->put(buffers[node]);
                 buffers[node] = Buffer::create(queue->qid, bufferSize);
+                sent += buffers[node]->size;
                 buffers[node]->size = 0;
-            }
-            memcpy(buffers[node]->data + buffers[node]->size, &record, sizeof(T));
-            buffers[node]->size += sizeof(T);
-            sent += sizeof(T);
-
-            if (sent > cluster->syncInterval) { 
-                for (size_t node = 0; node < nNodes; node++) {
-                    if (node != nodeId) { 
-                        cluster->sendQueues[node]->put(Buffer::ping(queue->qid));
+                
+                if (sent > cluster->syncInterval) { 
+                    for (size_t node = 0; node < nNodes; node++) {
+                        if (node != nodeId) { 
+                            cluster->sendQueues[node]->put(Buffer::ping(queue->qid));
+                        }
                     }
-                }
-                queue->wait(nNodes-1);
-                sent = 0;
+                    queue->wait(nNodes-1);
+                    sent = 0;
+                }                
             }
+            buffers[node]->size += pack(record, buffers[node]->data + buffers[node]->size);
         }
             
         for (size_t node = 0; node < nNodes; node++) {
             Queue* dst = (node == nodeId) ? queue : cluster->sendQueues[node];
             if (buffers[node]->size != 0) { 
+                sent += buffers[node]->size;
                 dst->put(buffers[node]);
                 dst->put(Buffer::eof(queue->qid));
             } else { 
@@ -190,12 +224,10 @@ public:
                 continue;
             default:
                 used = 0;
-                size = buf->size / sizeof(T);
-                assert(size*sizeof(T) == buf->size);
+                size = buf->size;
             }
         }
-        record = *((T*)buf->data + used);
-        used += 1;
+        used += unpack(record, buf->data + used);
         return true;
     }
 
