@@ -3,7 +3,7 @@
 #include "sockio.h"
 
 const size_t COORDINATOR = 0;
-const size_t BUF_HDR_SIZE = 8;
+const size_t BUF_HDR_SIZE = 16;
 
 class Cluster;
 
@@ -21,10 +21,11 @@ enum MessageKind
 
 struct Buffer 
 { 
-    uint32_t size; // size without header
-    uint16_t node; // sender
-    uint8_t  qid;  // identifier of destination queue
-    uint8_t  kind; // message kind
+    uint32_t compressedSize; // compressed size 
+    uint32_t size;  // size without header
+    uint32_t node;  // sender
+    uint16_t qid;   // identifier of destination queue
+    uint16_t kind;  // message kind
     char     data[1];
     
     static Buffer* create(qid_t qid, size_t size, MessageKind type = MSG_DATA) {
@@ -45,14 +46,15 @@ struct Buffer
 
     Buffer(MessageKind type, qid_t id, size_t len = 0) : size((uint32_t)len), qid((uint16_t)id), kind((uint16_t)type) {}
 
-    void* operator new(size_t hdrSize, size_t bufSize) { 
-        return new char[BUF_HDR_SIZE + bufSize];
+    void* operator new(size_t hdrSize, size_t bufSize) {
+        return malloc(BUF_HDR_SIZE + bufSize);
     }
+            
     void operator delete(void* ptr, size_t size) { 
-        delete[] (char*)ptr;
+        free(ptr);
     }
     void operator delete(void* ptr) { 
-        delete[] (char*)ptr;
+        free(ptr);
     }
 };
 

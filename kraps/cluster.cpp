@@ -1,5 +1,6 @@
 #include <unistd.h>
 #include "rdd.h"
+#include "compress.h"
 
 const unsigned shutdownDelay = 5;
 const size_t MB = 1024*1024;
@@ -166,57 +167,83 @@ void Cluster::barrier()
 
 void ReceiveJob::run()
 {
-    Buffer header(MSG_DATA,0);
     Cluster* cluster = Cluster::instance;
+    Buffer* ioBuf = Buffer::create(0, cluster->bufferSize);
     size_t totalReceived = 0;
-    while (true) {
-        Socket* socket = Socket::select(cluster->nNodes, cluster->sockets);
-        if (cluster->shutdown) {
+    try { 
+        while (true) {
+            Socket* socket = Socket::select(cluster->nNodes, cluster->sockets);
+            if (cluster->shutdown) {
+                break;
+            }
+            socket->read(ioBuf, BUF_HDR_SIZE);
+            totalReceived += BUF_HDR_SIZE;
+            
+            Buffer* buf = Buffer::create(ioBuf->qid, cluster->bufferSize);
+            memcpy(buf, ioBuf, BUF_HDR_SIZE);
+            
+            if (ioBuf->compressedSize < ioBuf->size) { 
+                socket->read(ioBuf->data, ioBuf->compressedSize);
+                decompress(buf->data, ioBuf->data, ioBuf->size, ioBuf->compressedSize);
+                totalReceived += ioBuf->compressedSize;
+            } else if (buf->size != 0) { 
+                socket->read(buf->data, buf->size);
+                totalReceived += buf->size;
+            }
+            switch (buf->kind) {
+              case MSG_PONG:
+                assert(buf->qid < cluster->maxQueues);
+                cluster->recvQueues[buf->qid]->signal();            
+                delete buf;
+                continue;
+              case MSG_SHUTDOWN:
+                delete buf;
+                break;
+              default:
+                cluster->recvQueues[buf->qid]->put(buf);
+                continue;
+            }
             break;
         }
-        socket->read(&header, BUF_HDR_SIZE);
-        Buffer* buf = Buffer::create(header.qid, header.size, (MessageKind)header.kind);
-        buf->node = header.node;
-        totalReceived += BUF_HDR_SIZE + buf->size;
-        if (buf->size != 0) { 
-            socket->read(buf->data, buf->size);
-        }
-        switch (buf->kind) {
-        case MSG_PONG:
-            assert(buf->qid < cluster->maxQueues);
-            cluster->recvQueues[buf->qid]->signal();            
-            delete buf;
-            continue;
-        case MSG_SHUTDOWN:
-            delete buf;
-            break;
-        default:
-            cluster->recvQueues[buf->qid]->put(buf);
-            continue;
-        }
-        break;
-    }
+    } catch (std::exception& x) {
+        printf("Receiver catch exception %s\n", x.what());
+    } 
     printf("Totally received %ldMb\n", totalReceived/MB);
+    delete ioBuf;
 }
 
 
 void SendJob::run()
 {
     Cluster* cluster = Cluster::instance;
-
-    while (true) { 
-        Buffer* buf = cluster->sendQueues[node]->get();
-        buf->node = (uint16_t)cluster->nodeId;
-        if (buf->kind == MSG_SHUTDOWN) { 
-            if (node == (cluster->nodeId + 1) % cluster->nNodes) { // shutdown neighbour receiver
-                cluster->sockets[node]->write(buf, BUF_HDR_SIZE);
+    size_t compressBufSize = cluster->bufferSize*2;
+    Buffer* ioBuf = Buffer::create(0, compressBufSize);
+    try {
+        while (true) { 
+            Buffer* buf = cluster->sendQueues[node]->get();
+            buf->node = (uint32_t)cluster->nodeId;
+            if (buf->kind == MSG_SHUTDOWN) { 
+                if (node == (cluster->nodeId + 1) % cluster->nNodes) { // shutdown neighbour receiver
+                    cluster->sockets[node]->write(buf, BUF_HDR_SIZE);
+                }
+                delete ioBuf;
+                return;
             }
-            return;
+            buf->compressedSize = buf->size ? compress(ioBuf->data, buf->data, buf->size) : 0;
+            if (buf->compressedSize < buf->size) {
+                memcpy(ioBuf, buf, BUF_HDR_SIZE);
+                cluster->sockets[node]->write(ioBuf, BUF_HDR_SIZE + ioBuf->compressedSize);
+                sent += BUF_HDR_SIZE + ioBuf->compressedSize;
+            } else {
+                assert(buf->compressedSize <= compressBufSize);
+                cluster->sockets[node]->write(buf, BUF_HDR_SIZE + buf->size);
+                sent += BUF_HDR_SIZE + buf->size;
+            }
+            delete buf;
         }
-        sent += buf->size;
-        cluster->sockets[node]->write(buf, BUF_HDR_SIZE + buf->size);
-        delete buf;
-    }
+    } catch (std::exception& x) {
+        printf("Sender to node %d catch exception %s\n", (int)node, x.what());
+    } 
 }
 
 #define ROTL32(x, r) ((x) << (r)) | ((x) >> (32 - (r)))

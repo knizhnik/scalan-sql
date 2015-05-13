@@ -8,6 +8,6 @@ do
 done
 for ((i=0;i<n_nodes;i++))
 do
-    ssh "${hosts[i % n_hosts]}" kraps/tpch $i $n_nodes $nodes > node$i.log 2>&1 &
+    ssh "${hosts[i % n_hosts]}" "export LD_LIBRARY_PATH=. ; kraps/tpch $i $n_nodes $nodes" > node$i.log 2>&1 &
 done
 wait

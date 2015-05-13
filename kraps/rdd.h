@@ -50,12 +50,12 @@ inline size_t hashCode(char const* key) {
 //
 template<class T>
 size_t pack(T const& src, char* dst) { 
-    *(T*)dst = src;
+    memcpy(dst, &src, sizeof(T));
     return sizeof(T);
 }
 template<class T>
 size_t unpack(T& dst, char const* src) { 
-    dst = *(T const*)src;
+    memcpy(&dst, src, sizeof(T));
     return sizeof(T);
 }
 
@@ -93,18 +93,20 @@ class RDD
 template<class T>
 inline void enqueue(RDD<T>* input, Queue* queue, qid_t qid) 
 {
-    size_t size = Cluster::instance->bufferSize;
-    Buffer* buf = Buffer::create(qid, size);
-    size_t used = 0;
+    size_t bufferSize = Cluster::instance->bufferSize;
+    Buffer* buf = Buffer::create(qid, bufferSize);
+    size_t size, used = 0;
     T record;
     while (input->next(record)) { 
-        if (used + sizeof(T) > size) { 
+        if (used + sizeof(T) > bufferSize) { 
             buf->size = used;
             queue->put(buf);
-            buf = Buffer::create(qid, size*sizeof(T));
+            buf = Buffer::create(qid, bufferSize);
             used = 0;
         }
-        used += pack(record, buf->data + used); 
+        size = pack(record, buf->data + used);
+        assert(size <= sizeof(T));
+        used += size;
     }
     buf->size = used;
     if (used != 0) { 
@@ -180,7 +182,9 @@ public:
                     sent = 0;
                 }                
             }
-            buffers[node]->size += pack(record, buffers[node]->data + buffers[node]->size);
+            size_t size = pack(record, buffers[node]->data + buffers[node]->size);
+            assert(size <= sizeof(T));
+            buffers[node]->size += size;
         }
             
         for (size_t node = 0; node < nNodes; node++) {
