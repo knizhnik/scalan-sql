@@ -23,6 +23,7 @@ struct Pair
     friend class print(Pair const& pair, FILE* out)
     {
         print(pair.key, out);
+        fputs(", ", out);
         print(pair.value, out);
     }
 };
@@ -43,6 +44,7 @@ struct Join : Outer, Inner
     friend class print(Join const& r, FILE* out)
     {
         print((Outer&)r, out);
+        fputs(", ", out);
         print((Inner&)r, out);
     }
 };
@@ -52,19 +54,19 @@ struct Join : Outer, Inner
 //
 inline void print(int val, FILE* out)
 {
-    fprintf(out, "%d\n", val);
+    fprintf(out, "%d", val);
 }
 inline void print(long val, FILE* out)
 {
-    fprintf(out, "%ld\n", val);
+    fprintf(out, "%ld", val);
 }
 inline void print(double val, FILE* out)
 {
-    fprintf(out, "%f\n", val);
+    fprintf(out, "%f", val);
 }
 inline void print(char const* val, FILE* out)
 {
-    fprintf(out, "%s\n", val);
+    fprintf(out, "%s", val);
 }
 
 //
@@ -759,6 +761,7 @@ void RDD<T>::print(FILE* out)
         T record;
         while (gather.next(record)) { 
             print(record, out);
+            fputc('\n', out);
         }
     } else {         
         sendToCoordinator<T>(this, queue);
@@ -801,4 +804,3 @@ template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*inne
 RDD< Join<T,I> >* RDD<T>::join(RDD<I>* with, size_t estimation, bool outerJoin) {
     return new HashJoinRDD<T,I,K,outerKey,innerKey>(this, with, estimation, outerJoin);
 }
-    

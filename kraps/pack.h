@@ -1,3 +1,6 @@
+#ifndef __PACK_H__
+#define __PACK_H__
+
 #include <string.h>
 
 inline size_t strcopy(char* dst, char const* src, size_t len)
@@ -11,3 +14,5 @@ inline size_t strcopy(char* dst, char const* src, size_t len)
 #define UNPACK(x) memcpy(&dst.x, src + size, sizeof(dst.x)), size += sizeof(dst.x)
 #define PACK_STR(x) size += strcopy(dst + size, src.x, sizeof(src.x))
 #define UNPACK_STR(x) size += strcopy(dst.x, src + size, sizeof(dst.x))
+
+#endif
