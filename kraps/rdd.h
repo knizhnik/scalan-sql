@@ -596,6 +596,9 @@ public:
     bool next(Join<O,I>& record)
     {
         if (scatter == NULL) { 
+            if (innerSize == 0) { 
+                return false;
+            }
             // .. and then start fetching of outer relation and perform hash lookup
             scatter = new Thread(new ScatterJob<O,K,outerKey>(outer, queue));
             outer = new GatherRDD<O>(queue);
@@ -642,6 +645,7 @@ private:
     bool    const isOuterJoin;
     Entry** const table;
     size_t  const size;
+    size_t  innerSize;
     O       outerRec;
     I       innerRec;
     K       key;
@@ -665,6 +669,7 @@ private:
             entry = new Entry();
             realSize += 1;
         }
+        innerSize = realSize;
         size_t totalLen = 0;
         size_t nChains = 0;
         size_t maxLen = 0;
