@@ -9,26 +9,69 @@ struct Pair
 {
     K key;
     V value;
+
+    friend size_t pack(Pair const& src, char* dst) {
+        size_t size = pack(src.key, dst);
+        return size + pack(src.value, dst + size);
+    }
+
+    friend size_t unpack(Pair& dst, char const* src) {
+        size_t size = unpack(dst.key, src);
+        return size + unpack(dst.value, src + size);
+    }
+
+    friend class print(Pair const& pair, FILE* out)
+    {
+        print(pair.key, out);
+        print(pair.value, out);
+    }
 };
 
 template<class Outer, class Inner>
-struct Join : Outer, Inner {
+struct Join : Outer, Inner 
+{
     friend size_t pack(Join const& src, char* dst) {
         size_t size = pack((Outer const&)src, dst);
         return size + pack((Inner const&)src, dst + size);
     }
+
     friend size_t unpack(Join& dst, char const* src) {
         size_t size = unpack((Outer&)dst, src);
         return size + unpack((Inner&)dst, src + size);
+    }    
+
+    friend class print(Join const& r, FILE* out)
+    {
+        print((Outer&)r, out);
+        print((Inner&)r, out);
     }
-    
 };
+
+//
+// Print functions for scalars
+//
+inline void print(int val, FILE* out)
+{
+    fprintf(out, "%d\n", val);
+}
+inline void print(long val, FILE* out)
+{
+    fprintf(out, "%ld\n", val);
+}
+inline void print(double val, FILE* out)
+{
+    fprintf(out, "%f\n", val);
+}
+inline void print(char const* val, FILE* out)
+{
+    fprintf(out, "%s\n", val);
+}
 
 //
 // Hash function for scalar fields
 //
 template<class T>
-inline size_t hashCode(T key) { 
+inline size_t hashCode(T const& key) { 
 //    return key;
 //    return (key >> 8) ^ (key << (sizeof(key)*8 - 8));
     return murmur_hash3_32(&key, sizeof key);
@@ -72,6 +115,9 @@ class RDD
 
     template<class K,class V,void (*map)(Pair<K,V>& out, T const& in), void (*reduce)(V& dst, V const& src)>
     RDD< Pair<K,V> >* mapReduce(size_t estimation);
+
+    template<class S,void (*accumulate)(S& state,  T const& in)>
+    RDD<S>* reduce(S const& initState);
 
     template<class P, void (*projection)(P& out, T const& in)>
     RDD<P>* project();
@@ -333,6 +379,34 @@ class FilterRDD : public RDD<T>
 };
     
     
+template<class S,void (*accumulate)(S& state, T const& in)>
+class ReduceRDD : public RDD<S> 
+{    
+  public:
+    ReduceRDD(RDD<T>* input, S const& initState) : state(initState), first(true) {
+        aggregate(input);
+    }
+    bool next(S& record) {
+        if (first) { 
+            record = state;
+            first = false;
+            return true;
+        }
+        return false;
+    }
+
+  private:
+    void aggregate(RDD<T>* input) { 
+        R record;
+        while (input->next(record)) { 
+            accumulate(state, record);
+        }
+    }
+    
+    S state;
+    bool first;
+};
+        
 template<class T,class K,class V,void (*map)(Pair<K,V>& out, T const& in), void (*reduce)(V& dst, V const& src)>
 class MapReduceRDD : public RDD< Pair<K,V> > 
 {    
@@ -679,7 +753,7 @@ void RDD<T>::print(FILE* out)
         GatherRDD<T> gather(queue);
         T record;
         while (gather.next(record)) { 
-            record.print(out);
+            print(record, out);
         }
     } else {         
         sendToCoordinator<T>(this, queue);
@@ -691,6 +765,12 @@ template<class T>
 template<bool (*predicate)(T const&)>
 inline RDD<T>* RDD<T>::filter() { 
     return new FilterRDD<T,predicate>(this);
+}
+
+template<class T>
+template<class S,void (*accumulate)(S& state, T const& in)>
+inline RDD<S>* RDD<T>::reduce(S const& initState) {
+    return new ReduceRDD<S,accumulate>(this, initState);
 }
 
 template<class T>

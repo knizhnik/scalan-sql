@@ -2,7 +2,13 @@
 #include "rdd.h"
 #include "tpch.h"
 
-const size_t SF = 100;
+const size_t SF = 100; // scale factor
+
+#define STRCMP(s,p) strncmp(s, p, sizeof(s))
+#define STREQ(s,p)  (STRCMP(s, p) == 0)
+#define STRCPY(d,s) strncpy(d,x,sizeof(d))
+#define SCALE(x)    ((x + Cluster::instance->nNodes - 1)*SF/(Cluster::instance->nNodes))
+
 
 class CachedData
 {
@@ -14,17 +20,50 @@ class CachedData
     CachedRDD<Nation> nation;
     CachedRDD<Region> region;
 
-    CachedData(size_t nNodes) : 
-    lineitem(FileManager::load<Lineitem>("lineitem"), (6000000*SF+nNodes-1)/nNodes),
-    orders(FileManager::load<Orders>("orders"), (1500000*SF+nNodes-1)/nNodes),
-    supplier(FileManager::load<Supplier>("supplier"), (10000*SF+nNodes-1)/nNodes),
-    customer(FileManager::load<Customer>("customer"), (150000*SF+nNodes-1)/nNodes),
+    CachedData() : 
+    lineitem(FileManager::load<Lineitem>("lineitem"), SCALE(6000000)),
+    orders(FileManager::load<Orders>("orders"),       SCALE(1500000)),
+    supplier(FileManager::load<Supplier>("supplier"), SCALE(10000)),
+    customer(FileManager::load<Customer>("customer"), SCALE(150000)),
     nation(FileManager::load<Nation>("nation"), 25),
     region(FileManager::load<Region>("region"), 5) {}
 
 };
 
 CachedData* cache;
+
+void orderKey(long& key, Orders const& order)
+{
+    key = order.o_orderkey;
+}
+
+void lineitemOrderKey(long& key, Lineitem const& lineitem)
+{
+    key = lineitem.l_orderkey;
+}
+
+void supplierKey(int& key, Supplier const& supplier)
+{
+    key = supplier.s_suppkey;
+}
+
+void customerKey(int& key, Customer const& customer)
+{
+    key = customer.c_custkey;
+}
+
+void nationKey(int& key, Nation const& nation)
+{
+    key = nation.n_nationkey;
+}
+
+void regionKey(int& key, Region const& region)
+{
+    key = region.r_regionkey;
+}
+    
+    
+
 
 namespace Q1
 {
@@ -65,12 +104,11 @@ namespace Q1
         double avg_disc;
         size_t count_order;
 
-        void print(FILE* out) { 
+        friend void print(Projection const& p, FILE* out) { 
             fprintf(out, "%c, %c, %f, %f, %f, %f, %f, %f, %f, %lu\n", 
-                    l_returnflag, l_linestatus, sum_qty, sum_base_price, sum_disc_price, sum_charge, avg_qty, avg_price, avg_disc, count_order);
+                    p.l_returnflag, p.l_linestatus, p.sum_qty, p.sum_base_price, p.sum_disc_price, p.sum_charge, p.avg_qty, p.avg_price, p.avg_disc, p.count_order);
         }
     };
-    
 
     bool predicate(Lineitem const& lineitem) 
     {
@@ -129,6 +167,7 @@ namespace Q1
             project<Projection, projection>()->
             sort<compare>(100);
     }
+
     RDD<Projection>* cachedQuery() 
     { 
         return
@@ -140,43 +179,140 @@ namespace Q1
     }
 }
 
+namespace Q3
+{
+    bool lineitemFilter(Lineitem& const l)
+    {
+        return l.l_shidate > 19950304;
+    }
+    
+    bool orderFilter(Orders& const o)
+    {
+        return o.o_orderdate < 19950304;
+    }
+    
+    bool customerFilter(Customer& const c)
+    {
+        return STREQ(c.c_mktsegment, "HOUSEHOLD");
+    }
+    
+    void orderCustomerKey(int& key, Join<Lineitem,Orders> const& r)
+    {
+        key = r.o_custkey;
+    }
 
+    struct GroupBy
+    { 
+        long l_orderkey;
+        date_t o_orderdate;
+        int o_shippriority;
+    };
+
+    void map(Pair<GroupBy,double>& pair, Join<Join<Join<Lineitem,Orders>,Customer> const& r)
+    {
+        pair.key.l_orderkey = r.l_orderkey;
+        pair.key.o_orderdate = r.o_orderdate;
+        pair.key.o_shippriority = r.o_shippriority;
+        pair.value = r.l_extendedprice * (1 - r.l_discount);
+    }
+
+    void reduce(double& dst, double const& src) 
+    {
+        dst += src;
+    }
+        
+    struct Revenue : GroupBy
+    {
+        double revenue;
+
+        friend void print(Revenue const& r, FILE* out) { 
+            fprintf(out, "%lld,%f,%d,%d\n", r.l_orderkey, r.revenue, r.o_orderdate, r.o_shippriority);
+        }
+    };
+
+    void revenue(Revenue& out, Pair<GroupBy, double> const& in)
+    {
+        (GroupBy&)out = in.key;
+        out.revenue = in.value;
+    }
+
+
+    int byRevenueAndOrderdate(Revenue const* a, Revenue const* b) 
+    {
+        return a->revenue > b->revenue ? -1 : a->revenue == b->revenue ? a->o_orderdate < b->o_orderdate ? -1 : a->o_orderdate == b->o_orderdate : 0 : 1;
+    }
+
+    RDD<Revenue>* cachedQuery() 
+    { 
+        return
+            cache->lineitem.get()->
+            filter<lineitemFilter>()->
+            join<Orders, long, lineitemOrderKey, orderKey>(cache->orders.get()->filter<orderFilter>(), SCALE(1500000))->
+            join<Customer, int, orderCustomerKey, customerKey>(cache->customer.get()->filter<customerFilter>(), SCALE(150000))->
+            mapReduce<GroupBy, double, map, reduce>(25)->
+            project<Revenue, revenue>()->
+            sort<byRevenueAndOrderdate>(25);
+    }    
+}
+namespace Q4
+{
+    bool lineitemFilter(Lineitem& const l)
+    {
+        return l.l_commitdate < l.l_receiptdate;
+    }
+    
+    bool orderFilter(Orders& const o)
+    {
+        return o.o_orderdate >= 19930801 && o_orderdate < 19931101;
+    }
+    
+    void map(Pair<int,int>& pair, Join< Join<Lineitem,Orders> > const& r)
+    {
+        pair.key = r.o_orderpriority;
+        pair.value = 1;
+    }
+
+    void reduce(int& dst, int) 
+    {
+        dst += 1;
+    }
+
+    struct Priority
+    {
+        int o_orderpriority;
+        int count;
+
+        friend void print(Priority const& p, FILE* out) { 
+            fprintf(out, "%d,%d\n", p.o_orderpriority, p.count);
+        }
+    };
+        
+    void priority(Priority& out, Pair<int,int> const& in)
+    {
+        out.o_orderpriority = pair.key;
+        out.count = pair.value;
+    }
+
+    int byPriority(Priority const* a, Priority const* b) 
+        return a->o_orderpriority - b->o_orderpriority;
+    }
+
+    RDD<Priority>* cachedQuery() 
+    { 
+        return
+            cache->lineitem.get()->
+            filter<lineitemFilter>()->
+            cache->orders.get()->filter<orderFilter>(), SCALE(1500000))->
+            mapReduce<int, int, map, reduce>(25)->
+            project<Priority, priority>()->
+            sort<byPriority>(25);
+    }    
+}   
 namespace Q5
 {
     bool orderRange(Orders const& orders) 
     {
         return orders.o_orderdate >= 19960101 && orders.o_orderdate < 19970101;
-    }
-
-    void orderKey(long& key, Orders const& order)
-    {
-        key = order.o_orderkey;
-    }
-    
-    void lineitemOrderKey(long& key, Lineitem const& lineitem)
-    {
-        key = lineitem.l_orderkey;
-    }
-    
-    void lineitemSupplierKey(int& key, Join<Lineitem,Orders> const& r)
-    {
-        key = r.l_suppkey;
-    }
-
-    
-    void supplierKey(int& key, Supplier const& supplier)
-    {
-        key = supplier.s_suppkey;
-    }
-
-    void orderCustomerKey(int& key, Join<Join<Lineitem,Orders>,Supplier> const& r)
-    {
-        key = r.o_custkey;
-    }
-
-    void customerKey(int& key, Customer const& customer)
-    {
-        key = customer.c_custkey;
     }
 
     bool sameNation(Join<Join<Join<Lineitem,Orders>,Supplier>,Customer> const& r)
@@ -189,24 +325,24 @@ namespace Q5
         key = r.c_nationkey;
     }
     
-    void nationKey(int& key, Nation const& nation)
+    void lineitemSupplierKey(int& key, Join<Lineitem,Orders> const& r)
     {
-        key = nation.n_nationkey;
+        key = r.l_suppkey;
     }
     
+    void orderCustomerKey(int& key, Join<Join<Lineitem,Orders>,Supplier> const& r)
+    {
+        key = r.o_custkey;
+    }
+
     void nationRegionKey(int& key, Join<Join<Join<Join<Lineitem,Orders>,Supplier>,Customer>, Nation> const& r)
     {
         key = r.n_regionkey;
     }
     
-    void regionKey(int& key, Region const& region)
-    {
-        key = region.r_regionkey;
-    }
-    
     bool asiaRegion(Join<Join<Join<Join<Join<Lineitem,Orders>,Supplier>,Customer>,Nation>,Region> const& r) 
     { 
-        return strcmp(r.r_name, "ASIA") == 0;
+        return STREQ(r.r_name, "ASIA");
 
     }
 
@@ -215,7 +351,7 @@ namespace Q5
         name_t name;
         
         bool operator==(Name const& other) { 
-            return strcmp(name, other.name) == 0;
+            return STREQ(name, other.name);
         }
     };
  
@@ -226,7 +362,7 @@ namespace Q5
 
     void map(Pair<Name,double>& pair, Join<Join<Join<Join<Join<Lineitem,Orders>,Supplier>,Customer>,Nation>,Region> const& r)
     {
-        strcpy(pair.key.name, r.n_name);
+        STRCPY(pair.key.name, r.n_name);
         pair.value = r.l_extendedprice * (1 - r.l_discount);
     }
 
@@ -247,7 +383,7 @@ namespace Q5
 
     void revenue(Revenue& out, Pair<Name,double> const& in)
     {
-        strcpy(out.n_name, in.key.name);
+        STRCPY(out.n_name, in.key.name);
         out.revenue = in.value;
     }
 
@@ -258,12 +394,11 @@ namespace Q5
 
     RDD<Revenue>* query() 
     { 
-        size_t nNodes = Cluster::instance->nNodes;
         return
             FileManager::load<Lineitem>("lineitem")->            
-            join<Orders, long, lineitemOrderKey, orderKey>(FileManager::load<Orders>("orders")->filter<orderRange>(), 1500000*SF/nNodes)->
-            join<Supplier, int, lineitemSupplierKey, supplierKey>(FileManager::load<Supplier>("supplier"), 100003/*10000*SF/nNodes*/)->
-            join<Customer, int, orderCustomerKey, customerKey>(FileManager::load<Customer>("customer"), 1000003/*150000*SF/nNodes*/)->
+            join<Orders, long, lineitemOrderKey, orderKey>(FileManager::load<Orders>("orders")->filter<orderRange>(), SCALE(1500000))->
+            join<Supplier, int, lineitemSupplierKey, supplierKey>(FileManager::load<Supplier>("supplier"), SCALE(10000))->
+            join<Customer, int, orderCustomerKey, customerKey>(FileManager::load<Customer>("customer"), SCALE(150000))->
             filter<sameNation>()->
             join<Nation, int, customerNationKey, nationKey>(FileManager::load<Nation>("nation"), 25)->
             join<Region, int, nationRegionKey, regionKey>(FileManager::load<Region>("region"), 5)->
@@ -274,12 +409,11 @@ namespace Q5
     }    
     RDD<Revenue>* cachedQuery() 
     { 
-        size_t nNodes = Cluster::instance->nNodes;
         return
             cache->lineitem.get()->            
-            join<Orders, long, lineitemOrderKey, orderKey>(cache->orders.get()->filter<orderRange>(), 1500000*SF/nNodes)->
-            join<Supplier, int, lineitemSupplierKey, supplierKey>(cache->supplier.get(), 100003/*10000*SF/nNodes*/)->
-            join<Customer, int, orderCustomerKey, customerKey>(cache->customer.get(), 1000003/*150000*SF/nNodes*/)->
+            join<Orders, long, lineitemOrderKey, orderKey>(cache->orders.get()->filter<orderRange>(), SCALE(1500000))->
+            join<Supplier, int, lineitemSupplierKey, supplierKey>(cache->supplier.get(), SCALE(10000))->
+            join<Customer, int, orderCustomerKey, customerKey>(cache->customer.get(), SCALE(150000))->
             filter<sameNation>()->
             join<Nation, int, customerNationKey, nationKey>(cache->nation.get(), 25)->
             join<Region, int, nationRegionKey, regionKey>(cache->region.get(), 5)->
@@ -289,6 +423,115 @@ namespace Q5
             sort<byRevenue>(25);
     }    
 }
+namespace Q6
+{
+    bool lineitemFilter(Lineitem& const l)
+    {
+        return l_shipdate >= 19960101 && l_shipdate <= 19970101
+            && l_discount >= 0.08 && l_discount <= 0.1
+            && l_quantity < 24;
+    }
+    void revenue(double& result, Lineitem const& l)
+    {
+        result += l.l_extendedprice*l.l_discount;
+    }
+    
+    RDD<double* cachedQuery() 
+    { 
+        return
+            cache->lineitem.get()->
+            filter<lineitemFilter>()->
+            reduce<double,revenue>(0);
+    }
+}
+namespace Q7
+{
+    struct Nation1 { Nation n1; };
+    struct Nation2 { Nation n2; };
+
+    void supplierNationKey(int& key, Join<Join<Join<Lineitem,Orders>,Supplier>,Customer> const& r)
+    {
+        key = r.s_nationkey;
+    }
+    
+    void customerNationKey(int& key, Join<Join<Join<Join<Lineitem,Orders>,Supplier>,Customer>,Nation1> const& r)
+    {
+        key = r.c_nationkey;
+    }
+
+    void nation1Key(int& key, Nation1 const& nation)
+    {
+        key = nation.n1.n_nationkey;
+    }
+
+    void nation2Key(int& key, Nation2 const& nation)
+    {
+        key = nation.n2.n_nationkey;
+    }
+
+    bool filterNation(Join<Join<Join<Join<Join<Lineitem,Orders>,Supplier>,Customer>,SNation>,CNation> const& r) 
+    {
+        return (STREQ(r.n1.n_name, "UNITED STATES") && STREQ(r.n2.n_name, "INDONESIA"))
+            || (STREQ(r.n2.n_name, "UNITED STATES") && STREQ(r.n1.n_name, "INDONESIA"));
+    }
+
+    bool filterLineitem(Lineitem const& l)
+    {
+        return l.l_shipdate >= 19950101 && l.l_shipdate <= 19961231;
+    }
+
+    struct Shipping
+    {
+        name_t supp_nation;
+        name_t cust_nation;
+        int    l_year;
+        
+        friend voidf print(Shipping const& s, FILE* out) 
+        {
+            fprintf(out, "\n%s\n%s\n%d\n", supp_nation, cust_nation, l_year);
+        }
+    };
+
+    void map(Pair<Shipping,double>& pair, Join<Join<Join<Join<Join<Lineitem,Orders>,Supplier>,Customer>,Nation1>,Nation2> const& r)
+    {
+        STRCPY(pair.key.supp_nation, r.n1.n_name);
+        STRCPY(pair.key.cust_nation, r.n2.n_name);
+        pair.key.l_year = r.l_shipdate/10000;
+        pair.value = r.l_extendedprice * (1-r.l_discount);
+    }
+
+    void reduce(double& dst, double src)
+    {
+        dst += src;
+    }
+    
+    int byShipping(Pair<Shipping,double> const* a, Pair<Shipping,double> const* b)
+    {
+        int diff;
+        diff = STRCMP(a->key.supp_nation, b->key.supp_nation);
+        if (diff != 0) return diff;
+        diff = STRCMP(a->key.cust_nation, b->key.cust_nation);
+        if (diff != 0) return diff;
+        return a->key.l_year - b->key.l_year;
+    }
+
+    RDD< Pair<Shipping,double> > * cachedQuery() 
+    { 
+        return
+            cache->lineitem.get()->filter<filterLineitem>()->           
+            join<Orders, long, lineitemOrderKey, orderKey>(cache->orders.get(), SCALE(1500000))->
+            join<Supplier, int, lineitemSupplierKey, supplierKey>(cache->supplier.get(), SCALE(10000))->
+            join<Customer, int, orderCustomerKey, customerKey>(cache->customer.get(), SCALE(150000))-> 
+            join<Nation1, int, supplierNationKey, nation1Key>((RDD<Nation1>*)cache->nation.get(), 25)->
+            join<Nation2, int, customerNationKey, nation2Key>((RDD<Nation2>*)cache->nation.get(), 25)->
+            filter<filterNation>()->
+            mapReduce<Shipping,double,map,reduce>(25*25*10)->
+            sort<byShipping>(25*25*10);
+    }    
+}
+
+
+
 
 template<class T>
 void execute(char const* name, RDD<T>* (*query)()) 
@@ -319,19 +562,22 @@ int main(int argc, char* argv[])
     printf("Node %d started...\n", nodeId);
     Cluster cluster(nodeId, nNodes, &argv[3]);
 
-    //execute("Q1", Q1::query);
+    // execute("Q1", Q1::query);    
+    // execute("Q5", Q5::query);
     
-    execute("Q5", Q5::query);
-    /*
-      time_t start = time(NULL);
-      cache = new CachedData(nNodes);
-      printf("Elapsed time for loading all data in memory: %d seconds\n", (int)(time(NULL) - start));
-      cluster.barrier(); 
-      
-      execute("Q1", Q1::cachedQuery);
-      execute("Q5", Q5::cachedQuery);
-      delete cache;
-    */
+    time_t start = time(NULL);
+    cache = new CachedData(nNodes);
+    printf("Elapsed time for loading all data in memory: %d seconds\n", (int)(time(NULL) - start));
+    cluster.barrier(); 
+    
+    execute("Q1", Q1::cachedQuery);
+    execute("Q3", Q3::cachedQuery);
+    execute("Q4", Q4::cachedQuery);
+    execute("Q5", Q5::cachedQuery);
+    execute("Q6", Q6::cachedQuery);
+    execute("Q7", Q7::cachedQuery);
+    delete cache;
+    
     printf("Node %d finished.\n", nodeId);
     return 0;
 }
