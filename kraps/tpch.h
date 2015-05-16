@@ -2,6 +2,8 @@
 
 typedef unsigned date_t;
 typedef char name_t[25];
+typedef char priority_t[15];
+typedef char shipmode_t[10];
 struct Lineitem
 {
     long   l_orderkey;
@@ -18,7 +20,7 @@ struct Lineitem
     date_t l_commitdate;
     date_t l_receiptdate;
     char   l_shipinstruct[25];
-    char   l_shipmode[10];
+    shipmode_t l_shipmode;
     char   l_comment[44];
 
     friend size_t pack(Lineitem const& src, char* dst) {
@@ -71,7 +73,7 @@ struct Orders
     char o_orderstatus;
     double o_totalprice;
     date_t o_orderdate;
-    char o_orderpriority[15];
+    priority_t o_orderpriority;
     char o_clerk[15];
     int o_shippriority;
     char o_comment[79];
@@ -176,7 +178,7 @@ struct Supplier
     }
 };
 
-struct PartSupp
+struct Partsupp
 {
     int ps_partkey;
     int ps_suppkey;
@@ -184,7 +186,7 @@ struct PartSupp
     double ps_supplycost;
     char ps_comment[199];
 
-    friend size_t pack(PartSupp const& src, char* dst) {
+    friend size_t pack(Partsupp const& src, char* dst) {
         size_t size = 0;       
         PACK(ps_partkey);
         PACK(ps_suppkey);
@@ -193,7 +195,7 @@ struct PartSupp
         PACK_STR(ps_comment);
         return size;
     }
-    friend size_t unpack(PartSupp& dst, char const* src) {
+    friend size_t unpack(Partsupp& dst, char const* src) {
         size_t size = 0;       
         UNPACK(ps_partkey);
         UNPACK(ps_suppkey);

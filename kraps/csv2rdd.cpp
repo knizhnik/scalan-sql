@@ -165,7 +165,7 @@ int main(int argc, char* argv[])
     in = fopen("partsupp.tbl", "r");
     if (in != NULL) { 
         openShards(out, nShards, "partsupp");
-        PartSupp partsupp;
+        Partsupp partsupp;
         
         for (i = 0; fgets(buf, sizeof buf, in); i++) { 
             int nColumns = split(columns, buf, '|');

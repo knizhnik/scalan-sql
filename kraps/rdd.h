@@ -20,7 +20,7 @@ struct Pair
         return size + unpack(dst.value, src + size);
     }
 
-    friend class print(Pair const& pair, FILE* out)
+    friend void print(Pair const& pair, FILE* out)
     {
         print(pair.key, out);
         fputs(", ", out);
@@ -41,7 +41,7 @@ struct Join : Outer, Inner
         return size + unpack((Inner&)dst, src + size);
     }    
 
-    friend class print(Join const& r, FILE* out)
+    friend void print(Join const& r, FILE* out)
     {
         print((Outer&)r, out);
         fputs(", ", out);
@@ -130,7 +130,7 @@ class RDD
     template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner)>
     RDD< Join<T,I> >* join(RDD<I>* with, size_t estimation, bool outerJoin = false);
 
-    void print(FILE* out);
+    void output(FILE* out);
 
     virtual~RDD() {}
 };
@@ -381,7 +381,7 @@ class FilterRDD : public RDD<T>
 };
     
     
-template<class S,void (*accumulate)(S& state, T const& in)>
+template<class T, class S,void (*accumulate)(S& state, T const& in)>
 class ReduceRDD : public RDD<S> 
 {    
   public:
@@ -399,7 +399,7 @@ class ReduceRDD : public RDD<S>
 
   private:
     void aggregate(RDD<T>* input) { 
-        R record;
+        T record;
         while (input->next(record)) { 
             accumulate(state, record);
         }
@@ -751,7 +751,7 @@ class CachedRDD : public RDD<T>
 };
 
 template<class T>
-void RDD<T>::print(FILE* out) 
+void RDD<T>::output(FILE* out) 
 {
     Cluster* cluster = Cluster::instance;
     Queue* queue = cluster->getQueue();
@@ -778,13 +778,13 @@ inline RDD<T>* RDD<T>::filter() {
 template<class T>
 template<class S,void (*accumulate)(S& state, T const& in)>
 inline RDD<S>* RDD<T>::reduce(S const& initState) {
-    return new ReduceRDD<S,accumulate>(this, initState);
+    return new ReduceRDD<T,S,accumulate>(this, initState);
 }
 
 template<class T>
-template<class K,class V,void (*map)(Pair<K,V>& out, T const& in), void (*reduce)(V& dst, V const& src)>
+template<class K,class V,void (*map_f)(Pair<K,V>& out, T const& in), void (*reduce_f)(V& dst, V const& src)>
 inline RDD< Pair<K,V> >* RDD<T>::mapReduce(size_t estimation) {
-    return new MapReduceRDD<T,K,V,map,reduce>(this, estimation);
+    return new MapReduceRDD<T,K,V,map_f,reduce_f>(this, estimation);
 }
 
 template<class T>

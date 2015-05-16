@@ -17,7 +17,8 @@ sockio.o: sockio.cpp sockio.h
 	$(CPP) -c sockio.cpp
 
 tpch: tpch.o cluster.o sockio.o
-	$(CPP) -o tpch tpch.o cluster.o sockio.o -L $(SIMDCOMP_HOME) -lsimdcomp -lz
+	$(CPP) -o tpch tpch.o cluster.o sockio.o -lz
+#	$(CPP) -o tpch tpch.o cluster.o sockio.o -L $(SIMDCOMP_HOME) -lsimdcomp 
 
 csv2rdd: csv2rdd.cpp tpch.h
 	$(CPP) -o csv2rdd csv2rdd.cpp
