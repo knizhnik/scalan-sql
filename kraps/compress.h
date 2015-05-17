@@ -9,7 +9,7 @@
 size_t compress(char* dst, char const* src, size_t length) 
 {
     uLongf dstLen = length;    
-    int rc = compress2((Bytef*)dst, &dstLen, (Bytef*)src, length, Z_DEFAULT_COMPRESSION);
+    int rc = compress2((Bytef*)dst, &dstLen, (Bytef*)src, length, 1);
     return rc == Z_OK ? dstLen : length;
 }
 

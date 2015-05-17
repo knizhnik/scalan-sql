@@ -233,7 +233,7 @@ namespace Q1
         return
             FileManager::load<Lineitem>("lineitem")->
             filter<predicate>()->
-            mapReduce<GroupBy,Aggregate,map,reduce>(10000)->
+            mapReduce<GroupBy,Aggregate,map,reduce>(100)->
             project<Projection, projection>()->
             sort<compare>(100);
     }
@@ -319,9 +319,9 @@ namespace Q3
             filter<lineitemFilter>()->
             join<Orders, long, lineitemOrderKey, orderKey>(cache->orders.get()->filter<orderFilter>(), SCALE(1500000))->
             join<Customer, int, orderCustomerKey, customerKey>(cache->customer.get()->filter<customerFilter>(), SCALE(150000))->
-            mapReduce<GroupBy, double, map, sum>(25)->
+            mapReduce<GroupBy, double, map, sum>(1000)->
             project<Revenue, revenue>()->
-            sort<byRevenueAndOrderDate>(25);
+            sort<byRevenueAndOrderDate>(1000);
     }    
 }
 namespace Q4
@@ -753,7 +753,7 @@ namespace Q9
     int byNationYear(Pair<Profit,double> const* a, Pair<Profit,double> const* b)
     {
         int diff = STRCMP(a->key.nation, b->key.nation);
-        return (diff != 0) ? diff : a->key.o_year - b->key.o_year;
+        return (diff != 0) ? diff : b->key.o_year - a->key.o_year;
     }
         
     RDD< Pair<Profit,double> >* cachedQuery() 
