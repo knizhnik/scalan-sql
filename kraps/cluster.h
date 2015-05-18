@@ -1,3 +1,6 @@
+#ifndef __CLUSTER_H__
+#define __CLUSTER_H__
+
 #include <inttypes.h>
 #include "sync.h"
 #include "sockio.h"
@@ -145,3 +148,5 @@ class Cluster {
 
 
 extern uint32_t murmur_hash3_32(const void* key, const int len);
+
+#endif

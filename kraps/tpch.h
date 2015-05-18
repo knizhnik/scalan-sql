@@ -1,9 +1,19 @@
+#ifndef __TPCH_H__
+#define __TPCH_H__
+
 #include "pack.h"
+
+//
+// TPC-H classes (tables) defintion
+//
+
 
 typedef unsigned date_t;
 typedef char name_t[25];
 typedef char priority_t[15];
 typedef char shipmode_t[10];
+
+
 struct Lineitem
 {
     long   l_orderkey;
@@ -294,3 +304,4 @@ struct Part
     }
 };
 
+#endif

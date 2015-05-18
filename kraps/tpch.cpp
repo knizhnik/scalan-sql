@@ -61,7 +61,7 @@ void lineitemPartKey(int& key, Lineitem const&  lineitem)
     key = lineitem.l_partkey;
 }
 
-void supplierKey(int& key, Supplier const& supplier)
+ void supplierKey(int& key, Supplier const& supplier)
 {
     key = supplier.s_suppkey;
 }
@@ -108,30 +108,6 @@ void partsuppKey(PartSuppKey& key, Partsupp const& ps)
     key.partkey = ps.ps_partkey;
     key.suppkey = ps.ps_suppkey;
 }
-
-//
-// Fixed size string key
-//
-template<class T>
-struct Key
-{
-    T val;
-    
-    bool operator==(Key const& other) const
-    {
-        return STREQ(val, other.val);
-    }
-    
-    friend size_t hashCode(Key const& key)
-    {
-        return ::hashCode(key.val);
-    }
-    
-    friend void print(Key const& key, FILE* out) 
-    {
-        fprintf(out, "%.*s", (int)sizeof(key.val), key.val);
-    }
-};
 
     
 namespace Q1

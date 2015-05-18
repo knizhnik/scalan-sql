@@ -25,6 +25,15 @@ const char* SocketError::what() const throw()
     return error;
 }
 
+bool Socket::isLocalHost(char const* address) 
+{
+    struct utsname localHost;
+    uname(&localHost);
+    size_t localHostNodeNameLen = strlen(localHost.nodename);
+    return strncmp(address, "localhost:", 10) == 0 
+        || (strncmp(address, localHost.nodename, localHostNodeNameLen) == 0 && address[localHostNodeNameLen] == ':');
+}
+    
 Socket* Socket::createGlobal(int port, size_t listenQueueSize)
 {
     struct sockaddr_in sock; 
@@ -92,16 +101,15 @@ static bool getAddrsByName(const char *hostname, unsigned* addrs, size_t* n_addr
 
 Socket* Socket::connect(char const* address, size_t maxAttempts)
 {
-    char const* sep = strchr(address, ':');
+    char* sep = (char*)strchr(address, ':');
     if (sep == NULL) { 
         throw SocketError("Port is not specified");
     }
-    *(char*)sep = '\0';
     int port = atoi(sep+1);
     int rc = 0;
     int sd;
     while (1) { 
-        if (strcmp(address, "localhost") == 0) { 
+        if (isLocalHost(address)) { 
             struct sockaddr sock; 
             sock.sa_family = AF_UNIX;
             sd = socket(AF_UNIX, SOCK_STREAM, 0); 
@@ -118,10 +126,11 @@ Socket* Socket::connect(char const* address, size_t maxAttempts)
             size_t n_addrs = sizeof(addrs) / sizeof(addrs[0]);
             sock_inet.sin_family = AF_INET;  
             sock_inet.sin_port = htons(port);
-            
+            *sep = '\0';
             if (!getAddrsByName(address, addrs, &n_addrs)) {
                 throw SocketError("Failed to resolve addresses");
             }
+            *sep = ':'; // restore ':' to make isLocalHost work correctly 
 
             sd = socket(AF_INET, SOCK_STREAM, 0);
             if (sd < 0) { 

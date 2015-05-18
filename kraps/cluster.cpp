@@ -102,9 +102,10 @@ Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nQueues, siz
     int port = atoi(sep+1);
     Socket* localGateway = Socket::createLocal(port, nHosts);
     Socket* globalGateway = Socket::createGlobal(port, nHosts);
+
     for (size_t i = selfId+1; i < nHosts; i++) {
         size_t node;
-        Socket* s = (strncmp(hosts[i], "localhost:", 10) == 0) 
+        Socket* s = Socket::isLocalHost(hosts[i])
             ? localGateway->accept()
             : globalGateway->accept();
         s->read(&node, sizeof node);

@@ -1,9 +1,37 @@
+#ifndef __RDD_H__
+#define __RDD_H__
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <assert.h>
 #include "cluster.h"
+#include "pack.h"
 
+//
+// Hash function for scalar fields
+//
+template<class T>
+inline size_t hashCode(T const& key) { 
+//    return key;
+//    return (key >> 8) ^ (key << (sizeof(key)*8 - 8));
+    return murmur_hash3_32(&key, sizeof key);
+}
+
+//
+// Hash function for string fields
+//
+inline size_t hashCode(char const* key) { 
+    size_t h = 0;
+    while (*key != '\0') { 
+        h = h*31 + (*key++ & 0xFF);
+    }
+    return h;
+}
+
+//
+// Pair is used for map-reduce
+//
 template<class K, class V>
 struct Pair
 {
@@ -28,6 +56,9 @@ struct Pair
     }
 };
 
+//
+// Result of join
+//
 template<class Outer, class Inner>
 struct Join : Outer, Inner 
 {
@@ -46,6 +77,40 @@ struct Join : Outer, Inner
         print((Outer&)r, out);
         fputs(", ", out);
         print((Inner&)r, out);
+    }
+};
+
+//
+// Fixed size string key (used to wrap C char arrays)
+//
+template<class T>
+struct Key
+{
+    T val;
+    
+    bool operator==(Key const& other) const
+    {
+        return strncmp(val, other.val, sizeof(val)) == 0;
+    }
+    
+    friend size_t hashCode(Key const& key)
+    {
+        return ::hashCode(key.val);
+    }
+    
+    friend void print(Key const& key, FILE* out) 
+    {
+        fprintf(out, "%.*s", (int)sizeof(key.val), key.val);
+    }
+
+    friend size_t unpack(Key& dst, char const* src)
+    {
+        return strcopy(dst.val, src, sizeof(dst.val));
+    }
+
+    friend size_t pack(Key const& src, char* dst)
+    {
+        return strcopy(dst, src.val, sizeof(src.val));
     }
 };
 
@@ -70,42 +135,8 @@ inline void print(char const* val, FILE* out)
 }
 
 //
-// Hash function for scalar fields
+// Abstract RDD (Resilient Distributed Dataset)
 //
-template<class T>
-inline size_t hashCode(T const& key) { 
-//    return key;
-//    return (key >> 8) ^ (key << (sizeof(key)*8 - 8));
-    return murmur_hash3_32(&key, sizeof key);
-}
-
-//
-// Hash function for string fields
-//
-inline size_t hashCode(char const* key) { 
-    size_t h = 0;
-    while (*key != '\0') { 
-        h = h*31 + (*key++ & 0xFF);
-    }
-    return h;
-}
-
-//
-// Default pack/unpack functions
-//
-template<class T>
-size_t pack(T const& src, char* dst) { 
-    memcpy(dst, &src, sizeof(T));
-    return sizeof(T);
-}
-template<class T>
-size_t unpack(T& dst, char const* src) { 
-    memcpy(&dst, src, sizeof(T));
-    return sizeof(T);
-}
-
-
-
 template<class T>
 class RDD
 {
@@ -166,12 +197,18 @@ inline void enqueue(RDD<T>* input, Queue* queue, qid_t qid)
     }
 }
 
+//
+// Send data to coordinator
+//
 template<class T>
 inline void sendToCoordinator(RDD<T>* input, Queue* queue) 
 {
     enqueue(input, Cluster::instance->sendQueues[COORDINATOR], queue->qid);
 }
 
+//
+// Fetch data from RDD and place it in queue
+//
 template<class T>
 class FetchJob : public Job
 {
@@ -187,6 +224,9 @@ private:
     Queue* const queue;
 };
 
+//
+// Scatter RDD data between nodes using provided distribution key and hash function
+//
 template<class T, class K, void (*dist_key)(K& key, T const& record)>
 class ScatterJob : public Job
 {
@@ -253,6 +293,10 @@ private:
     Queue* const queue;
 };
 
+
+//
+// RDD rerepseting result of gathering data from multiple nodes (opposite to Scatter)
+//
 template<class T>
 class GatherRDD : public RDD<T>
 {
@@ -293,7 +337,9 @@ private:
     size_t nWorkers;
 };
 
-
+//
+// Read data from OS plain file
+//
 template<class T>
 class FileRDD : public RDD<T>
 {
@@ -312,6 +358,10 @@ class FileRDD : public RDD<T>
     FILE* const f;    
 };
 
+//
+// Read data from set of OS plain files located in specified directory.
+// Each node is given its own set of fileds.
+//
 template<class T>
 class DirRDD : public RDD<T>
 {
@@ -345,6 +395,10 @@ class DirRDD : public RDD<T>
     FILE* f;    
 };
 
+//
+// File manaber to created proper file RDD based on file name
+// TODO: support Parquet
+//
 class FileManager
 {
 public:
@@ -358,7 +412,9 @@ public:
     }
 };
 
-
+//
+// Filter resutls using provided condition
+//
 template<class T, bool (*predicate)(T const&)>
 class FilterRDD : public RDD<T>
 {
@@ -380,7 +436,9 @@ class FilterRDD : public RDD<T>
     RDD<T>* const in;
 };
     
-    
+//
+// Perform aggregation of input data (a-la Scala fold)
+//
 template<class T, class S,void (*accumulate)(S& state, T const& in)>
 class ReduceRDD : public RDD<S> 
 {    
@@ -409,6 +467,9 @@ class ReduceRDD : public RDD<S>
     bool first;
 };
         
+//
+// Classical Map-Reduce
+//
 template<class T,class K,class V,void (*map)(Pair<K,V>& out, T const& in), void (*reduce)(V& dst, V const& src)>
 class MapReduceRDD : public RDD< Pair<K,V> > 
 {    
@@ -510,6 +571,9 @@ class MapReduceRDD : public RDD< Pair<K,V> >
     }
 };
 
+//
+// Project (map) RDD records
+//
 template<class T, class P, void project(P& out, T const& in)>
 class ProjectRDD : public RDD<P>
 {
@@ -531,6 +595,9 @@ class ProjectRDD : public RDD<P>
     RDD<T>* const in;
 };
 
+//
+// Sort using given comparison function
+//
 template<class T, int compare(T const* a, T const* b)>
 class SortRDD : public RDD<T>
 {
@@ -582,6 +649,9 @@ class SortRDD : public RDD<T>
     }
 };
 
+//
+// Join two RDDs using hash table
+//
 template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner)>
 class HashJoinRDD : public RDD< Join<O,I> >
 {
@@ -700,7 +770,9 @@ private:
     }
 };
     
-
+//
+// Cache RDD in memory
+//
 template<class T>
 class CachedRDD : public RDD<T>
 {
@@ -804,3 +876,5 @@ template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*inne
 RDD< Join<T,I> >* RDD<T>::join(RDD<I>* with, size_t estimation, bool outerJoin) {
     return new HashJoinRDD<T,I,K,outerKey,innerKey>(this, with, estimation, outerJoin);
 }
+
+#endif

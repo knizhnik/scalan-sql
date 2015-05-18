@@ -1,3 +1,6 @@
+#ifndef __SOCKIO_H__
+#define __SOCKIO_H__
+
 #include <exception>
 
 class SocketError : public std::exception
@@ -22,10 +25,12 @@ public:
     static Socket* select(size_t nSockets, Socket** sockets);
     ~Socket();
 
+    static bool isLocalHost(char const* address);
     static char const* unixSocketDir;
 private:
-    Socket(
-int fd) : sd(fd) {}
+    Socket(int fd) : sd(fd) {}
     int const sd;
 };
 
+
+#endif

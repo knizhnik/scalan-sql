@@ -1,3 +1,6 @@
+#ifndef __PARQUET_H__
+#define __PARQUET_H__
+
 #include <parquet/parquet.h>
 #include <rdd.h>
 
@@ -7,6 +10,10 @@ using namespace parquet_cpp;
 
 using namespace std;
 
+// 
+// Parquet file reader (based on https://github.com/Parquet/parquet-cpp)
+// TODO: parquet-cpp is not supporting compression now
+//
 class ParquetReader
 {
 public:
@@ -64,3 +71,5 @@ class ParquetRDD : public RDD<T>
     size_t step;
     bool nextPart;
 };
+
+#endif
