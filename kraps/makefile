@@ -2,7 +2,7 @@ all: tpch csv2rdd
 
 SIMDCOMP_HOME=~/simdcomp
 
-CPP=g++ -pthread -O3 -g -Wall -I $(SIMDCOMP_HOME)/include -DUSE_ZLIB
+CPP=g++ -pthread -O3 -g -Wall
 #CPP=g++ -pthread -O3 -g -Wall -I $(SIMDCOMP_HOME)/include
 #CPP=g++ -pthread -O0 -g -Wall -I $(SIMDCOMP_HOME)/include -DUSE_ZLIB
 
@@ -16,9 +16,13 @@ cluster.o: cluster.cpp cluster.h sync.h sockio.h
 sockio.o: sockio.cpp sockio.h
 	$(CPP) -c sockio.cpp
 
-tpch: tpch.o cluster.o sockio.o
-	$(CPP) -o tpch tpch.o cluster.o sockio.o -lz
-#	$(CPP) -o tpch tpch.o cluster.o sockio.o -L $(SIMDCOMP_HOME) -lsimdcomp 
+compress.o: compress.cpp compress.h
+	$(CPP) -c compress.cpp
+
+tpch: tpch.o cluster.o sockio.o compress.o
+	$(CPP) -o tpch tpch.o cluster.o sockio.o compress.o
+#	$(CPP) -o tpch tpch.o cluster.o sockio.o compress.o -lz
+#	$(CPP) -o tpch tpch.o cluster.o sockio.o compress.o -L $(SIMDCOMP_HOME) -lsimdcomp 
 
 csv2rdd: csv2rdd.cpp tpch.h
 	$(CPP) -o csv2rdd csv2rdd.cpp
