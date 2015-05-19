@@ -37,7 +37,6 @@ struct Pair
 {
     K key;
     V value;
-
     friend size_t pack(Pair const& src, char* dst) {
         size_t size = pack(src.key, dst);
         return size + pack(src.value, dst + size);
@@ -47,7 +46,6 @@ struct Pair
         size_t size = unpack(dst.key, src);
         return size + unpack(dst.value, src + size);
     }
-
     friend void print(Pair const& pair, FILE* out)
     {
         print(pair.key, out);
@@ -71,7 +69,6 @@ struct Join : Outer, Inner
         size_t size = unpack((Outer&)dst, src);
         return size + unpack((Inner&)dst, src + size);
     }    
-
     friend void print(Join const& r, FILE* out)
     {
         print((Outer&)r, out);
@@ -102,7 +99,6 @@ struct Key
     {
         fprintf(out, "%.*s", (int)sizeof(key.val), key.val);
     }
-
     friend size_t unpack(Key& dst, char const* src)
     {
         return strcopy(dst.val, src, sizeof(dst.val));
@@ -631,11 +627,13 @@ class SortRDD : public RDD<T>
             Thread loader(new FetchJob<T>(input, queue));
             GatherRDD<T> gather(queue);
             buf = new T[estimation];
-            for (size = 0; gather.next(buf[size]); size++) { 
-                if (size == estimation) { 
+            for (size = 0; gather.next(buf[size]);) { 
+                if (++size == estimation) { 
                     T* newBuf = new T[estimation *= 2];
+                    printf("Extend sort buffer to %ld\n", estimation);
                     memcpy(newBuf, buf, size*sizeof(T));
                     delete[] buf;
+                    buf = newBuf;
                 }
             }
             qsort(buf, size, sizeof(T), (comparator_t)compare);
@@ -668,9 +666,11 @@ public:
     bool next(Join<O,I>& record)
     {
         if (scatter == NULL) { 
+#if 0
             if (innerSize == 0) { 
                 return false;
             }
+#endif            
             // .. and then start fetching of outer relation and perform hash lookup
             scatter = new Thread(new ScatterJob<O,K,outerKey>(outer, queue));
             outer = new GatherRDD<O>(queue);
@@ -806,6 +806,7 @@ class CachedRDD : public RDD<T>
         while (input->next(buf[i])) { 
             if (++i == estimation) {
                 T* newBuf = new T[estimation *= 2];
+                printf("Extend cache to %ld\n", estimation);
                 memcpy(newBuf, buf, i*sizeof(T));
                 delete[] buf;
                 buf = newBuf;

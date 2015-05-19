@@ -223,6 +223,7 @@ void SendJob::run()
         while (true) { 
             Buffer* buf = cluster->sendQueues[node]->get();
             buf->node = (uint32_t)cluster->nodeId;
+            buf->compressedSize = buf->size ? compress(ioBuf->data, buf->data, buf->size) : 0;
             if (buf->kind == MSG_SHUTDOWN) { 
                 if (node == (cluster->nodeId + 1) % cluster->nNodes) { // shutdown neighbour receiver
                     cluster->sockets[node]->write(buf, BUF_HDR_SIZE);
@@ -230,7 +231,6 @@ void SendJob::run()
                 delete ioBuf;
                 return;
             }
-            buf->compressedSize = buf->size ? compress(ioBuf->data, buf->data, buf->size) : 0;
             if (buf->compressedSize < buf->size) {
                 memcpy(ioBuf, buf, BUF_HDR_SIZE);
                 cluster->sockets[node]->write(ioBuf, BUF_HDR_SIZE + ioBuf->compressedSize);

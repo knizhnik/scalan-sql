@@ -7,7 +7,7 @@ const size_t SF = 100; // scale factor
 #define STRCMP(s,p) strncmp(s, p, sizeof(s))
 #define STREQ(s,p)  (STRCMP(s, p) == 0)
 #define STRCPY(d,s) strncpy(d,s,sizeof(d))
-#define SCALE(x)    ((x + Cluster::instance->nNodes - 1)*SF/(Cluster::instance->nNodes))
+#define SCALE(x)    ((x + Cluster::instance->nNodes - 1)*SF/(Cluster::instance->nNodes) + (x / 100)) // take in accoutn data skews
 
 
 class CachedData
@@ -295,9 +295,9 @@ namespace Q3
             filter<lineitemFilter>()->
             join<Orders, long, lineitemOrderKey, orderKey>(cache->orders.get()->filter<orderFilter>(), SCALE(1500000))->
             join<Customer, int, orderCustomerKey, customerKey>(cache->customer.get()->filter<customerFilter>(), SCALE(150000))->
-            mapReduce<GroupBy, double, map, sum>(1000)->
+            mapReduce<GroupBy, double, map, sum>(1000000)->
             project<Revenue, revenue>()->
-            sort<byRevenueAndOrderDate>(1000);
+            sort<byRevenueAndOrderDate>(1000000);
     }    
 }
 namespace Q4
@@ -500,6 +500,25 @@ namespace Q7
         name_t supp_nation;
         name_t cust_nation;
         int    l_year;
+
+        friend size_t pack(Shipping const& src, char* dst)
+        {
+            size_t size = 0;
+            PACK_STR(supp_nation);
+            PACK_STR(cust_nation);
+            PACK(l_year);
+            return size;
+        }
+
+        friend size_t unpack(Shipping& dst, char const* src)
+        {
+            size_t size = 0;
+            UNPACK_STR(supp_nation);
+            UNPACK_STR(cust_nation);
+            UNPACK(l_year);
+            return size;
+        }
+            
         
         bool operator == (Shipping const& other) const
         {
@@ -705,6 +724,21 @@ namespace Q9
         name_t nation;
         int    o_year;
         
+        friend size_t pack(Profit const& src, char* dst)
+        {
+            size_t size = 0;       
+            PACK_STR(nation);
+            PACK(o_year);
+            return size;
+        }
+        friend size_t unpack(Profit& dst, char const* src)
+        {
+            size_t size = 0;       
+            UNPACK_STR(nation);
+            UNPACK(o_year);
+            return size;
+        }
+           
         bool operator==(Profit const& other) const
         { 
             return STREQ(nation, other.nation) && o_year == other.o_year;
@@ -777,6 +811,31 @@ namespace Q10
         char c_phone[15];
         char c_comment[117];
         
+        friend size_t pack(GroupBy const& src, char* dst)
+        {
+            size_t size = 0;       
+            PACK(c_custkey);
+            PACK_STR(c_name);
+            PACK(c_acctball);
+            PACK_STR(n_name);
+            PACK_STR(c_address);
+            PACK_STR(c_phone);
+            PACK_STR(c_comment);
+            return size;
+        }
+        friend size_t unpack(GroupBy& dst, char const* src)
+        {
+            size_t size = 0;       
+            UNPACK(c_custkey);
+            UNPACK_STR(c_name);
+            UNPACK(c_acctball);
+            UNPACK_STR(n_name);
+            UNPACK_STR(c_address);
+            UNPACK_STR(c_phone);
+            UNPACK_STR(c_comment);
+            return size;
+        }            
+
         bool operator == (GroupBy const& other) const
         {
             return c_custkey == other.c_custkey
@@ -1002,6 +1061,11 @@ void execute(char const* name, RDD<T>* (*query)())
     RDD<T>* result = query();
     result->output(stdout);
     delete result;
+    
+    FILE* results = fopen("results.csv", "a");
+    fprintf(results, "%s,%d\n", name, (int)(time(NULL) - start));
+    fclose(results);
+       
     printf("Elapsed time for %s: %d seconds\n", name, (int)(time(NULL) - start));
 }
 
@@ -1025,8 +1089,9 @@ int main(int argc, char* argv[])
     Cluster cluster(nodeId, nNodes, &argv[3]);
 
     // execute("Q1", Q1::query);    
-    // execute("Q5", Q5::query);
-    
+#if JUST_Q5
+    execute("Q5", Q5::query);
+#else
     time_t start = time(NULL);
     cache = new CachedData();
     printf("Elapsed time for loading all data in memory: %d seconds\n", (int)(time(NULL) - start));
@@ -1047,7 +1112,7 @@ int main(int argc, char* argv[])
     execute("Q19", Q19::cachedQuery);
 
     delete cache;
-    
+#endif    
     printf("Node %d finished.\n", nodeId);
     return 0;
 }

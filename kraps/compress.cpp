@@ -656,7 +656,8 @@ int lz_decompress(void* dest, const void* source, int compressed_size)
 
 size_t compress(char* dst, char const* src, size_t length)
 {
-    return lz_compress(dst, src, length, &strategy_default_data);
+    size_t compressedLength = lz_compress(dst, src, length, &strategy_default_data);
+    return compressedLength == 0 ? length : compressedLength;
 }
 
 void decompress(char* dst, char const* src, size_t length, size_t compressedLength)

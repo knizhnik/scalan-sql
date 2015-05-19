@@ -3,8 +3,9 @@ all: tpch csv2rdd
 SIMDCOMP_HOME=~/simdcomp
 
 CPP=g++ -pthread -O3 -g -Wall
+#CPP=g++ -pthread -O3 -g -Wall -I -DUSE_ZLIB
+#CPP=g++ -pthread -O0 -g -Wall
 #CPP=g++ -pthread -O3 -g -Wall -I $(SIMDCOMP_HOME)/include
-#CPP=g++ -pthread -O0 -g -Wall -I $(SIMDCOMP_HOME)/include -DUSE_ZLIB
 
 
 tpch.o: tpch.cpp rdd.h cluster.h tpch.h sync.h sockio.h
