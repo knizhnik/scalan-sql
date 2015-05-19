@@ -251,9 +251,9 @@ public:
             size_t node = hash % nNodes;
             if (buffers[node]->size + sizeof(T) > bufferSize) {
                 Queue* dst = (node == nodeId) ? queue : cluster->sendQueues[node];
+                sent += buffers[node]->size;
                 dst->put(buffers[node]);
                 buffers[node] = Buffer::create(queue->qid, bufferSize);
-                sent += buffers[node]->size;
                 buffers[node]->size = 0;
                 
                 if (sent > cluster->syncInterval) { 
