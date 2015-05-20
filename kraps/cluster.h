@@ -26,9 +26,10 @@ struct Buffer
 { 
     uint32_t compressedSize; // compressed size 
     uint32_t size;  // size without header
-    uint32_t node;  // sender
+    uint16_t node;  // sender
     uint16_t qid;   // identifier of destination queue
     uint16_t kind;  // message kind
+    uint16_t refCount; // reference count
     char     data[1];
     
     static Buffer* create(qid_t qid, size_t size, MessageKind type = MSG_DATA) {
@@ -47,7 +48,7 @@ struct Buffer
         return create(qid, 0, MSG_PING);
     }
 
-    Buffer(MessageKind type, qid_t id, size_t len = 0) : size((uint32_t)len), qid((uint16_t)id), kind((uint16_t)type) {}
+    Buffer(MessageKind type, qid_t id, size_t len = 0) : size((uint32_t)len), qid((uint16_t)id), kind((uint16_t)type), refCount(1) {}
 
     void* operator new(size_t hdrSize, size_t bufSize) {
         return malloc(BUF_HDR_SIZE + bufSize);
@@ -56,8 +57,16 @@ struct Buffer
     void operator delete(void* ptr, size_t size) { 
         free(ptr);
     }
+
     void operator delete(void* ptr) { 
         free(ptr);
+    }
+
+    void release() { 
+        assert(refCount > 0);
+        if (--refCount == 0) { 
+            free(this);
+        }
     }
 };
 
@@ -126,12 +135,13 @@ class Cluster {
     size_t const maxQueues;
     size_t const nodeId;
     size_t const bufferSize;
+    size_t const syncInterval;
+    size_t const broadcastJoinThreshold;
     Socket** sockets;
     Queue** recvQueues;
     Queue** sendQueues;
     Queue*  syncQueue;
     Thread** senders;
-    size_t  syncInterval;
     qid_t qid;
     Thread* receiver;
     bool shutdown;
@@ -140,7 +150,7 @@ class Cluster {
     Queue* getQueue();
     void barrier();
 
-    Cluster(size_t nodeId, size_t nHosts, char** hosts, size_t nQueues = 64, size_t bufferSize = 4*64*1024, size_t recvQueueSize = 4*64*1024*1024,  size_t sendQueueSize = 4*4*1024*1024, size_t syncInterval = 64*1024*1024);
+    Cluster(size_t nodeId, size_t nHosts, char** hosts, size_t nQueues = 64, size_t bufferSize = 4*64*1024, size_t recvQueueSize = 4*64*1024*1024,  size_t sendQueueSize = 4*4*1024*1024, size_t syncInterval = 64*1024*1024, size_t broadcastJoinThreshold = 1000000);
     ~Cluster();
 
     static Cluster* instance;

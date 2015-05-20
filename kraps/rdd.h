@@ -160,6 +160,8 @@ class RDD
     void output(FILE* out);
 
     virtual~RDD() {}
+
+    virtual RDD<T>* broadcast(Thread*& thread);
 };
 
 //
@@ -300,7 +302,9 @@ public:
     bool next(T& record) {
         Cluster* cluster = Cluster::instance;
         while (used == size) { 
-            delete buf;
+            if (buf != NULL) { 
+                buf->release();
+            }
             buf = queue->get();
             switch (buf->kind) { 
             case MSG_EOF:
@@ -324,7 +328,11 @@ public:
     }
 
     GatherRDD(Queue* q) : buf(NULL), used(0), size(0), queue(q), nWorkers(Cluster::instance->nNodes) {}
-    ~GatherRDD() { delete buf; }
+    ~GatherRDD() { 
+        if (buf != NULL) { 
+            buf->release(); 
+        }
+    }
 private:
     Buffer* buf;
     size_t used;
@@ -332,6 +340,70 @@ private:
     Queue* queue;
     size_t nWorkers;
 };
+
+//
+// Broadcast RDD replicates data to all nodes
+//
+template<class T>
+class BroadcastJob : public Job
+{
+public:
+    BroadcastJob(RDD<T>* in, Queue* q) : input(in), queue(q) {}
+    ~BroadcastJob() { delete input; }
+    
+    void run()
+    {
+        T record;
+        Cluster* cluster = Cluster::instance;
+        size_t nNodes = cluster->nNodes;
+        size_t nodeId = cluster->nodeId;
+        size_t bufferSize = cluster->bufferSize;
+        Buffer* buffer = Buffer::create(queue->qid, bufferSize);        
+        size_t size = 0;
+        size_t sent = 0;
+
+        while (input->next(record)) { 
+            if (size + sizeof(T) > bufferSize) {
+                sent += size;
+                buffer->size = size;
+                buffer->refCount = nNodes;
+                for (size_t node = 0; node < nNodes; node++) { 
+                    Queue* dst = (node == nodeId) ? queue : cluster->sendQueues[node];
+                    dst->put(buffer);
+                    if (sent > cluster->syncInterval) { 
+                        cluster->sendQueues[node]->put(Buffer::ping(queue->qid));
+                    }
+                }
+                if (sent > cluster->syncInterval) { 
+                    queue->wait(nNodes-1);
+                    sent = 0;
+                }
+                buffer = Buffer::create(queue->qid, bufferSize);
+                size = 0;
+            }
+            size += pack(record, buffer->data + size);
+            assert(size <= bufferSize);
+        }
+            
+        if (size != 0) { 
+            buffer->size = size;
+            buffer->refCount = nNodes;
+        } else { 
+            buffer->release();
+        }
+        for (size_t node = 0; node < nNodes; node++) {
+            Queue* dst = (node == nodeId) ? queue : cluster->sendQueues[node];
+            if (size != 0) { 
+                dst->put(buffer);
+            }
+            dst->put(Buffer::eof(queue->qid));
+        }
+    }
+private:
+    RDD<T>* const input;
+    Queue* const queue;
+};
+
 
 //
 // Read data from OS plain file
@@ -363,6 +435,13 @@ class DirRDD : public RDD<T>
 {
   public:
     DirRDD(char const* path) : dir(path), segno(Cluster::instance->nodeId), step(Cluster::instance->nNodes), f(NULL) {}
+
+    RDD<T>* broadcast(Thread*& thread) { 
+        segno = 0;
+        step = 1;                               
+        thread = NULL;
+        return this;
+    }
 
     bool next(T& record) {
         while (true) {
@@ -657,24 +736,27 @@ public:
     HashJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t estimation, bool outerJoin) 
     : isOuterJoin(outerJoin), table(new Entry*[estimation]), size(estimation), inner(NULL), outer(outerRDD), scatter(NULL) {
         // First load inner relation in hash...
-        queue = Cluster::instance->getQueue();
-        Thread loader(new ScatterJob<I,K,innerKey>(innerRDD, queue));
-        loadHash(new GatherRDD<I>(queue));
-        queue = Cluster::instance->getQueue();
+        if (estimation <= Cluster::instance->broadcastJoinThreshold) { 
+            // broadcast inner RDD
+            queue = Cluster::instance->getQueue();
+            loadHash(innerRDD->broadcast(scatter));
+            shuffle = false;
+        } else {     
+            Thread loader(new ScatterJob<I,K,innerKey>(innerRDD, queue));
+            loadHash(new GatherRDD<I>(queue));
+            queue = Cluster::instance->getQueue();
+            shuffle = true;
+        }
     }
 
     bool next(Join<O,I>& record)
     {
-        if (scatter == NULL) { 
-#if 0
-            if (innerSize == 0) { 
-                return false;
-            }
-#endif            
+        if (shuffle && scatter == NULL) { 
             // .. and then start fetching of outer relation and perform hash lookup
             scatter = new Thread(new ScatterJob<O,K,outerKey>(outer, queue));
             outer = new GatherRDD<O>(queue);
         }
+
         if (inner == NULL) { 
             do { 
                 if (!outer->next(outerRec)) { 
@@ -706,7 +788,7 @@ public:
         delete outer;
         delete scatter;
     }
-private:
+protected:
     struct Entry {
         K      key;
         I      record;
@@ -726,6 +808,7 @@ private:
     RDD<O>* outer;
     Queue*  queue;
     Thread* scatter;
+    bool    shuffle;
 
     void loadHash(RDD<I>* gather) 
     {
@@ -840,6 +923,13 @@ void RDD<T>::output(FILE* out)
         sendToCoordinator<T>(this, queue);
     }
     cluster->barrier();
+}
+
+template<class T>
+inline RDD<T>* RDD<T>::broadcast(Thread* &thread) { 
+    Queue* queue = Cluster::instance->getQueue();
+    thread = new Thread(new BroadcastJob<T>(this, queue));
+    return new GatherRDD<T>(queue);
 }
 
 template<class T>

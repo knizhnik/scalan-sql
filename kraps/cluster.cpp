@@ -68,8 +68,8 @@ Queue* Cluster::getQueue()
     return recvQueues[qid++];
 }
 
-Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nQueues, size_t bufSize, size_t recvQueueSize, size_t sendQueueSize, size_t syncPeriod) 
-: nNodes(nHosts), maxQueues(nQueues), nodeId(selfId), bufferSize(bufSize), syncInterval(syncPeriod), shutdown(false)
+Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nQueues, size_t bufSize, size_t recvQueueSize, size_t sendQueueSize, size_t syncPeriod, size_t broadcastThreshold) 
+  : nNodes(nHosts), maxQueues(nQueues), nodeId(selfId), bufferSize(bufSize), syncInterval(syncPeriod), broadcastJoinThreshold(broadcastThreshold), shutdown(false)
 {
     instance = this;
 
@@ -161,7 +161,7 @@ void Cluster::barrier()
     for (size_t i = 0; i < nNodes; i++) { 
         Buffer* resp = queue->get();
         assert(resp->kind == MSG_BARRIER);
-        delete resp;
+        resp->release();
     }
     qid = 0;
 }
@@ -182,7 +182,8 @@ void ReceiveJob::run()
             
             Buffer* buf = Buffer::create(ioBuf->qid, cluster->bufferSize);
             memcpy(buf, ioBuf, BUF_HDR_SIZE);
-            
+            buf->refCount = 1;
+
             if (ioBuf->compressedSize < ioBuf->size) { 
                 socket->read(ioBuf->data, ioBuf->compressedSize);
                 decompress(buf->data, ioBuf->data, ioBuf->size, ioBuf->compressedSize);
@@ -195,10 +196,10 @@ void ReceiveJob::run()
               case MSG_PONG:
                 assert(buf->qid < cluster->maxQueues);
                 cluster->recvQueues[buf->qid]->signal();            
-                delete buf;
+                buf->release();
                 continue;
               case MSG_SHUTDOWN:
-                delete buf;
+                buf->release();
                 break;
               default:
                 cluster->recvQueues[buf->qid]->put(buf);
@@ -240,7 +241,7 @@ void SendJob::run()
                 cluster->sockets[node]->write(buf, BUF_HDR_SIZE + buf->size);
                 sent += BUF_HDR_SIZE + buf->size;
             }
-            delete buf;
+            buf->release();
         }
     } catch (std::exception& x) {
         printf("Sender to node %d catch exception %s\n", (int)node, x.what());
