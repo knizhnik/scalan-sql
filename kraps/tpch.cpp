@@ -96,11 +96,12 @@ struct PartSuppKey
         return partkey == other.partkey
             && suppkey == other.suppkey;
     }
-    
+#if 0 // use MURMUR hash    
     friend size_t hashCode(PartSuppKey const& ps)
     {
         return ps.partkey ^ ps.suppkey;
     }
+#endif
 };
 
 void partsuppKey(PartSuppKey& key, Partsupp const& ps)
@@ -1061,10 +1062,12 @@ void execute(char const* name, RDD<T>* (*query)())
     RDD<T>* result = query();
     result->output(stdout);
     delete result;
-    
-    FILE* results = fopen("results.csv", "a");
-    fprintf(results, "%s,%d\n", name, (int)(time(NULL) - start));
-    fclose(results);
+
+    if (Cluster::instance->nodeId == 0) {
+        FILE* results = fopen("results.csv", "a");
+        fprintf(results, "%s,%d\n", name, (int)(time(NULL) - start));
+        fclose(results);
+    }
        
     printf("Elapsed time for %s: %d seconds\n", name, (int)(time(NULL) - start));
 }
@@ -1104,12 +1107,12 @@ int main(int argc, char* argv[])
     execute("Q6",  Q6::cachedQuery);
     execute("Q7",  Q7::cachedQuery);
     execute("Q8",  Q8::cachedQuery);
-    execute("Q9",  Q9::cachedQuery);
     execute("Q10", Q10::cachedQuery);
     execute("Q12", Q12::cachedQuery);
     execute("Q13", Q13::cachedQuery);
     execute("Q14", Q14::cachedQuery);
     execute("Q19", Q19::cachedQuery);
+    execute("Q9",  Q9::cachedQuery);
 
     delete cache;
 #endif    

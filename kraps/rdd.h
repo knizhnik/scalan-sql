@@ -370,7 +370,7 @@ public:
                 for (size_t node = 0; node < nNodes; node++) { 
                     Queue* dst = (node == nodeId) ? queue : cluster->sendQueues[node];
                     dst->put(buffer);
-                    if (sent > cluster->syncInterval) { 
+                    if (sent > cluster->syncInterval && node != nodeId) { 
                         cluster->sendQueues[node]->put(Buffer::ping(queue->qid));
                     }
                 }
@@ -610,7 +610,7 @@ class MapReduceRDD : public RDD< Pair<K,V> >
         Queue* queue = Cluster::instance->getQueue();
         if (Cluster::instance->isCoordinator()) { 
             GatherRDD< Pair<K,V> > gather(queue);
-            queue->put(Buffer::eof(queue->qid)); // do not wait for self node
+            queue->putFirst(Buffer::eof(queue->qid)); // do not wait for self node
             Pair<K,V> pair;
             while (gather.next(pair)) {
                 size_t hash = hashCode(pair.key);
@@ -738,10 +738,11 @@ public:
         // First load inner relation in hash...
         if (estimation <= Cluster::instance->broadcastJoinThreshold) { 
             // broadcast inner RDD
-            queue = Cluster::instance->getQueue();
             loadHash(innerRDD->broadcast(scatter));
             shuffle = false;
         } else {     
+            // shuffle inner RDD
+            queue = Cluster::instance->getQueue();
             Thread loader(new ScatterJob<I,K,innerKey>(innerRDD, queue));
             loadHash(new GatherRDD<I>(queue));
             queue = Cluster::instance->getQueue();
