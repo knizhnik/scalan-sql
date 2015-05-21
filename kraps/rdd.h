@@ -154,6 +154,9 @@ class RDD
     template<int (*compare)(T const* a, T const* b)> 
     RDD<T>* sort(size_t estimation);
 
+    template<int (*compare)(T const* a, T const* b)> 
+    RDD<T>* top(size_t n);
+
     template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner)>
     RDD< Join<T,I> >* join(RDD<I>* with, size_t estimation, bool outerJoin = false);
 
@@ -727,6 +730,73 @@ class SortRDD : public RDD<T>
 };
 
 //
+// Get top N records using given comparison function
+//
+template<class T, int compare(T const* a, T const* b)>
+class TopRDD : public RDD<T>
+{
+  public:
+    TopRDD(RDD<T>* input, size_t top) {
+        loadArray(input, top);
+    }
+
+    bool next(T& record) { 
+        if (i < size) { 
+            record = buf[i++];
+            return true;
+        }
+        return false;
+    }
+    
+    ~TopRDD() { 
+        delete[] buf;
+    }
+
+  private:
+    T* buf;
+    size_t size;
+    size_t i;
+
+    typedef int(*comparator_t)(void const* p, void const* q);
+
+    void loadArray(RDD<T>* input, size_t top) { 
+        Queue* queue = Cluster::instance->getQueue();
+        if (Cluster::instance->isCoordinator()) {         
+            Thread loader(new FetchJob<T>(input, queue));
+            GatherRDD<T> gather(queue);
+            T record;
+            buf = new T[top];
+            size_t n = 0;
+            while (gather.next(record)) {
+                size_t l = 0, r = n;
+                while (l < r) {
+                    size_t m = (l + r) >> 1;
+                    if (compare(&buf[m], &record) <= 0) {
+                        l = m + 1;
+                    } else {
+                        r = m;
+                    }
+                }
+                if (r < top) {
+                    if (n < top) {
+                        n += 1;
+                    }
+                    memmove(&buf[r+1], &buf[r], (n-r-1)*sizeof(T));
+                    buf[r] = record;
+                }
+            }
+            size = n;
+        } else { 
+            sendToCoordinator<T>(input, queue);
+            buf = NULL;
+            size = 0;
+        }
+        delete input;
+        i = 0;
+    }
+};
+
+//
 // Join two RDDs using hash table
 //
 template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner)>
@@ -961,6 +1031,12 @@ template<class T>
 template<int (*compare)(T const* a, T const* b)> 
 inline RDD<T>* RDD<T>::sort(size_t estimation) {
     return new SortRDD<T,compare>(this, estimation);
+}
+
+template<class T>
+template<int (*compare)(T const* a, T const* b)> 
+inline RDD<T>* RDD<T>::top(size_t n) {
+    return new TopRDD<T,compare>(this, n);
 }
 
 template<class T>

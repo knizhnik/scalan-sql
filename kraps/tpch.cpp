@@ -298,7 +298,7 @@ namespace Q3
             join<Customer, int, orderCustomerKey, customerKey>(cache->customer.get()->filter<customerFilter>(), SCALE(150000))->
             mapReduce<GroupBy, double, map, sum>(1000000)->
             project<Revenue, revenue>()->
-            sort<byRevenueAndOrderDate>(1000000);
+            top<byRevenueAndOrderDate>(10);
     }    
 }
 namespace Q4
@@ -970,7 +970,7 @@ namespace Q13
         return
             cache->orders.get()->filter<orderFilter>()->
             join<Customer, int, orderCustomerKey, customerKey>(cache->customer.get(), SCALE(150000), true)->
-            mapReduce<int,int,map1,count>(10000)->
+            mapReduce<int,int,map1,count>(1000000)->
             mapReduce<int,int,map2,count>(10000)->
             sort<byCustDistCount>(10000);
     }    
@@ -1107,12 +1107,12 @@ int main(int argc, char* argv[])
     execute("Q6",  Q6::cachedQuery);
     execute("Q7",  Q7::cachedQuery);
     execute("Q8",  Q8::cachedQuery);
+    execute("Q9",  Q9::cachedQuery);
     execute("Q10", Q10::cachedQuery);
     execute("Q12", Q12::cachedQuery);
     execute("Q13", Q13::cachedQuery);
     execute("Q14", Q14::cachedQuery);
     execute("Q19", Q19::cachedQuery);
-    execute("Q9",  Q9::cachedQuery);
 
     delete cache;
 #endif    
