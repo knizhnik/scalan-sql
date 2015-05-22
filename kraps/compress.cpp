@@ -56,8 +56,8 @@ void decompress(char* dst, char const* src, size_t length, size_t compressedLeng
     }
 }
 
-#else
-
+#elif defined(USE_SIMDCOMP)
+    
 
 /* ----------
  * Local definitions
@@ -664,6 +664,18 @@ void decompress(char* dst, char const* src, size_t length, size_t compressedLeng
 {
     size_t rawSize = lz_decompress(dst, src, compressedLength);
     assert(rawSize == length);
+}
+
+#else
+
+size_t compress(char* dst, char const* src, size_t length)
+{
+    return length;
+}
+
+void decompress(char* dst, char const* src, size_t length, size_t compressedLength)
+{
+    assert(false);
 }
 
 #endif
