@@ -46,31 +46,6 @@ void count(int& dst, int const&)
     dst += 1;
 }
 
-void orderKey(long& key, Orders const& order)
-{
-    key = order.o_orderkey;
-}
-
-void lineitemOrderKey(long& key, Lineitem const& lineitem)
-{
-    key = lineitem.l_orderkey;
-}
-
-void lineitemPartKey(int& key, Lineitem const&  lineitem)
-{
-    key = lineitem.l_partkey;
-}
-
- void supplierKey(int& key, Supplier const& supplier)
-{
-    key = supplier.s_suppkey;
-}
-
-void customerKey(int& key, Customer const& customer)
-{
-    key = customer.c_custkey;
-}
-
 void nationKey(int& key, Nation const& nation)
 {
     key = nation.n_nationkey;
@@ -81,33 +56,27 @@ void regionKey(int& key, Region const& region)
     key = region.r_regionkey;
 }
 
-void partKey(int& key, Part const& part)
+void customerKey(int& key, Customer const& customer)
 {
-    key = part.p_partkey;
+    key = customer.c_custkey;
 }
-    
-struct PartSuppKey
+
+struct PartsuppKey
 {
-    int partkey;
-    int suppkey;
+    int ps_partkey;
+    int ps_suppkey;
     
-    bool operator==(PartSuppKey const& other) const
+    bool operator==(PartsuppKey const& other) const
     {
-        return partkey == other.partkey
-            && suppkey == other.suppkey;
+        return ps_partkey == other.ps_partkey
+            && ps_suppkey == other.ps_suppkey;
     }
-#if 0 // use MURMUR hash    
-    friend size_t hashCode(PartSuppKey const& ps)
-    {
-        return ps.partkey ^ ps.suppkey;
-    }
-#endif
 };
 
-void partsuppKey(PartSuppKey& key, Partsupp const& ps)
+void partsuppKey(PartsuppKey& key, Partsupp const& ps)
 {
-    key.partkey = ps.ps_partkey;
-    key.suppkey = ps.ps_suppkey;
+    key.ps_partkey = ps.ps_partkey;
+    key.ps_suppkey = ps.ps_suppkey;
 }
 
     
@@ -228,6 +197,63 @@ namespace Q1
 
 namespace Q3
 {
+    struct LineitemProjection 
+    {
+        long   l_orderkey;
+        date_t l_shipdate;
+        double l_extendedprice;
+        double l_discount;
+    };
+
+    void projectLineitem(LineitemProjection& out, Lineitem const& in)
+    {
+        out.l_orderkey = in.l_orderkey;
+        out.l_extendedprice = in.l_extendedprice;
+        out.l_discount = in.l_discount;
+        out.l_shipdate = in.l_shipdate;
+    }
+
+    void lineitemOrderKey(long& key, LineitemProjection const& lineitem)
+    {
+        key = lineitem.l_orderkey;
+    }
+
+    struct OrdersProjection
+    {
+        long o_orderkey;
+        int o_custkey;
+        date_t o_orderdate;
+        int o_shippriority;
+    };
+
+    void projectOrders(OrdersProjection& out, Orders const& in)
+    { 
+        out.o_orderkey = in.o_orderkey;
+        out.o_custkey = in.o_custkey;
+        out.o_orderdate = in.o_orderdate;
+        out.o_shippriority = in.o_shippriority;
+    }            
+
+    void orderKey(long& key, OrdersProjection const& in)
+    {
+        key = in.o_orderkey;
+    }
+
+    struct CustomerProjection
+    {
+        int c_custkey;
+    };
+    
+    void projectCustomer(CustomerProjection& out, Customer const& in)
+    {
+        out.c_custkey = in.c_custkey;
+    }
+    
+    void customerKey(int& key, CustomerProjection const& customer)
+    {
+        key = customer.c_custkey;
+    }
+
     bool lineitemFilter(Lineitem const& l)
     {
         return l.l_shipdate > 19950304;
@@ -243,7 +269,7 @@ namespace Q3
         return STREQ(c.c_mktsegment, "HOUSEHOLD");
     }
     
-    void orderCustomerKey(int& key, Join<Lineitem,Orders> const& r)
+    void orderCustomerKey(int& key, Join<LineitemProjection,OrdersProjection> const& r)
     {
         key = r.o_custkey;
     }
@@ -260,7 +286,7 @@ namespace Q3
         }
     };
 
-    void map(Pair<GroupBy,double>& pair, Join<Join<Lineitem,Orders>,Customer> const& r)
+    void map(Pair<GroupBy,double>& pair, Join<Join<LineitemProjection,OrdersProjection>,CustomerProjection> const& r)
     {
         pair.key.l_orderkey = r.l_orderkey;
         pair.key.o_orderdate = r.o_orderdate;
@@ -294,8 +320,15 @@ namespace Q3
         return
             cache->lineitem.get()->
             filter<lineitemFilter>()->
-            join<Orders, long, lineitemOrderKey, orderKey>(cache->orders.get()->filter<orderFilter>(), SCALE(1500000))->
-            join<Customer, int, orderCustomerKey, customerKey>(cache->customer.get()->filter<customerFilter>(), SCALE(150000))->
+            project<LineitemProjection, projectLineitem>()->
+            join<OrdersProjection,long,lineitemOrderKey,orderKey>(cache->orders.get()->
+                                                                  filter<orderFilter>()->
+                                                                  project<OrdersProjection, projectOrders>(), 
+                                                                  SCALE(1500000))->
+            join<CustomerProjection,int,orderCustomerKey,customerKey>(cache->customer.get()->
+                                                                      filter<customerFilter>()->
+                                                                      project<CustomerProjection,projectCustomer>(), 
+                                                                      SCALE(150000))->
             mapReduce<GroupBy, double, map, sum>(1000000)->
             project<Revenue, revenue>()->
             top<byRevenueAndOrderDate>(10);
@@ -303,6 +336,44 @@ namespace Q3
 }
 namespace Q4
 {
+    struct LineitemProjection 
+    {
+        long   l_orderkey;
+        date_t l_commitdate;
+        date_t l_receiptdate;
+    };
+
+    void projectLineitem(LineitemProjection& out, Lineitem const& in)
+    {
+        out.l_orderkey = in.l_orderkey;
+        out.l_commitdate = in.l_commitdate;
+        out.l_receiptdate = in.l_receiptdate;
+    }
+
+    void lineitemOrderKey(long& key, LineitemProjection const& lineitem)
+    {
+        key = lineitem.l_orderkey;
+    }
+
+    struct OrdersProjection
+    {
+        long o_orderkey;
+        date_t o_orderdate;
+        priority_t o_orderpriority;
+    };
+
+    void projectOrders(OrdersProjection& out, Orders const& in)
+    {
+        out.o_orderkey = in.o_orderkey;
+        out.o_orderdate = in.o_orderdate;
+        STRCPY(out.o_orderpriority, in.o_orderpriority);
+    }            
+
+    void orderKey(long& key, OrdersProjection const& in)
+    {
+        key = in.o_orderkey;
+    }
+
     bool lineitemFilter(Lineitem const& l)
     {
         return l.l_commitdate < l.l_receiptdate;
@@ -313,7 +384,7 @@ namespace Q4
         return o.o_orderdate >= 19930801 && o.o_orderdate < 19931101;
     }
     
-    void map(Pair<Key<priority_t>,int>& pair, Join<Lineitem,Orders> const& r)
+    void map(Pair<Key<priority_t>,int>& pair, Join<LineitemProjection,OrdersProjection> const& r)
     {
         STRCPY(pair.key.val, r.o_orderpriority);
         pair.value = 1;
@@ -328,50 +399,126 @@ namespace Q4
         return
             cache->lineitem.get()->
             filter<lineitemFilter>()->
-            join<Orders, long, lineitemOrderKey, orderKey>(cache->orders.get()->filter<orderFilter>(), SCALE(1500000))->
+            project<LineitemProjection, projectLineitem>()->
+            join<OrdersProjection,long,lineitemOrderKey,orderKey>(cache->orders.get()->
+                                                                  filter<orderFilter>()->
+                                                                  project<OrdersProjection,projectOrders>(), 
+                                                                  SCALE(1500000))->
             mapReduce<Key<priority_t>, int, map, count>(25)->
             sort<byPriority>(25);
     }    
 }   
 namespace Q5
 {
+    struct LineitemProjection 
+    {
+        long   l_orderkey;
+        int    l_suppkey;
+        double l_extendedprice;
+        double l_discount;
+    };
+
+    void projectLineitem(LineitemProjection& out, Lineitem const& in)
+    {
+        out.l_orderkey = in.l_orderkey;
+        out.l_suppkey = in.l_suppkey;
+        out.l_extendedprice = in.l_extendedprice;
+        out.l_discount = in.l_discount;
+    }
+
+    void lineitemOrderKey(long& key, LineitemProjection const& lineitem)
+    {
+        key = lineitem.l_orderkey;
+    }
+
+    struct OrdersProjection
+    {
+        int o_orderkey;
+        int o_custkey;
+    };
+
+    void projectOrders(OrdersProjection& out, Orders const& in)
+    {
+        out.o_orderkey = in.o_orderkey;
+        out.o_custkey = in.o_custkey;
+    }            
+
+    void orderKey(long& key, OrdersProjection const& in)
+    {
+        key = in.o_orderkey;
+    }
+    
+    struct SupplierProjection
+    {
+        int s_suppkey;
+        int s_nationkey;
+    };
+
+    void projectSupplier(SupplierProjection& out, Supplier const& in)
+    {
+        out.s_suppkey = in.s_suppkey;
+        out.s_nationkey = in.s_nationkey;
+    }            
+
+    void supplierKey(int& key, SupplierProjection const& in)
+    {
+        key = in.s_suppkey;
+    }
+    
+    struct CustomerProjection
+    {
+        int c_custkey;
+        int c_nationkey;
+    };
+
+    void projectCustomer(CustomerProjection& out, Customer const& in)
+    {
+        out.c_custkey = in.c_custkey;
+        out.c_nationkey = in.c_nationkey;
+    }            
+
+    void customerKey(int& key, CustomerProjection const& in)
+    {
+        key = in.c_custkey;
+    }
+
     bool orderRange(Orders const& order) 
     {
         return order.o_orderdate >= 19960101 && order.o_orderdate < 19970101;
     }
 
-    bool sameNation(Join<Join<Join<Lineitem,Orders>,Supplier>,Customer> const& r)
+    bool sameNation(Join<Join<Join<LineitemProjection,OrdersProjection>,SupplierProjection>,CustomerProjection> const& r)
     {
         return r.c_nationkey == r.s_nationkey;
     }
 
-    void customerNationKey(int& key, Join<Join<Join<Lineitem,Orders>,Supplier>,Customer> const& r)
+    void customerNationKey(int& key, Join<Join<Join<LineitemProjection,OrdersProjection>,SupplierProjection>,CustomerProjection> const& r)
     {
         key = r.c_nationkey;
     }
     
-    void lineitemSupplierKey(int& key, Join<Lineitem,Orders> const& r)
+    void lineitemSupplierKey(int& key, Join<LineitemProjection,OrdersProjection> const& r)
     {
         key = r.l_suppkey;
     }
     
-    void orderCustomerKey(int& key, Join<Join<Lineitem,Orders>,Supplier> const& r)
+    void orderCustomerKey(int& key, Join<Join<LineitemProjection,OrdersProjection>,SupplierProjection> const& r)
     {
         key = r.o_custkey;
     }
 
-    void nationRegionKey(int& key, Join<Join<Join<Join<Lineitem,Orders>,Supplier>,Customer>,Nation> const& r)
+    void nationRegionKey(int& key, Join<Join<Join<Join<LineitemProjection,OrdersProjection>,SupplierProjection>,CustomerProjection>,Nation> const& r)
     {
         key = r.n_regionkey;
     }
     
-    bool asiaRegion(Join<Join<Join<Join<Join<Lineitem,Orders>,Supplier>,Customer>,Nation>,Region> const& r) 
+    bool asiaRegion(Join<Join<Join<Join<Join<LineitemProjection,OrdersProjection>,SupplierProjection>,CustomerProjection>,Nation>,Region> const& r) 
     { 
         return STREQ(r.r_name, "ASIA");
 
     }
 
-    void map(Pair<Key<name_t>,double>& pair, Join<Join<Join<Join<Join<Lineitem,Orders>,Supplier>,Customer>,Nation>,Region> const& r)
+    void map(Pair<Key<name_t>,double>& pair, Join<Join<Join<Join<Join<LineitemProjection,OrdersProjection>,SupplierProjection>,CustomerProjection>,Nation>,Region> const& r)
     {
         STRCPY(pair.key.val, r.n_name);
         pair.value = r.l_extendedprice * (1 - r.l_discount);
@@ -401,31 +548,47 @@ namespace Q5
     RDD<Revenue>* query() 
     { 
         return
-            FileManager::load<Lineitem>("lineitem")->            
-            join<Orders, long, lineitemOrderKey, orderKey>(FileManager::load<Orders>("orders")->filter<orderRange>(), SCALE(1500000))->
-            join<Supplier, int, lineitemSupplierKey, supplierKey>(FileManager::load<Supplier>("supplier"), SCALE(10000))->
-            join<Customer, int, orderCustomerKey, customerKey>(FileManager::load<Customer>("customer"), SCALE(150000))->
+            FileManager::load<Lineitem>("lineitem")->
+            project<LineitemProjection, projectLineitem>()->
+            join<OrdersProjection,long,lineitemOrderKey,orderKey>(FileManager::load<Orders>("orders")->
+                                                                  filter<orderRange>()->
+                                                                  project<OrdersProjection,projectOrders>(),
+                                                                  SCALE(1500000))->
+            join<SupplierProjection,int,lineitemSupplierKey,supplierKey>(FileManager::load<Supplier>("supplier")->
+                                                                         project<SupplierProjection,projectSupplier>(),
+                                                                         SCALE(10000))->
+            join<CustomerProjection,int,orderCustomerKey,customerKey>(FileManager::load<Customer>("customer")->
+                                                                      project<CustomerProjection,projectCustomer>(),
+                                                                      SCALE(150000))->
             filter<sameNation>()->
-            join<Nation, int, customerNationKey, nationKey>(FileManager::load<Nation>("nation"), 25)->
-            join<Region, int, nationRegionKey, regionKey>(FileManager::load<Region>("region"), 5)->
+            join<Nation,int,customerNationKey,nationKey>(FileManager::load<Nation>("nation"),25)->
+            join<Region,int,nationRegionKey,regionKey>(FileManager::load<Region>("region"),5)->
             filter<asiaRegion>()->
-            mapReduce<Key<name_t>, double, map, sum>(25)->
-            project<Revenue, revenue>()->
+            mapReduce<Key<name_t>,double,map,sum>(25)->
+            project<Revenue,revenue>()->
             sort<byRevenue>(25);
     }    
     RDD<Revenue>* cachedQuery() 
     { 
         return
-            cache->lineitem.get()->            
-            join<Orders, long, lineitemOrderKey, orderKey>(cache->orders.get()->filter<orderRange>(), SCALE(1500000))->
-            join<Supplier, int, lineitemSupplierKey, supplierKey>(cache->supplier.get(), SCALE(10000))->
-            join<Customer, int, orderCustomerKey, customerKey>(cache->customer.get(), SCALE(150000))->
+            cache->lineitem.get()->
+            project<LineitemProjection,projectLineitem>()->            
+            join<OrdersProjection,long,lineitemOrderKey,orderKey>(cache->orders.get()->
+                                                                  filter<orderRange>()->
+                                                                  project<OrdersProjection,projectOrders>(),
+                                                                  SCALE(1500000))->
+            join<SupplierProjection,int,lineitemSupplierKey,supplierKey>(cache->supplier.get()->
+                                                                         project<SupplierProjection,projectSupplier>(),
+                                                                         SCALE(10000))->
+            join<CustomerProjection,int,orderCustomerKey,customerKey>(cache->customer.get()->
+                                                                      project<CustomerProjection,projectCustomer>(),
+                                                                      SCALE(150000))->
             filter<sameNation>()->
-            join<Nation, int, customerNationKey, nationKey>(cache->nation.get(), 25)->
-            join<Region, int, nationRegionKey, regionKey>(cache->region.get(), 5)->
+            join<Nation,int,customerNationKey,nationKey>(cache->nation.get(),25)->
+            join<Region,int,nationRegionKey,regionKey>(cache->region.get(),5)->
             filter<asiaRegion>()->
-            mapReduce<Key<name_t>, double, map, sum>(25)->
-            project<Revenue, revenue>()->
+            mapReduce<Key<name_t>,double,map,sum>(25)->
+            project<Revenue,revenue>()->
             sort<byRevenue>(25);
     }    
 }
@@ -452,25 +615,99 @@ namespace Q6
 }
 namespace Q7
 {
+    struct LineitemProjection 
+    {
+        long   l_orderkey;
+        int    l_suppkey;
+        date_t l_shipdate;
+        double l_extendedprice;
+        double l_discount;
+    };
+
+    void projectLineitem(LineitemProjection& out, Lineitem const& in)
+    {
+        out.l_orderkey = in.l_orderkey;
+        out.l_suppkey = in.l_suppkey;
+        out.l_shipdate = in.l_shipdate;
+        out.l_extendedprice = in.l_extendedprice;
+        out.l_discount = in.l_discount;
+    }
+
+    void lineitemOrderKey(long& key, LineitemProjection const& lineitem)
+    {
+        key = lineitem.l_orderkey;
+    }
+
+    struct OrdersProjection
+    {
+        int o_orderkey;
+        int o_custkey;
+    };
+
+    void projectOrders(OrdersProjection& out, Orders const& in)
+    {
+        out.o_orderkey = in.o_orderkey;
+        out.o_custkey = in.o_custkey;
+    }            
+
+    void orderKey(long& key, OrdersProjection const& in)
+    {
+        key = in.o_orderkey;
+    }
+    
+    struct CustomerProjection
+    {
+        int c_custkey;
+        int c_nationkey;
+    };
+
+    void projectCustomer(CustomerProjection& out, Customer const& in)
+    {
+        out.c_custkey = in.c_custkey;
+        out.c_nationkey = in.c_nationkey;
+    }            
+
+    void customerKey(int& key, CustomerProjection const& in)
+    {
+        key = in.c_custkey;
+    }
+
+    struct SupplierProjection
+    {
+        int s_suppkey;
+        int s_nationkey;
+    };
+
+    void projectSupplier(SupplierProjection& out, Supplier const& in)
+    {
+        out.s_suppkey = in.s_suppkey;
+        out.s_nationkey = in.s_nationkey;
+    }            
+
+    void supplierKey(int& key, SupplierProjection const& in)
+    {
+        key = in.s_suppkey;
+    }
+
     struct Nation1 { Nation n1; };
     struct Nation2 { Nation n2; };
 
-    void lineitemSupplierKey(int& key, Join<Lineitem,Orders> const& r)
+    void lineitemSupplierKey(int& key, Join<LineitemProjection,OrdersProjection> const& r)
     {
         key = r.l_suppkey;
     }
 
-    void orderCustomerKey(int& key, Join<Join<Lineitem,Orders>,Supplier> const& r)
+    void orderCustomerKey(int& key, Join<Join<LineitemProjection,OrdersProjection>,SupplierProjection> const& r)
     {
         key = r.o_custkey;
     }
 
-    void supplierNationKey(int& key, Join<Join<Join<Lineitem,Orders>,Supplier>,Customer> const& r)
+    void supplierNationKey(int& key, Join<Join<Join<LineitemProjection,OrdersProjection>,SupplierProjection>,CustomerProjection> const& r)
     {
         key = r.s_nationkey;
     }
     
-    void customerNationKey(int& key, Join<Join<Join<Join<Lineitem,Orders>,Supplier>,Customer>,Nation1> const& r)
+    void customerNationKey(int& key, Join<Join<Join<Join<LineitemProjection,OrdersProjection>,SupplierProjection>,CustomerProjection>,Nation1> const& r)
     {
         key = r.c_nationkey;
     }
@@ -485,7 +722,7 @@ namespace Q7
         key = nation.n2.n_nationkey;
     }
 
-    bool filterNation(Join<Join<Join<Join<Join<Lineitem,Orders>,Supplier>,Customer>,Nation1>,Nation2> const& r) 
+    bool filterNation(Join<Join<Join<Join<Join<LineitemProjection,OrdersProjection>,SupplierProjection>,CustomerProjection>,Nation1>,Nation2> const& r) 
     {
         return (STREQ(r.n1.n_name, "UNITED STATES") && STREQ(r.n2.n_name, "INDONESIA"))
             || (STREQ(r.n2.n_name, "UNITED STATES") && STREQ(r.n1.n_name, "INDONESIA"));
@@ -539,7 +776,7 @@ namespace Q7
         }
     };
 
-    void map(Pair<Shipping,double>& pair, Join<Join<Join<Join<Join<Lineitem,Orders>,Supplier>,Customer>,Nation1>,Nation2> const& r)
+    void map(Pair<Shipping,double>& pair, Join<Join<Join<Join<Join<LineitemProjection,OrdersProjection>,SupplierProjection>,CustomerProjection>,Nation1>,Nation2> const& r)
     {
         STRCPY(pair.key.supp_nation, r.n1.n_name);
         STRCPY(pair.key.cust_nation, r.n2.n_name);
@@ -559,12 +796,20 @@ namespace Q7
     RDD< Pair<Shipping,double> > * cachedQuery() 
     { 
         return
-            cache->lineitem.get()->filter<filterLineitem>()->           
-            join<Orders, long, lineitemOrderKey, orderKey>(cache->orders.get(), SCALE(1500000))->
-            join<Supplier, int, lineitemSupplierKey, supplierKey>(cache->supplier.get(), SCALE(10000))->
-            join<Customer, int, orderCustomerKey, customerKey>(cache->customer.get(), SCALE(150000))-> 
-            join<Nation1, int, supplierNationKey, nation1Key>((RDD<Nation1>*)cache->nation.get(), 25)->
-            join<Nation2, int, customerNationKey, nation2Key>((RDD<Nation2>*)cache->nation.get(), 25)->
+            cache->lineitem.get()->
+            filter<filterLineitem>()->           
+            project<LineitemProjection, projectLineitem>()->            
+            join<OrdersProjection,long,lineitemOrderKey,orderKey>(cache->orders.get()->
+                                                                  project<OrdersProjection,projectOrders>(), 
+                                                                  SCALE(1500000))->
+            join<SupplierProjection,int,lineitemSupplierKey,supplierKey>(cache->supplier.get()->
+                                                                         project<SupplierProjection,projectSupplier>(),
+                                                                         SCALE(10000))->
+            join<CustomerProjection,int,orderCustomerKey,customerKey>(cache->customer.get()->
+                                                                      project<CustomerProjection,projectCustomer>(),
+                                                                      SCALE(150000))-> 
+            join<Nation1,int,supplierNationKey,nation1Key>((RDD<Nation1>*)cache->nation.get(), 25)->
+            join<Nation2,int,customerNationKey,nation2Key>((RDD<Nation2>*)cache->nation.get(), 25)->
             filter<filterNation>()->
             mapReduce<Shipping,double,map,sum>(25*25*100)->
             sort<byShipping>(25*25*100);
@@ -572,6 +817,99 @@ namespace Q7
 }
 namespace Q8
 {
+    struct LineitemProjection 
+    {
+        long   l_orderkey;
+        int    l_suppkey;
+        int    l_partkey;
+        double l_extendedprice;
+        double l_discount;
+    };
+
+    void projectLineitem(LineitemProjection& out, Lineitem const& in)
+    {
+        out.l_orderkey = in.l_orderkey;
+        out.l_suppkey = in.l_suppkey;
+        out.l_partkey = in.l_partkey;
+        out.l_extendedprice = in.l_extendedprice;
+        out.l_discount = in.l_discount;
+    }
+
+    void lineitemOrderKey(long& key, LineitemProjection const& lineitem)
+    {
+        key = lineitem.l_orderkey;
+    }
+
+    struct OrdersProjection
+    {
+        int o_orderkey;
+        int o_custkey;
+        date_t o_orderdate;
+    };
+
+    void projectOrders(OrdersProjection& out, Orders const& in)
+    {
+        out.o_orderkey = in.o_orderkey;
+        out.o_custkey = in.o_custkey;
+        out.o_orderdate = in.o_orderdate;
+    }            
+
+    void orderKey(long& key, OrdersProjection const& in)
+    {
+        key = in.o_orderkey;
+    }
+    
+    struct CustomerProjection
+    {
+        int c_custkey;
+        int c_nationkey;
+    };
+    
+    void projectCustomer(CustomerProjection& out, Customer const& in)
+    {
+        out.c_custkey = in.c_custkey;
+        out.c_nationkey = in.c_nationkey;
+    }
+    
+    void customerKey(int& key, CustomerProjection const& customer)
+    {
+        key = customer.c_custkey;
+    }
+
+    struct PartProjection
+    {
+        int p_partkey;
+        char p_type[25];
+     };
+
+    void projectPart(PartProjection& out, Part const& in)
+    {
+        out.p_partkey = in.p_partkey;
+        STRCPY(out.p_type, in.p_type);
+    }            
+
+    void partKey(int& key, PartProjection const& in)
+    {
+        key = in.p_partkey;
+    }
+
+    struct SupplierProjection
+    {
+        int s_suppkey;
+        int s_nationkey;
+    };
+
+    void projectSupplier(SupplierProjection& out, Supplier const& in)
+    {
+        out.s_suppkey = in.s_suppkey;
+        out.s_nationkey = in.s_nationkey;
+    }            
+
+    void supplierKey(int& key, SupplierProjection const& in)
+    {
+        key = in.s_suppkey;
+    }
+
     struct Nation1 { Nation n1; };
     struct Nation2 { Nation n2; };
 
@@ -590,27 +928,27 @@ namespace Q8
         return STREQ(region.r_name, "ASIA");
     }
 
-    void lineitemSupplierKey(int& key, Join<Join<Lineitem,Orders>,Part> const& r)
+    void lineitemSupplierKey(int& key, Join<Join<LineitemProjection,OrdersProjection>,PartProjection> const& r)
     {
         key = r.l_suppkey;
     }
 
-    void lineitemPartKey(int& key, Join<Lineitem,Orders> const& r)
+    void lineitemPartKey(int& key, Join<LineitemProjection,OrdersProjection> const& r)
     {
         key = r.l_partkey;
     }
 
-    void orderCustomerKey(int& key, Join<Join<Join<Lineitem,Orders>,Part>,Supplier> const& r)
+    void orderCustomerKey(int& key, Join<Join<Join<LineitemProjection,OrdersProjection>,PartProjection>,SupplierProjection> const& r)
     {
         key = r.o_custkey;
     }
 
-    void supplierNationKey(int& key, Join<Join<Join<Join<Lineitem,Orders>,Part>,Supplier>,Customer> const& r)
+    void supplierNationKey(int& key, Join<Join<Join<Join<LineitemProjection,OrdersProjection>,PartProjection>,SupplierProjection>,CustomerProjection> const& r)
     {
         key = r.s_nationkey;
     }
     
-    void customerNationKey(int& key, Join<Join<Join<Join<Join<Lineitem,Orders>,Part>,Supplier>,Customer>,Nation1> const& r)
+    void customerNationKey(int& key, Join<Join<Join<Join<Join<LineitemProjection,OrdersProjection>,PartProjection>,SupplierProjection>,CustomerProjection>,Nation1> const& r)
     {
         key = r.c_nationkey;
     }
@@ -625,7 +963,7 @@ namespace Q8
         key = nation.n2.n_nationkey;
     }
 
-    void nationRegionKey(int& key, Join<Join<Join<Join<Join<Join<Lineitem,Orders>,Part>,Supplier>,Customer>,Nation1>,Nation2> const& r)
+    void nationRegionKey(int& key, Join<Join<Join<Join<Join<Join<LineitemProjection,OrdersProjection>,PartProjection>,SupplierProjection>,CustomerProjection>,Nation1>,Nation2> const& r)
     {
         key = r.n1.n_regionkey;
     }
@@ -640,7 +978,7 @@ namespace Q8
         }
     };
 
-    void map(Pair<int,Volume>& pair, Join<Join<Join<Join<Join<Join<Join<Lineitem,Orders>,Part>,Supplier>,Customer>,Nation1>,Nation2>,Region> const& r)
+    void map(Pair<int,Volume>& pair, Join<Join<Join<Join<Join<Join<Join<LineitemProjection,OrdersProjection>,PartProjection>,SupplierProjection>,CustomerProjection>,Nation1>,Nation2>,Region> const& r)
     {
         double volume = r.l_extendedprice * (1-r.l_discount);
         pair.value.nation = STREQ(r.n2.n_name, "INDONESIA") ? volume : 0;
@@ -679,13 +1017,24 @@ namespace Q8
     { 
         return
             cache->lineitem.get()->
-            join<Orders, long, lineitemOrderKey, orderKey>(cache->orders.get()->filter<orderRange>(), SCALE(1500000))->
-            join<Part, int, lineitemPartKey, partKey>(cache->part.get()->filter<partType>(), SCALE(200000))->
-            join<Supplier, int, lineitemSupplierKey, supplierKey>(cache->supplier.get(), SCALE(10000))->
-            join<Customer, int, orderCustomerKey, customerKey>(cache->customer.get(), SCALE(150000))-> 
-            join<Nation1, int, supplierNationKey, nation1Key>((RDD<Nation1>*)cache->nation.get(), 25)->
-            join<Nation2, int, customerNationKey, nation2Key>((RDD<Nation2>*)cache->nation.get(), 25)->
-            join<Region, int, nationRegionKey, regionKey>(cache->region.get()->filter<regionName>(), 5)->
+            project<LineitemProjection,projectLineitem>()->            
+            join<OrdersProjection,long,lineitemOrderKey,orderKey>(cache->orders.get()->
+                                                                  filter<orderRange>()->
+                                                                  project<OrdersProjection,projectOrders>(),
+                                                                  SCALE(1500000))->
+            join<PartProjection,int,lineitemPartKey,partKey>(cache->part.get()->
+                                                             filter<partType>()->
+                                                             project<PartProjection,projectPart>(),
+                                                             SCALE(200000))->
+            join<SupplierProjection,int,lineitemSupplierKey,supplierKey>(cache->supplier.get()->
+                                                                         project<SupplierProjection,projectSupplier>(),
+                                                                         SCALE(10000))->
+            join<CustomerProjection,int,orderCustomerKey,customerKey>(cache->customer.get()->
+                                                                      project<CustomerProjection,projectCustomer>(),
+                                                                      SCALE(150000))-> 
+            join<Nation1,int,supplierNationKey,nation1Key>((RDD<Nation1>*)cache->nation.get(),25)->
+            join<Nation2,int,customerNationKey,nation2Key>((RDD<Nation2>*)cache->nation.get(),25)->
+            join<Region,int,nationRegionKey, regionKey>(cache->region.get()->filter<regionName>(), 5)->
             mapReduce<int,Volume,map,reduce>(100)->
             project<Share, mkt>()->
             sort<byYear>(100);
@@ -693,31 +1042,127 @@ namespace Q8
 }
 namespace Q9
 {
+    struct LineitemProjection 
+    {
+        long   l_orderkey;
+        int    l_suppkey;
+        int    l_partkey;
+        double l_extendedprice;
+        double l_discount;
+        double l_quantity;
+    };
+
+    void projectLineitem(LineitemProjection& out, Lineitem const& in)
+    {
+        out.l_orderkey = in.l_orderkey;
+        out.l_suppkey = in.l_suppkey;
+        out.l_partkey = in.l_partkey;
+        out.l_extendedprice = in.l_extendedprice;
+        out.l_discount = in.l_discount;
+        out.l_quantity = in.l_quantity;
+    }
+
+    void lineitemOrderKey(long& key, LineitemProjection const& lineitem)
+    {
+        key = lineitem.l_orderkey;
+    }
+
+    struct OrdersProjection
+    {
+        int o_orderkey;
+        int o_orderdate;
+    };
+
+    void projectOrders(OrdersProjection& out, Orders const& in)
+    {
+        out.o_orderkey = in.o_orderkey;
+        out.o_orderdate = in.o_orderdate;
+    }            
+
+    void orderKey(long& key, OrdersProjection const& in)
+    {
+        key = in.o_orderkey;
+    }
+    
+    struct SupplierProjection
+    {
+        int s_suppkey;
+        int s_nationkey;
+    };
+
+    void projectSupplier(SupplierProjection& out, Supplier const& in)
+    {
+        out.s_suppkey = in.s_suppkey;
+        out.s_nationkey = in.s_nationkey;
+    }            
+
+    void supplierKey(int& key, SupplierProjection const& in)
+    {
+        key = in.s_suppkey;
+    }
+
+    struct PartProjection
+    {
+        int p_partkey;
+        name_t p_name;
+     };
+
+    void projectPart(PartProjection& out, Part const& in)
+    {
+        out.p_partkey = in.p_partkey;
+        STRCPY(out.p_name, in.p_name);
+    }            
+
+    void partKey(int& key, PartProjection const& in)
+    {
+        key = in.p_partkey;
+    }
+
+    struct PartsuppProjection
+    {
+        int ps_partkey;
+        int ps_suppkey;
+        double ps_supplycost;
+     };
+
+    void projectPartsupp(PartsuppProjection& out, Partsupp const& in)
+    {
+        out.ps_partkey = in.ps_partkey;
+        out.ps_suppkey = in.ps_suppkey;
+        out.ps_supplycost = in.ps_supplycost;
+    }            
+
+    void partsuppKey(PartsuppKey& key, PartsuppProjection const& in)
+    {
+        key.ps_partkey = in.ps_partkey;
+        key.ps_suppkey = in.ps_suppkey;
+    }
+
     bool partName(Part const& part)
     {
         return strstr(part.p_name, "ghost") != NULL;
     }
 
-    void lineitemSupplierKey(int& key, Join<Join<Join<Lineitem,Orders>,Part>,Partsupp> const& r)
+    void lineitemSupplierKey(int& key, Join<Join<Join<LineitemProjection,OrdersProjection>,PartProjection>,PartsuppProjection> const& r)
     {
         key = r.l_suppkey;
     }
 
-    void lineitemPartKey(int& key, Join<Lineitem,Orders> const& r)
+    void lineitemPartKey(int& key, Join<LineitemProjection,OrdersProjection> const& r)
     {
         key = r.l_partkey;
     }
 
 
-    void supplierNationKey(int& key, Join<Join<Join<Join<Lineitem,Orders>,Part>,Partsupp>,Supplier> const& r)
+    void supplierNationKey(int& key, Join<Join<Join<Join<LineitemProjection,OrdersProjection>,PartProjection>,PartsuppProjection>,SupplierProjection> const& r)
     {
         key = r.s_nationkey;
     }
     
-    void lineitemPartSuppKey(PartSuppKey& ps, Join<Join<Lineitem,Orders>,Part> const& r)
+    void lineitemPartsuppKey(PartsuppKey& ps, Join<Join<LineitemProjection,OrdersProjection>,PartProjection> const& r)
     {
-        ps.partkey = r.l_partkey;
-        ps.suppkey = r.l_suppkey;
+        ps.ps_partkey = r.l_partkey;
+        ps.ps_suppkey = r.l_suppkey;
     }
     
     struct Profit
@@ -754,7 +1199,7 @@ namespace Q9
         } 
     };
 
-    void map(Pair<Profit,double>& pair, Join<Join<Join<Join<Join<Lineitem,Orders>,Part>,Partsupp>,Supplier>,Nation> const& r)
+    void map(Pair<Profit,double>& pair, Join<Join<Join<Join<Join<LineitemProjection,OrdersProjection>,PartProjection>,PartsuppProjection>,SupplierProjection>,Nation> const& r)
     {
         pair.value = r.l_extendedprice * (1-r.l_discount)-r.ps_supplycost * r.l_quantity;
         STRCPY(pair.key.nation, r.n_name);
@@ -771,17 +1216,65 @@ namespace Q9
     { 
         return
             cache->lineitem.get()->
-            join<Orders, long, lineitemOrderKey, orderKey>(cache->orders.get(), SCALE(1500000))->
-            join<Part, int, lineitemPartKey, partKey>(cache->part.get()->filter<partName>(), SCALE(200000))->
-            join<Partsupp, PartSuppKey, lineitemPartSuppKey, partsuppKey>(cache->partsupp.get(), SCALE(800000))->
-            join<Supplier, int, lineitemSupplierKey, supplierKey>(cache->supplier.get(), SCALE(10000))->
-            join<Nation, int, supplierNationKey, nationKey>(cache->nation.get(), 25)->
+            project<LineitemProjection,projectLineitem>()->            
+            join<OrdersProjection,long,lineitemOrderKey,orderKey>(cache->orders.get()->
+                                                                  project<OrdersProjection,projectOrders>(),
+                                                                  SCALE(1500000))->
+            join<PartProjection,int,lineitemPartKey,partKey>(cache->part.get()->
+                                                             filter<partName>()->
+                                                             project<PartProjection,projectPart>(),
+                                                             SCALE(200000))->
+            join<PartsuppProjection,PartsuppKey,lineitemPartsuppKey,partsuppKey>(cache->partsupp.get()->
+                                                                                 project<PartsuppProjection,projectPartsupp>(),
+                                                                                 SCALE(800000))->
+            join<SupplierProjection,int,lineitemSupplierKey,supplierKey>(cache->supplier.get()->
+                                                                         project<SupplierProjection,projectSupplier>(),
+                                                                         SCALE(10000))->
+            join<Nation,int,supplierNationKey,nationKey>(cache->nation.get(), 25)->
             mapReduce<Profit,double,map,sum>(25*100)->
             sort<byNationYear>(100);
     }    
 }
 namespace Q10
 {
+    struct LineitemProjection 
+    {
+        long   l_orderkey;
+        double l_extendedprice;
+        double l_discount;
+    };
+
+    void projectLineitem(LineitemProjection& out, Lineitem const& in)
+    {
+        out.l_orderkey = in.l_orderkey;
+        out.l_extendedprice = in.l_extendedprice;
+        out.l_discount = in.l_discount;
+    }
+
+    void lineitemOrderKey(long& key, LineitemProjection const& lineitem)
+    {
+        key = lineitem.l_orderkey;
+    }
+
+    struct OrdersProjection
+    {
+        int o_orderkey;
+        int o_custkey;
+        date_t o_orderdate;
+    };
+
+    void projectOrders(OrdersProjection& out, Orders const& in)
+    {
+        out.o_orderkey = in.o_orderkey;
+        out.o_custkey = in.o_custkey;
+        out.o_orderdate = in.o_orderdate;
+    }            
+
+    void orderKey(long& key, OrdersProjection const& in)
+    {
+        key = in.o_orderkey;
+    }
+    
     bool orderRange(Orders const& orders) 
     {
         return orders.o_orderdate >= 19941101 && orders.o_orderdate < 19950201;
@@ -792,12 +1285,12 @@ namespace Q10
         return l.l_returnflag == 'R';
     }
 
-    void orderCustomerKey(int& key, Join<Lineitem,Orders> const& r)
+    void orderCustomerKey(int& key, Join<LineitemProjection,OrdersProjection> const& r)
     {
         key = r.o_custkey;
     }
 
-    void customerNationKey(int& key, Join<Join<Lineitem,Orders>,Customer> const& r)
+    void customerNationKey(int& key, Join<Join<LineitemProjection,OrdersProjection>,Customer> const& r)
     {
         key = r.c_nationkey;
     }
@@ -858,7 +1351,7 @@ namespace Q10
         } 
     };
 
-    void map(Pair<GroupBy,double>& pair, Join<Join<Join<Lineitem,Orders>,Customer>,Nation> const& r)
+    void map(Pair<GroupBy,double>& pair, Join<Join<Join<LineitemProjection,OrdersProjection>,Customer>,Nation> const& r)
     {
         pair.key.c_custkey = r.c_custkey;
         STRCPY(pair.key.c_name, r.c_name);
@@ -878,16 +1371,62 @@ namespace Q10
     RDD< Pair<GroupBy,double> >* cachedQuery() 
     { 
         return
-            cache->lineitem.get()->filter<lineitemFilter>()->
-            join<Orders, long, lineitemOrderKey, orderKey>(cache->orders.get()->filter<orderRange>(), SCALE(1500000))->
-            join<Customer, int, orderCustomerKey, customerKey>(cache->customer.get(), SCALE(150000))-> 
-            join<Nation, int, customerNationKey, nationKey>(cache->nation.get(), 25)->
+            cache->lineitem.get()->
+            filter<lineitemFilter>()->
+            project<LineitemProjection,projectLineitem>()->            
+            join<OrdersProjection,long,lineitemOrderKey,orderKey>(cache->orders.get()->
+                                                                  filter<orderRange>()->
+                                                                  project<OrdersProjection,projectOrders>(),
+                                                                  SCALE(1500000))->
+            join<Customer,int,orderCustomerKey,customerKey>(cache->customer.get(),
+                                                            SCALE(150000))-> 
+            join<Nation,int,customerNationKey,nationKey>(cache->nation.get(), 25)->
             mapReduce<GroupBy,double,map,sum>(1000)->
             sort<byRevenue>(1000);
     }    
 }
 namespace Q12
 {
+    struct LineitemProjection 
+    {
+        long   l_orderkey;
+        date_t l_shipdate;
+        date_t l_commitdate;
+        date_t l_receiptdate;
+        shipmode_t l_shipmode;
+    };
+
+    void projectLineitem(LineitemProjection& out, Lineitem const& in)
+    {
+        out.l_orderkey = in.l_orderkey;
+        out.l_shipdate = in.l_shipdate;
+        out.l_commitdate = in.l_commitdate;
+        out.l_receiptdate = in.l_receiptdate;
+        STRCPY(out.l_shipmode, in.l_shipmode);
+    }
+
+    void lineitemOrderKey(long& key, LineitemProjection const& lineitem)
+    {
+        key = lineitem.l_orderkey;
+    }
+
+    struct OrdersProjection
+    {
+        int o_orderkey;
+        priority_t o_orderpriority;
+    };
+
+    void projectOrders(OrdersProjection& out, Orders const& in)
+    {
+        out.o_orderkey = in.o_orderkey;
+        STRCPY(out.o_orderpriority, in.o_orderpriority);
+    }            
+
+    void orderKey(long& key, OrdersProjection const& in)
+    {
+        key = in.o_orderkey;
+    }
+    
     bool lineitemFilter(Lineitem const& l)
     {
         return l.l_commitdate < l.l_receiptdate
@@ -907,7 +1446,7 @@ namespace Q12
         }
     };
 
-    void map(Pair<Key<shipmode_t>,LineCount>& pair, Join<Lineitem,Orders> const& r)
+    void map(Pair<Key<shipmode_t>,LineCount>& pair, Join<LineitemProjection,OrdersProjection> const& r)
     {
         STRCPY(pair.key.val, r.l_shipmode);
         pair.value.high = STREQ(r.o_orderpriority, "1-URGENT") || STREQ(r.o_orderpriority, "2-HIGH");
@@ -928,26 +1467,55 @@ namespace Q12
     RDD< Pair<Key<shipmode_t>,LineCount> >* cachedQuery() 
     { 
         return
-            cache->lineitem.get()->filter<lineitemFilter>()->
-            join<Orders, long, lineitemOrderKey, orderKey>(cache->orders.get(), SCALE(1500000))->
+            cache->lineitem.get()->
+            filter<lineitemFilter>()->
+            project<LineitemProjection,projectLineitem>()->                        
+            join<OrdersProjection,long,lineitemOrderKey,orderKey>(cache->orders.get()->
+                                                                  project<OrdersProjection,projectOrders>(), 
+                                                                  SCALE(1500000))->
             mapReduce<Key<shipmode_t>,LineCount,map,reduce>(100)->
             sort<byShipmode>(100);
     }    
 }
 namespace Q13
 {
+    struct OrdersProjection
+    {
+        int o_custkey;
+    };
+    
+    void projectOrders(OrdersProjection& out, Orders const& in)
+    {
+        out.o_custkey = in.o_custkey;
+    }
+
+    void orderCustomerKey(int& key, OrdersProjection const& r)
+    {
+        key = r.o_custkey;
+    }
+    
+    struct CustomerProjection
+    {
+        int c_custkey;
+    };
+    
+    void projectCustomer(CustomerProjection& out, Customer const& in)
+    {
+        out.c_custkey = in.c_custkey;
+    }
+    
+    void customerKey(int& key, CustomerProjection const& customer)
+    {
+        key = customer.c_custkey;
+    }
+
     bool orderFilter(Orders const& o)
     {
         char const* occ = strstr(o.o_comment, "unusual");
         return occ == NULL || strstr(occ + 7, "packages") == NULL;
     }
 
-    void orderCustomerKey(int& key, Orders const& r)
-    {
-        key = r.o_custkey;
-    }
-
-    void map1(Pair<int,int>& pair, Join<Orders,Customer> const& r)
+    void map1(Pair<int,int>& pair, Join<OrdersProjection,CustomerProjection> const& r)
     {
         pair.key = r.c_custkey;
         pair.value = 1;
@@ -968,8 +1536,12 @@ namespace Q13
     RDD< Pair<int,int> >* cachedQuery() 
     { 
         return
-            cache->orders.get()->filter<orderFilter>()->
-            join<Customer, int, orderCustomerKey, customerKey>(cache->customer.get(), SCALE(150000), true)->
+            cache->orders.get()->
+            filter<orderFilter>()->
+            project<OrdersProjection, projectOrders>()->
+            join<CustomerProjection,int,orderCustomerKey,customerKey>(cache->customer.get()->
+                                                                      project<CustomerProjection,projectCustomer>(),
+                                                                      SCALE(150000), true)->
             mapReduce<int,int,map1,count>(1000000)->
             mapReduce<int,int,map2,count>(10000)->
             sort<byCustDistCount>(10000);
@@ -977,6 +1549,44 @@ namespace Q13
 }
 namespace Q14
 {                
+    struct LineitemProjection 
+    {
+        int    l_partkey;
+        date_t l_shipdate;
+        double l_extendedprice;
+        double l_discount;
+    };
+
+    void projectLineitem(LineitemProjection& out, Lineitem const& in)
+    {
+        out.l_partkey = in.l_partkey;
+        out.l_shipdate = in.l_shipdate;
+        out.l_extendedprice = in.l_extendedprice;
+        out.l_discount = in.l_discount;
+    }
+
+    void lineitemPartKey(int& key, LineitemProjection const& lineitem)
+    {
+        key = lineitem.l_partkey;
+    }
+
+    struct PartProjection
+    {
+        int p_partkey;
+        char p_type[25];
+    };
+
+    void projectPart(PartProjection& out, Part const& in)
+    {
+        out.p_partkey = in.p_partkey;
+        STRCPY(out.p_type, in.p_type);
+    }            
+
+    void partKey(int& key, PartProjection const& in)
+    {
+        key = in.p_partkey;
+    }
+
     bool lineitemFilter(Lineitem const& l)
     {
         return l.l_shipdate >= 19940301 && l.l_shipdate < 19940401;
@@ -989,9 +1599,8 @@ namespace Q14
 
         PromoRevenue(double p = 0.0, double r = 0.0) : promo(p), revenue(r) {}
     };
-
       
-    void promoRevenue(PromoRevenue& acc, Join<Lineitem,Part> const& r) 
+    void promoRevenue(PromoRevenue& acc, Join<LineitemProjection,PartProjection> const& r) 
     { 
         acc.promo += strncmp(r.p_type, "PROMO", 5) == 0 ? r.l_extendedprice*(1-r.l_discount) : 0.0;
         acc.revenue += r.l_extendedprice * (1 - r.l_discount);
@@ -1005,15 +1614,65 @@ namespace Q14
     RDD<double>* cachedQuery() 
     { 
         return
-            cache->lineitem.get()->filter<lineitemFilter>()->
-            join<Part, int, lineitemPartKey, partKey>(cache->part.get(), SCALE(200000))->
-            reduce<PromoRevenue, promoRevenue>(PromoRevenue(0,0))->
-            project<double, relation>();
+            cache->lineitem.get()->
+            filter<lineitemFilter>()->
+            project<LineitemProjection,projectLineitem>()->                        
+            join<PartProjection,int,lineitemPartKey,partKey>(cache->part.get()->
+                                                             project<PartProjection,projectPart>(),
+                                                             SCALE(200000))->
+            reduce<PromoRevenue,promoRevenue>(PromoRevenue(0,0))->
+            project<double,relation>();
     }    
 }
 namespace Q19
 {   
-    bool brandFilter(Join<Lineitem,Part> const& r)
+    struct LineitemProjection 
+    {
+        int    l_partkey;
+        double l_extendedprice;
+        double l_discount;
+        double l_quantity;
+        char   l_shipinstruct[25];
+        shipmode_t l_shipmode;
+    };
+
+    void projectLineitem(LineitemProjection& out, Lineitem const& in)
+    {
+        out.l_partkey = in.l_partkey;
+        out.l_extendedprice = in.l_extendedprice;
+        out.l_discount = in.l_discount;
+        out.l_quantity = in.l_quantity;
+        STRCPY(out.l_shipinstruct, in.l_shipinstruct);
+        STRCPY(out.l_shipmode, in.l_shipmode);
+    }
+
+    void lineitemPartKey(int& key, LineitemProjection const& lineitem)
+    {
+        key = lineitem.l_partkey;
+    }
+
+    struct PartProjection
+    {
+        int p_partkey;
+        int p_size; 
+        char p_brand[10];
+        char p_container[10];
+    };
+
+    void projectPart(PartProjection& out, Part const& in)
+    {
+        out.p_partkey = in.p_partkey;
+        out.p_size = in.p_size;
+        STRCPY(out.p_brand, in.p_brand);
+        STRCPY(out.p_container, in.p_container);
+    }            
+
+    void partKey(int& key, PartProjection const& in)
+    {
+        key = in.p_partkey;
+    }
+
+    bool brandFilter(Join<LineitemProjection,PartProjection> const& r)
     {
         return 
             (STREQ(r.p_brand, "Brand#31")
@@ -1038,7 +1697,7 @@ namespace Q19
              && STREQ(r.l_shipinstruct, "DELIVER IN PERSON"));
     }
 
-    void revenue(double& acc, Join<Lineitem,Part> const& r)
+    void revenue(double& acc, Join<LineitemProjection,PartProjection> const& r)
     {
         acc += r.l_extendedprice * (1 - r.l_discount);
     }
@@ -1047,7 +1706,9 @@ namespace Q19
     { 
         return
             cache->lineitem.get()->
-            join<Part, int, lineitemPartKey, partKey>(cache->part.get(), SCALE(200000))->
+            project<LineitemProjection,projectLineitem>()->                        
+            join<PartProjection,int,lineitemPartKey,partKey>(cache->part.get()->
+                                                             project<PartProjection,projectPart>(), SCALE(200000))->
             filter<brandFilter>()->
             reduce<double, revenue>(0);
     }    
