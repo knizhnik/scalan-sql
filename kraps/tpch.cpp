@@ -1382,7 +1382,7 @@ namespace Q10
                                                             SCALE(150000))-> 
             join<Nation,int,customerNationKey,nationKey>(cache->nation.get(), 25)->
             mapReduce<GroupBy,double,map,sum>(1000)->
-            sort<byRevenue>(1000);
+            top<byRevenue>(20);
     }    
 }
 namespace Q12
