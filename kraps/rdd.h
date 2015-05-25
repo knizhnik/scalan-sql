@@ -139,32 +139,71 @@ class RDD
   public:
     virtual bool next(T& record) = 0;
 
+    /**
+     * Filter input RDD
+     */
     template<bool (*predicate)(T const&)>
     RDD<T>* filter();
 
+    /**
+     * Perfrom map-reduce
+     */
     template<class K,class V,void (*map)(Pair<K,V>& out, T const& in), void (*reduce)(V& dst, V const& src)>
     RDD< Pair<K,V> >* mapReduce(size_t estimation);
 
+    /**
+     * Perform aggregation of input RDD 
+     */
     template<class S,void (*accumulate)(S& state,  T const& in)>
     RDD<S>* reduce(S const& initState);
 
+    /**
+     * Map recortds of input RDD
+     */
     template<class P, void (*projection)(P& out, T const& in)>
     RDD<P>* project();
 
+    /**
+     * Sort input RDD
+     */
     template<int (*compare)(T const* a, T const* b)> 
     RDD<T>* sort(size_t estimation);
 
+    /**
+     * Find top N records according to provided comparison function
+     */
     template<int (*compare)(T const* a, T const* b)> 
     RDD<T>* top(size_t n);
 
+    /**
+     * Left join two RDDs
+     */
     template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner)>
     RDD< Join<T,I> >* join(RDD<I>* with, size_t estimation, bool outerJoin = false);
 
+    /**
+     * Replicate data between all nodes.
+     * Broadcast local RDD data to all nodes and gather data from all nodes.
+     * As a result all nodes get the same replicas of input data
+     */
+    virtual RDD<T>* replicate();
+
+    /**
+     * Return single record from input RDD or substitute it with default value of RDD is empty.
+     * This method is usful for obtaining aggregation result
+     */
+    T result(T const& defaultValue) {
+        T record;
+        return next(record) ? record : defaultValue;
+    }
+
+    /**
+     * Print RDD records to the stream
+     */
     void output(FILE* out);
 
     virtual~RDD() {}
 
-    virtual RDD<T>* broadcast(Thread*& thread);
 };
 
 //
@@ -345,7 +384,7 @@ private:
 };
 
 //
-// Broadcast RDD replicates data to all nodes
+// Replicate RDD replicates data to all nodes
 //
 template<class T>
 class BroadcastJob : public Job
@@ -407,6 +446,15 @@ private:
     Queue* const queue;
 };
 
+template<class T>
+class ReplicateRDD : public GatherRDD<T>
+{
+public:
+    ReplicateRDD(RDD<T>* input, Queue* queue) : GatherRDD<T>(queue), thread(new BroadcastJob<T>(input, queue)) {}
+private:
+    Thread thread;
+};
+    
 
 //
 // Read data from OS plain file
@@ -439,10 +487,9 @@ class DirRDD : public RDD<T>
   public:
     DirRDD(char const* path) : dir(path), segno(Cluster::instance->nodeId), step(Cluster::instance->nNodes), f(NULL) {}
 
-    RDD<T>* broadcast(Thread*& thread) { 
+    RDD<T>* replicate() { 
         segno = 0;
         step = 1;                               
-        thread = NULL;
         return this;
     }
 
@@ -808,7 +855,7 @@ public:
         // First load inner relation in hash...
         if (estimation <= Cluster::instance->broadcastJoinThreshold) { 
             // broadcast inner RDD
-            loadHash(innerRDD->broadcast(scatter));
+            loadHash(innerRDD->replicate());
             shuffle = false;
         } else {     
             // shuffle inner RDD
@@ -997,10 +1044,9 @@ void RDD<T>::output(FILE* out)
 }
 
 template<class T>
-inline RDD<T>* RDD<T>::broadcast(Thread* &thread) { 
+inline RDD<T>* RDD<T>::replicate() { 
     Queue* queue = Cluster::instance->getQueue();
-    thread = new Thread(new BroadcastJob<T>(this, queue));
-    return new GatherRDD<T>(queue);
+    return new ReplicateRDD<T>(this, queue);
 }
 
 template<class T>
