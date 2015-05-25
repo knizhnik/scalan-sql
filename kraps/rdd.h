@@ -130,6 +130,13 @@ inline void print(char const* val, FILE* out)
     fprintf(out, "%s", val);
 }
 
+enum JoinKind 
+{
+    InnerJoin,
+    OuterJoin, 
+    AntiJoin
+};
+
 //
 // Abstract RDD (Resilient Distributed Dataset)
 //
@@ -179,7 +186,13 @@ class RDD
      * Left join two RDDs
      */
     template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner)>
-    RDD< Join<T,I> >* join(RDD<I>* with, size_t estimation, bool outerJoin = false);
+    RDD< Join<T,I> >* join(RDD<I>* with, size_t estimation, JoinKind kind = InnerJoin);
+
+    /**
+     * Left simijoin two RDDs
+     */
+    template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner)>
+    RDD<T>* semijoin(RDD<I>* with, size_t estimation, JoinKind kind = InnerJoin);
 
     /**
      * Replicate data between all nodes.
@@ -850,8 +863,9 @@ template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), vo
 class HashJoinRDD : public RDD< Join<O,I> >
 {
 public:
-    HashJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t estimation, bool outerJoin) 
-    : isOuterJoin(outerJoin), table(new Entry*[estimation]), size(estimation), inner(NULL), outer(outerRDD), scatter(NULL) {
+    HashJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t estimation, JoinKind joinKind) 
+    : kind(joinKind), table(new Entry*[estimation]), size(estimation), inner(NULL), outer(outerRDD), scatter(NULL) {
+        assert(kind != AntiJoin);
         // First load inner relation in hash...
         if (estimation <= Cluster::instance->broadcastJoinThreshold) { 
             // broadcast inner RDD
@@ -878,13 +892,14 @@ public:
         if (inner == NULL) { 
             do { 
                 if (!outer->next(outerRec)) { 
+                    inner = NULL;
                     return false;
                 }
                 outerKey(key, outerRec);
                 hash = hashCode(key);
                 size_t h = hash % size;
                 for (inner = table[h]; inner != NULL && !(inner->hash == hash && key == inner->key); inner = inner->collision);
-            } while (inner == NULL && !isOuterJoin);
+            } while (inner == NULL && kind == InnerJoin);
             
             if (inner == NULL) { 
                 (O&)record = outerRec;
@@ -914,7 +929,7 @@ protected:
         size_t hash;
     };
     
-    bool    const isOuterJoin;
+    JoinKind const kind;
     Entry** const table;
     size_t  const size;
     size_t  innerSize;
@@ -956,6 +971,117 @@ protected:
             nChains += chainLen != 0;                
         }
         printf("HashJoin: estimated size=%ld, real size=%ld, collitions=(%ld max, %f avg)\n", size, realSize, maxLen, nChains != 0 ? (double)totalLen/nChains : 0.0);
+        delete entry;
+        delete gather;
+    }
+    void deleteHash() {
+        for (size_t i = 0; i < size; i++) { 
+            Entry *curr, *next;
+            for (curr = table[i]; curr != NULL; curr = next) { 
+                next = curr->collision;
+                delete curr;
+            }
+        }
+        delete[] table;
+    }
+};
+    
+//
+// Semijoin two RDDs using hash table
+//
+template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner)>
+class HashSemiJoinRDD : public RDD<O>
+{
+public:
+    HashSemiJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t estimation, JoinKind joinKind) 
+    : kind(joinKind), table(new Entry*[estimation]), size(estimation), outer(outerRDD), scatter(NULL) {
+        assert(kind != OuterJoin);
+        // First load inner relation in hash...
+        if (estimation <= Cluster::instance->broadcastJoinThreshold) { 
+            // broadcast inner RDD
+            loadHash(innerRDD->replicate());
+            shuffle = false;
+        } else {     
+            // shuffle inner RDD
+            queue = Cluster::instance->getQueue();
+            Thread loader(new ScatterJob<I,K,innerKey>(innerRDD, queue));
+            loadHash(new GatherRDD<I>(queue));
+            queue = Cluster::instance->getQueue();
+            shuffle = true;
+        }
+    }
+
+    bool next(O& record)
+    {
+        if (shuffle && scatter == NULL) { 
+            // .. and then start fetching of outer relation and perform hash lookup
+            scatter = new Thread(new ScatterJob<O,K,outerKey>(outer, queue));
+            outer = new GatherRDD<O>(queue);
+        }
+
+        while (outer->next(record)) { 
+            K key;
+            outerKey(key, record);
+            size_t hash = hashCode(key);
+            Entry* inner;            
+            for (inner = table[hash % size]; inner != NULL && !(inner->hash == hash && key == inner->key); inner = inner->collision);
+            if ((inner != NULL) ^ (kind == AntiJoin)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    ~HashSemiJoinRDD() { 
+        deleteHash();
+        delete outer;
+        delete scatter;
+    }
+protected:
+    struct Entry {
+        K      key;
+        I      record;
+        Entry* collision;
+        size_t hash;
+    };
+    
+    JoinKind const kind;
+    Entry** const table;
+    size_t  const size;
+    size_t  innerSize;
+    RDD<O>* outer;
+    Queue*  queue;
+    Thread* scatter;
+    bool    shuffle;
+
+    void loadHash(RDD<I>* gather) 
+    {
+        Entry* entry = new Entry();
+        memset(table, 0, size*sizeof(Entry*));
+        size_t realSize = 0;
+        while (gather->next(entry->record)) {
+            innerKey(entry->key, entry->record);
+            entry->hash = hashCode(entry->key);
+            size_t h = entry->hash % size;  
+            entry->collision = table[h]; 
+            table[h] = entry;
+            entry = new Entry();
+            realSize += 1;
+        }
+        innerSize = realSize;
+        size_t totalLen = 0;
+        size_t nChains = 0;
+        size_t maxLen = 0;
+        for (size_t i = 0; i < size; i++) { 
+            size_t chainLen = 0;
+            for (Entry* entry = table[i]; entry != NULL; entry = entry->collision) chainLen += 1;
+            if (chainLen > maxLen) { 
+                maxLen = chainLen;
+            }
+            totalLen += chainLen;
+            nChains += chainLen != 0;                
+        }
+        printf("HashSemiJoin: estimated size=%ld, real size=%ld, collitions=(%ld max, %f avg)\n", size, realSize, maxLen, nChains != 0 ? (double)totalLen/nChains : 0.0);
         delete entry;
         delete gather;
     }
@@ -1087,8 +1213,14 @@ inline RDD<T>* RDD<T>::top(size_t n) {
 
 template<class T>
 template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner)>
-RDD< Join<T,I> >* RDD<T>::join(RDD<I>* with, size_t estimation, bool outerJoin) {
-    return new HashJoinRDD<T,I,K,outerKey,innerKey>(this, with, estimation, outerJoin);
+RDD< Join<T,I> >* RDD<T>::join(RDD<I>* with, size_t estimation, JoinKind kind) {
+    return new HashJoinRDD<T,I,K,outerKey,innerKey>(this, with, estimation, kind);
+}
+
+template<class T>
+template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner)>
+RDD<T>* RDD<T>::semijoin(RDD<I>* with, size_t estimation, JoinKind kind) {
+    return new HashSemiJoinRDD<T,I,K,outerKey,innerKey>(this, with, estimation, kind);
 }
 
 #endif

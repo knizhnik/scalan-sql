@@ -1541,7 +1541,7 @@ namespace Q13
             project<OrdersProjection, projectOrders>()->
             join<CustomerProjection,int,orderCustomerKey,customerKey>(cache->customer.get()->
                                                                       project<CustomerProjection,projectCustomer>(),
-                                                                      SCALE(150000), true)->
+                                                                      SCALE(150000), OuterJoin)->
             mapReduce<int,int,map1,count>(1000000)->
             mapReduce<int,int,map2,count>(10000)->
             sort<byCustDistCount>(10000);
