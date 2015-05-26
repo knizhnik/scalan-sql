@@ -5,6 +5,7 @@
 
 #ifdef USE_ZLIB
 
+
 #include <zlib.h>
 
 size_t compress(char* dst, char const* src, size_t length) 
@@ -56,7 +57,7 @@ void decompress(char* dst, char const* src, size_t length, size_t compressedLeng
     }
 }
 
-#elif defined(USE_SIMDCOMP)
+#elif defined(USE_LZH)
     
 
 /* ----------

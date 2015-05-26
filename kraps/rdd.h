@@ -796,8 +796,30 @@ template<class T, int compare(T const* a, T const* b)>
 class TopRDD : public RDD<T>
 {
   public:
-    TopRDD(RDD<T>* input, size_t top) {
-        loadArray(input, top);
+    TopRDD(RDD<T>* input, size_t top) : i(0) {
+        buf = new T[top];
+        size_t n = loadTop(input, 0, top);
+        delete input;
+        
+        Queue* queue = Cluster::instance->getQueue();
+        if (Cluster::instance->isCoordinator()) {         
+            GatherRDD<T> gather(queue);
+            queue->put(Buffer::eof(queue->qid)); // Coordinator already finished it's part of work
+            size = loadTop(&gather, n, top);
+        } else {
+            assert(n*sizeof(T) < Cluster::instance->bufferSize);
+            Queue* coord = Cluster::instance->sendQueues[COORDINATOR];
+            Buffer* msg = Buffer::create(queue->qid, n*sizeof(T));
+            size_t used = 0;
+            for (size_t j = 0; j < n; j++) {
+                used += pack(buf[j], msg->data + used);
+            }
+            assert(used <= n*sizeof(T));
+            msg->size = used;
+            coord->put(msg);
+            coord->put(Buffer::eof(queue->qid));
+            size = 0;
+        }
     }
 
     bool next(T& record) { 
@@ -816,43 +838,28 @@ class TopRDD : public RDD<T>
     T* buf;
     size_t size;
     size_t i;
-
-    typedef int(*comparator_t)(void const* p, void const* q);
-
-    void loadArray(RDD<T>* input, size_t top) { 
-        Queue* queue = Cluster::instance->getQueue();
-        if (Cluster::instance->isCoordinator()) {         
-            Thread loader(new FetchJob<T>(input, queue));
-            GatherRDD<T> gather(queue);
-            T record;
-            buf = new T[top];
-            size_t n = 0;
-            while (gather.next(record)) {
-                size_t l = 0, r = n;
-                while (l < r) {
-                    size_t m = (l + r) >> 1;
-                    if (compare(&buf[m], &record) <= 0) {
-                        l = m + 1;
-                    } else {
-                        r = m;
-                    }
-                }
-                if (r < top) {
-                    if (n < top) {
-                        n += 1;
-                    }
-                    memmove(&buf[r+1], &buf[r], (n-r-1)*sizeof(T));
-                    buf[r] = record;
+    
+    size_t loadTop(RDD<T>* input, size_t n, size_t top) { 
+        T record;
+        while (input->next(record)) {
+            size_t l = 0, r = n;
+            while (l < r) {
+                size_t m = (l + r) >> 1;
+                if (compare(&buf[m], &record) <= 0) {
+                    l = m + 1;
+                } else {
+                    r = m;
                 }
             }
-            size = n;
-        } else { 
-            sendToCoordinator<T>(input, queue);
-            buf = NULL;
-            size = 0;
+            if (r < top) {
+                if (n < top) {
+                    n += 1;
+                }
+                memmove(&buf[r+1], &buf[r], (n-r-1)*sizeof(T));
+                buf[r] = record;
+            }
         }
-        delete input;
-        i = 0;
+        return n;
     }
 };
 
