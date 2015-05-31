@@ -8,6 +8,8 @@
 #include "cluster.h"
 #include "pack.h"
 
+const size_t MAX_PATH_LEN = 1024;
+
 //
 // Hash function for scalar fields
 //
@@ -509,7 +511,7 @@ class DirRDD : public RDD<T>
     bool next(T& record) {
         while (true) {
             if (f == NULL) { 
-                char path[1024];
+                char path[MAX_PATH_LEN];
                 sprintf(path, "%s/%ld.rdd", dir, segno);
                 f = fopen(path, "rb");
                 if (f == NULL) { 
@@ -1103,7 +1105,182 @@ protected:
         delete[] table;
     }
 };
+  
+
+//
+// Join two RDDs using shuffle join
+//
+template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner)>
+class ShuffleJoinRDD : public RDD< Join<O,I> >
+{
+public:
+    ShuffleJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t nShuffleFiles, size_t estimation, JoinKind joinKind) 
+    : kind(joinKind), table(new Entry*[estimation]), nFiles(nShuffleFiles), size(estimation), outerFile(NULL), inner(NULL) {
+        assert(kind != AntiJoin);
+        {
+            // shuffle inner RDD
+            Queue* queue = Cluster::instance->getQueue();
+            Thread loader(new ScatterJob<I,K,innerKey>(innerRDD, queue));
+            qid = queue->qid;
+            saveInnerFiles(new GatherRDD<I>(queue));
+        }
+        {
+            // shuffle outer RDD
+            Queue* queue = Cluster::instance->getQueue();
+            Thread loader(new ScatterJob<O,K,outerKey>(outerRDD, queue));
+            saveOuterFiles(new GatherRDD<O>(queue));
+        }
+        fileNo = 0;
+    }
+
+    bool next(Join<O,I>& record)
+    {
+        if (inner == NULL) { 
+            do { 
+                if (outerFile == NULL) {
+                    char buf[MAX_PATH_LEN];
+                    FILE* innerFile;
+                    while (true) {
+                        if (fileNo++ == nFiles) { 
+                            return false;
+                        }
+                        sprintf(buf, "inner-%d.%d", (int)qid, (int)fileNo);            
+                        innerFile = fopen(buf, "r");
+                        if (innerFile != NULL) {                
+                            sprintf(buf, "outer-%d.%d", (int)qid, (int)fileNo);            
+                            outerFile = fopen(buf, "r");
+                            if (outerFile == NULL) {
+                                fclose(innerFile);
+                                innerFile = NULL;
+                            } else {
+                                break;
+                            }                
+                        }
+                    }
+                    Entry* entry = new Entry();
+                    clearHash();
+                    while (fread(&entry->record, sizeof(I), 1, innerFile) == 1) { 
+                        innerKey(entry->key, entry->record);
+                        entry->hash = hashCode(entry->key);
+                        size_t h = entry->hash % size;  
+                        entry->collision = table[h]; 
+                        table[h] = entry;
+                        entry = new Entry();
+                    }
+                    delete entry;
+                    fclose(innerFile);
+                }
+                if (fread(&outerRec, sizeof(O), 1, outerFile) != 1) { 
+                    fclose(outerFile);
+                    outerFile = NULL;
+                    continue;
+                }
+                outerKey(key, outerRec);
+                hash = hashCode(key);
+                size_t h = hash % size;
+                for (inner = table[h]; inner != NULL && !(inner->hash == hash && key == inner->key); inner = inner->collision);
+            } while (inner == NULL && kind == InnerJoin);
+            
+            if (inner == NULL) { 
+                (O&)record = outerRec;
+                (I&)record = innerRec;
+                return true;
+            }
+        }
+        (O&)record = outerRec;
+        (I&)record = inner->record;
+        do {
+            inner = inner->collision;
+        } while (inner != NULL && !(inner->hash == hash && key == inner->key));
+
+        return true;
+    }
+
+    ~ShuffleJoinRDD() { 
+        clearHash();
+        delete[] table;
+    }
+protected:
+    struct Entry {
+        K      key;
+        I      record;
+        Entry* collision;
+        size_t hash;
+    };
     
+    JoinKind const kind;
+    Entry** const table;
+    size_t  const nFiles;
+    size_t  const size;
+    FILE*   outerFile;
+    O       outerRec;
+    I       innerRec;
+    K       key;
+    size_t  hash;
+    Entry*  inner;
+    qid_t   qid;
+    size_t  fileNo;
+
+    void saveOuterFiles(RDD<O>* input)
+    {
+        char buf[MAX_PATH_LEN];
+        FILE** files = new FILE*[nFiles];
+        for (size_t i = 0; i < nFiles; i++) {
+            sprintf(buf, "outer-%d.%d", (int)qid, (int)i+1);
+            files[i] = fopen(buf, "w");
+            assert(files[i] != NULL);
+        }
+        O record;
+        while (input->next(record)) { 
+            K key;
+            outerKey(key, record);
+            size_t h = hashCode(key) % nFiles;
+            fwrite(&record, sizeof record, 1, files[h]);
+        }
+        for (size_t i = 0; i < nFiles; i++) {
+            fclose(files[i]);
+        }
+        delete[] files;
+        delete input;
+    }
+            
+    void saveInnerFiles(RDD<I>* input)
+    {
+        char buf[MAX_PATH_LEN];
+        FILE** files = new FILE*[nFiles];
+        for (size_t i = 0; i < nFiles; i++) {
+            sprintf(buf, "inner-%d.%d", (int)qid, (int)i+1);
+            files[i] = fopen(buf, "w");
+            assert(files[i] != NULL);
+        }
+        I record;
+        while (input->next(record)) { 
+            K key;
+            innerKey(key, record);
+            size_t h = hashCode(key) % nFiles;
+            fwrite(&record, sizeof record, 1, files[h]);
+        }
+        for (size_t i = 0; i < nFiles; i++) {
+            fclose(files[i]);
+        }
+        delete[] files;
+        delete input;
+    }
+            
+
+    void clearHash() {
+        for (size_t i = 0; i < size; i++) { 
+            Entry *curr, *next;
+            for (curr = table[i]; curr != NULL; curr = next) { 
+                next = curr->collision;
+                delete curr;
+            }
+            table[i] = NULL;
+        }
+    }
+};
+    
+  
 //
 // Cache RDD in memory
 //
@@ -1221,7 +1398,11 @@ inline RDD<T>* RDD<T>::top(size_t n) {
 template<class T>
 template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner)>
 RDD< Join<T,I> >* RDD<T>::join(RDD<I>* with, size_t estimation, JoinKind kind) {
-    return new HashJoinRDD<T,I,K,outerKey,innerKey>(this, with, estimation, kind);
+    if (estimation <= Cluster::instance->inmemJoinThreshold) { 
+        return new HashJoinRDD<T,I,K,outerKey,innerKey>(this, with, estimation, kind);
+    }
+    size_t nFiles = (estimation + Cluster::instance->inmemJoinThreshold - 1) / Cluster::instance->inmemJoinThreshold;
+    return new ShuffleJoinRDD<T,I,K,outerKey,innerKey>(this, with, nFiles, estimation/nFiles, kind);
 }
 
 template<class T>
