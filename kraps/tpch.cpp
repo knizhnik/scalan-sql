@@ -9,32 +9,34 @@ const size_t SF = 100; // scale factor
 #define STRCPY(d,s) strncpy(d,s,sizeof(d))
 #define SCALE(x)    ((x + Cluster::instance->nNodes - 1)*SF/(Cluster::instance->nNodes) + (x / 100)) // take in accoutn data skews
 
+#define TABLE(x) (cache ? (RDD<x>*)cache->_##x.get() : (RDD<x>*)FileManager::load<x>(#x))
 
 class CachedData
 {
   public:
-    CachedRDD<Lineitem> lineitem;
-    CachedRDD<Orders> orders;
-    CachedRDD<Supplier> supplier;
-    CachedRDD<Customer> customer;
-    CachedRDD<Part> part;
-    CachedRDD<Partsupp> partsupp;
-    CachedRDD<Nation> nation;
-    CachedRDD<Region> region;
+    CachedRDD<Lineitem> _Lineitem;
+    CachedRDD<Orders> _Orders;
+    CachedRDD<Supplier> _Supplier;
+    CachedRDD<Customer> _Customer;
+    CachedRDD<Part> _Part;
+    CachedRDD<Partsupp> _Partsupp;
+    CachedRDD<Nation> _Nation;
+    CachedRDD<Region> _Region;
 
     CachedData() : 
-    lineitem(FileManager::load<Lineitem>("lineitem"), SCALE(6000000)),
-    orders(FileManager::load<Orders>("orders"),       SCALE(1500000)),
-    supplier(FileManager::load<Supplier>("supplier"), SCALE(10000)),
-    customer(FileManager::load<Customer>("customer"), SCALE(150000)),
-    part(FileManager::load<Part>("part"),             SCALE(200000)),
-    partsupp(FileManager::load<Partsupp>("partsupp"), SCALE(800000)),
-    nation(FileManager::load<Nation>("nation"),       25),
-    region(FileManager::load<Region>("region"),       5) {}
+    _Lineitem(FileManager::load<Lineitem>("Lineitem"), SCALE(6000000)),
+    _Orders(FileManager::load<Orders>("Orders"),       SCALE(1500000)),
+    _Supplier(FileManager::load<Supplier>("Supplier"), SCALE(10000)),
+    _Customer(FileManager::load<Customer>("Customer"), SCALE(150000)),
+    _Part(FileManager::load<Part>("Part"),             SCALE(200000)),
+    _Partsupp(FileManager::load<Partsupp>("Partsupp"), SCALE(800000)),
+    _Nation(FileManager::load<Nation>("Nation"),       25),
+    _Region(FileManager::load<Region>("Region"),       5) {}
 
 };
 
 CachedData* cache;
+
 
 void sum(double& dst, double const& src)
 {
@@ -177,17 +179,7 @@ namespace Q1
     RDD<Projection>* query() 
     { 
         return
-            FileManager::load<Lineitem>("lineitem")->
-            filter<predicate>()->
-            mapReduce<GroupBy,Aggregate,map,reduce>(100)->
-            project<Projection, projection>()->
-            sort<compare>(100);
-    }
-
-    RDD<Projection>* cachedQuery() 
-    { 
-        return
-            cache->lineitem.get()->
+            TABLE(Lineitem)->
             filter<predicate>()->
             mapReduce<GroupBy,Aggregate,map,reduce>(10000)->
             project<Projection, projection>()->
@@ -315,17 +307,17 @@ namespace Q3
         return a->revenue > b->revenue ? -1 : a->revenue == b->revenue ? (a->o_orderdate < b->o_orderdate ? -1 : a->o_orderdate == b->o_orderdate ? 0 : 1) : 1;
     }
 
-    RDD<Revenue>* cachedQuery() 
+    RDD<Revenue>* query() 
     { 
         return
-            cache->lineitem.get()->
+            TABLE(Lineitem)->
             filter<lineitemFilter>()->
             project<LineitemProjection, projectLineitem>()->
-            join<OrdersProjection,long,lineitemOrderKey,orderKey>(cache->orders.get()->
+            join<OrdersProjection,long,lineitemOrderKey,orderKey>(TABLE(Orders)->
                                                                   filter<orderFilter>()->
                                                                   project<OrdersProjection, projectOrders>(), 
                                                                   SCALE(1500000))->
-            join<CustomerProjection,int,orderCustomerKey,customerKey>(cache->customer.get()->
+            join<CustomerProjection,int,orderCustomerKey,customerKey>(TABLE(Customer)->
                                                                       filter<customerFilter>()->
                                                                       project<CustomerProjection,projectCustomer>(), 
                                                                       SCALE(150000))->
@@ -394,13 +386,13 @@ namespace Q4
         return STRCMP(a->key.val, b->key.val);
     }
 
-    RDD< Pair<Key<priority_t>,int> >* cachedQuery() 
+    RDD< Pair<Key<priority_t>,int> >* query() 
     { 
         return
-            cache->lineitem.get()->
+            TABLE(Lineitem)->
             filter<lineitemFilter>()->
             project<LineitemProjection, projectLineitem>()->
-            join<OrdersProjection,long,lineitemOrderKey,orderKey>(cache->orders.get()->
+            join<OrdersProjection,long,lineitemOrderKey,orderKey>(TABLE(Orders)->
                                                                   filter<orderFilter>()->
                                                                   project<OrdersProjection,projectOrders>(), 
                                                                   SCALE(1500000))->
@@ -548,44 +540,21 @@ namespace Q5
     RDD<Revenue>* query() 
     { 
         return
-            FileManager::load<Lineitem>("lineitem")->
-            project<LineitemProjection, projectLineitem>()->
-            join<OrdersProjection,long,lineitemOrderKey,orderKey>(FileManager::load<Orders>("orders")->
-                                                                  filter<orderRange>()->
-                                                                  project<OrdersProjection,projectOrders>(),
-                                                                  SCALE(1500000))->
-            join<SupplierProjection,int,lineitemSupplierKey,supplierKey>(FileManager::load<Supplier>("supplier")->
-                                                                         project<SupplierProjection,projectSupplier>(),
-                                                                         SCALE(10000))->
-            join<CustomerProjection,int,orderCustomerKey,customerKey>(FileManager::load<Customer>("customer")->
-                                                                      project<CustomerProjection,projectCustomer>(),
-                                                                      SCALE(150000))->
-            filter<sameNation>()->
-            join<Nation,int,customerNationKey,nationKey>(FileManager::load<Nation>("nation"),25)->
-            join<Region,int,nationRegionKey,regionKey>(FileManager::load<Region>("region"),5)->
-            filter<asiaRegion>()->
-            mapReduce<Key<name_t>,double,map,sum>(25)->
-            project<Revenue,revenue>()->
-            sort<byRevenue>(25);
-    }    
-    RDD<Revenue>* cachedQuery() 
-    { 
-        return
-            cache->lineitem.get()->
+            TABLE(Lineitem)->
             project<LineitemProjection,projectLineitem>()->            
-            join<OrdersProjection,long,lineitemOrderKey,orderKey>(cache->orders.get()->
+            join<OrdersProjection,long,lineitemOrderKey,orderKey>(TABLE(Orders)->
                                                                   filter<orderRange>()->
                                                                   project<OrdersProjection,projectOrders>(),
                                                                   SCALE(1500000))->
-            join<SupplierProjection,int,lineitemSupplierKey,supplierKey>(cache->supplier.get()->
+            join<SupplierProjection,int,lineitemSupplierKey,supplierKey>(TABLE(Supplier)->
                                                                          project<SupplierProjection,projectSupplier>(),
                                                                          SCALE(10000))->
-            join<CustomerProjection,int,orderCustomerKey,customerKey>(cache->customer.get()->
+            join<CustomerProjection,int,orderCustomerKey,customerKey>(TABLE(Customer)->
                                                                       project<CustomerProjection,projectCustomer>(),
                                                                       SCALE(150000))->
             filter<sameNation>()->
-            join<Nation,int,customerNationKey,nationKey>(cache->nation.get(),25)->
-            join<Region,int,nationRegionKey,regionKey>(cache->region.get(),5)->
+            join<Nation,int,customerNationKey,nationKey>(TABLE(Nation),25)->
+            join<Region,int,nationRegionKey,regionKey>(TABLE(Region),5)->
             filter<asiaRegion>()->
             mapReduce<Key<name_t>,double,map,sum>(25)->
             project<Revenue,revenue>()->
@@ -605,10 +574,10 @@ namespace Q6
         result += l.l_extendedprice*l.l_discount;
     }
     
-    RDD<double>* cachedQuery() 
+    RDD<double>* query() 
     { 
         return
-            cache->lineitem.get()->
+            TABLE(Lineitem)->
             filter<lineitemFilter>()->
             reduce<double,revenue>(0);
     }
@@ -793,23 +762,23 @@ namespace Q7
         return (diff != 0) ? diff : a->key.l_year - b->key.l_year;
     }
 
-    RDD< Pair<Shipping,double> > * cachedQuery() 
+    RDD< Pair<Shipping,double> > * query() 
     { 
         return
-            cache->lineitem.get()->
+            TABLE(Lineitem)->
             filter<filterLineitem>()->           
             project<LineitemProjection, projectLineitem>()->            
-            join<OrdersProjection,long,lineitemOrderKey,orderKey>(cache->orders.get()->
+            join<OrdersProjection,long,lineitemOrderKey,orderKey>(TABLE(Orders)->
                                                                   project<OrdersProjection,projectOrders>(), 
                                                                   SCALE(1500000))->
-            join<SupplierProjection,int,lineitemSupplierKey,supplierKey>(cache->supplier.get()->
+            join<SupplierProjection,int,lineitemSupplierKey,supplierKey>(TABLE(Supplier)->
                                                                          project<SupplierProjection,projectSupplier>(),
                                                                          SCALE(10000))->
-            join<CustomerProjection,int,orderCustomerKey,customerKey>(cache->customer.get()->
+            join<CustomerProjection,int,orderCustomerKey,customerKey>(TABLE(Customer)->
                                                                       project<CustomerProjection,projectCustomer>(),
                                                                       SCALE(150000))-> 
-            join<Nation1,int,supplierNationKey,nation1Key>((RDD<Nation1>*)cache->nation.get(), 25)->
-            join<Nation2,int,customerNationKey,nation2Key>((RDD<Nation2>*)cache->nation.get(), 25)->
+            join<Nation1,int,supplierNationKey,nation1Key>((RDD<Nation1>*)TABLE(Nation), 25)->
+            join<Nation2,int,customerNationKey,nation2Key>((RDD<Nation2>*)TABLE(Nation), 25)->
             filter<filterNation>()->
             mapReduce<Shipping,double,map,sum>(25*25*100)->
             sort<byShipping>(25*25*100);
@@ -1013,28 +982,28 @@ namespace Q8
         return a->o_year - b->o_year;
     }
     
-    RDD<Share>* cachedQuery() 
+    RDD<Share>* query() 
     { 
         return
-            cache->lineitem.get()->
+            TABLE(Lineitem)->
             project<LineitemProjection,projectLineitem>()->            
-            join<OrdersProjection,long,lineitemOrderKey,orderKey>(cache->orders.get()->
+            join<OrdersProjection,long,lineitemOrderKey,orderKey>(TABLE(Orders)->
                                                                   filter<orderRange>()->
                                                                   project<OrdersProjection,projectOrders>(),
                                                                   SCALE(1500000))->
-            join<PartProjection,int,lineitemPartKey,partKey>(cache->part.get()->
+            join<PartProjection,int,lineitemPartKey,partKey>(TABLE(Part)->
                                                              filter<partType>()->
                                                              project<PartProjection,projectPart>(),
                                                              SCALE(200000))->
-            join<SupplierProjection,int,lineitemSupplierKey,supplierKey>(cache->supplier.get()->
+            join<SupplierProjection,int,lineitemSupplierKey,supplierKey>(TABLE(Supplier)->
                                                                          project<SupplierProjection,projectSupplier>(),
                                                                          SCALE(10000))->
-            join<CustomerProjection,int,orderCustomerKey,customerKey>(cache->customer.get()->
+            join<CustomerProjection,int,orderCustomerKey,customerKey>(TABLE(Customer)->
                                                                       project<CustomerProjection,projectCustomer>(),
                                                                       SCALE(150000))-> 
-            join<Nation1,int,supplierNationKey,nation1Key>((RDD<Nation1>*)cache->nation.get(),25)->
-            join<Nation2,int,customerNationKey,nation2Key>((RDD<Nation2>*)cache->nation.get(),25)->
-            join<Region,int,nationRegionKey, regionKey>(cache->region.get()->filter<regionName>(), 5)->
+            join<Nation1,int,supplierNationKey,nation1Key>((RDD<Nation1>*)TABLE(Nation),25)->
+            join<Nation2,int,customerNationKey,nation2Key>((RDD<Nation2>*)TABLE(Nation),25)->
+            join<Region,int,nationRegionKey, regionKey>(TABLE(Region)->filter<regionName>(), 5)->
             mapReduce<int,Volume,map,reduce>(100)->
             project<Share, mkt>()->
             sort<byYear>(100);
@@ -1212,25 +1181,25 @@ namespace Q9
         return (diff != 0) ? diff : b->key.o_year - a->key.o_year;
     }
         
-    RDD< Pair<Profit,double> >* cachedQuery() 
+    RDD< Pair<Profit,double> >* query() 
     { 
         return
-            cache->lineitem.get()->
+            TABLE(Lineitem)->
             project<LineitemProjection,projectLineitem>()->            
-            join<OrdersProjection,long,lineitemOrderKey,orderKey>(cache->orders.get()->
+            join<OrdersProjection,long,lineitemOrderKey,orderKey>(TABLE(Orders)->
                                                                   project<OrdersProjection,projectOrders>(),
                                                                   SCALE(1500000))->
-            join<PartProjection,int,lineitemPartKey,partKey>(cache->part.get()->
+            join<PartProjection,int,lineitemPartKey,partKey>(TABLE(Part)->
                                                              filter<partName>()->
                                                              project<PartProjection,projectPart>(),
                                                              SCALE(200000))->
-            join<PartsuppProjection,PartsuppKey,lineitemPartsuppKey,partsuppKey>(cache->partsupp.get()->
+            join<PartsuppProjection,PartsuppKey,lineitemPartsuppKey,partsuppKey>(TABLE(Partsupp)->
                                                                                  project<PartsuppProjection,projectPartsupp>(),
                                                                                  SCALE(800000))->
-            join<SupplierProjection,int,lineitemSupplierKey,supplierKey>(cache->supplier.get()->
+            join<SupplierProjection,int,lineitemSupplierKey,supplierKey>(TABLE(Supplier)->
                                                                          project<SupplierProjection,projectSupplier>(),
                                                                          SCALE(10000))->
-            join<Nation,int,supplierNationKey,nationKey>(cache->nation.get(), 25)->
+            join<Nation,int,supplierNationKey,nationKey>(TABLE(Nation), 25)->
             mapReduce<Profit,double,map,sum>(25*100)->
             sort<byNationYear>(100);
     }    
@@ -1368,19 +1337,19 @@ namespace Q10
         return a->value < b->value ? 1 : a->value == b->value ? 0 : -1;
     }
         
-    RDD< Pair<GroupBy,double> >* cachedQuery() 
+    RDD< Pair<GroupBy,double> >* query() 
     { 
         return
-            cache->lineitem.get()->
+            TABLE(Lineitem)->
             filter<lineitemFilter>()->
             project<LineitemProjection,projectLineitem>()->            
-            join<OrdersProjection,long,lineitemOrderKey,orderKey>(cache->orders.get()->
+            join<OrdersProjection,long,lineitemOrderKey,orderKey>(TABLE(Orders)->
                                                                   filter<orderRange>()->
                                                                   project<OrdersProjection,projectOrders>(),
                                                                   SCALE(1500000))->
-            join<Customer,int,orderCustomerKey,customerKey>(cache->customer.get(),
+            join<Customer,int,orderCustomerKey,customerKey>(TABLE(Customer),
                                                             SCALE(150000))-> 
-            join<Nation,int,customerNationKey,nationKey>(cache->nation.get(), 25)->
+            join<Nation,int,customerNationKey,nationKey>(TABLE(Nation), 25)->
             mapReduce<GroupBy,double,map,sum>(1000)->
             top<byRevenue>(20);
     }    
@@ -1464,13 +1433,13 @@ namespace Q12
         return STRCMP(a->key.val, b->key.val);
     }
         
-    RDD< Pair<Key<shipmode_t>,LineCount> >* cachedQuery() 
+    RDD< Pair<Key<shipmode_t>,LineCount> >* query() 
     { 
         return
-            cache->lineitem.get()->
+            TABLE(Lineitem)->
             filter<lineitemFilter>()->
             project<LineitemProjection,projectLineitem>()->                        
-            join<OrdersProjection,long,lineitemOrderKey,orderKey>(cache->orders.get()->
+            join<OrdersProjection,long,lineitemOrderKey,orderKey>(TABLE(Orders)->
                                                                   project<OrdersProjection,projectOrders>(), 
                                                                   SCALE(1500000))->
             mapReduce<Key<shipmode_t>,LineCount,map,reduce>(100)->
@@ -1533,13 +1502,13 @@ namespace Q13
         return (diff != 0) ? diff : b->key - a->key;
     }
         
-    RDD< Pair<int,int> >* cachedQuery() 
+    RDD< Pair<int,int> >* query() 
     { 
         return
-            cache->orders.get()->
+            TABLE(Orders)->
             filter<orderFilter>()->
             project<OrdersProjection, projectOrders>()->
-            join<CustomerProjection,int,orderCustomerKey,customerKey>(cache->customer.get()->
+            join<CustomerProjection,int,orderCustomerKey,customerKey>(TABLE(Customer)->
                                                                       project<CustomerProjection,projectCustomer>(),
                                                                       SCALE(150000), OuterJoin)->
             mapReduce<int,int,map1,count>(1000000)->
@@ -1611,13 +1580,13 @@ namespace Q14
         result = 100*pr.promo/pr.revenue;
     }
 
-    RDD<double>* cachedQuery() 
+    RDD<double>* query() 
     { 
         return
-            cache->lineitem.get()->
+            TABLE(Lineitem)->
             filter<lineitemFilter>()->
             project<LineitemProjection,projectLineitem>()->                        
-            join<PartProjection,int,lineitemPartKey,partKey>(cache->part.get()->
+            join<PartProjection,int,lineitemPartKey,partKey>(TABLE(Part)->
                                                              project<PartProjection,projectPart>(),
                                                              SCALE(200000))->
             reduce<PromoRevenue,promoRevenue>(PromoRevenue(0,0))->
@@ -1702,12 +1671,12 @@ namespace Q19
         acc += r.l_extendedprice * (1 - r.l_discount);
     }
 
-    RDD<double>* cachedQuery() 
+    RDD<double>* query() 
     { 
         return
-            cache->lineitem.get()->
+            TABLE(Lineitem)->
             project<LineitemProjection,projectLineitem>()->                        
-            join<PartProjection,int,lineitemPartKey,partKey>(cache->part.get()->
+            join<PartProjection,int,lineitemPartKey,partKey>(TABLE(Part)->
                                                              project<PartProjection,projectPart>(), SCALE(200000))->
             filter<brandFilter>()->
             reduce<double, revenue>(0);
@@ -1735,48 +1704,93 @@ void execute(char const* name, RDD<T>* (*query)())
 
 int main(int argc, char* argv[])
 {
-    if (argc < 4) {
-        fprintf(stderr, "Usage: kraps NODE_ID N_NODES address1:port1 address2:port2...\n");
-        return 1;
+    int i;
+    bool useCache = false;
+    size_t nQueues = 64;
+    size_t bufferSize = 4*64*1024;
+    size_t recvQueueSize = 4*64*1024*1024;
+    size_t sendQueueSize = 4*4*1024*1024;
+    size_t syncInterval = 64*1024*1024;
+    size_t broadcastJoinThreshold = 10000;
+    size_t inmemJoinThreshold = 10000000;
+    char const* option;
+
+    for (i = 1; i < argc; i++) { 
+        if (*argv[i] == '-') { 
+            option = argv[i]+1;
+            if (strcmp(option, "cache") == 0) { 
+                useCache = true;
+            } else if (strcmp(option, "queues") == 0) { 
+                nQueues = atol(argv[++i]);
+            } else if (strcmp(option, "buffer") == 0) { 
+                bufferSize = atol(argv[++i]);
+            } else if (strcmp(option, "recv-queue") == 0) { 
+                recvQueueSize = atol(argv[++i]);
+            } else if (strcmp(option, "send-queue") == 0) { 
+                sendQueueSize = atol(argv[++i]);
+            } else if (strcmp(option, "sync") == 0) { 
+                syncInterval = atol(argv[++i]);
+            } else if (strcmp(option, "broadcast-threshold") == 0) { 
+                broadcastJoinThreshold = atol(argv[++i]);
+            } else if (strcmp(option, "inmem-threshold") == 0) { 
+                inmemJoinThreshold = atol(argv[++i]);
+            } else { 
+                fprintf(stderr, "Unrecognized option %s\n", option);
+              Usage:
+                fputs("Usage: kraps [Options] NODE_ID N_NODES address1:port1  address2:port2...\n"
+                      "Options:\n"
+                      "-queues\tnumber of queues (64)\n"
+                      "-buffer\tbuffer size (256Kb)\n"
+                      "-recv-queue\treceive queue size (256Mb)\n"
+                      "-send-queue\tsend  queue size (16Mb)\n"
+                      "-sync\tsycnhronization interval (64Mb)\n"
+                      "-broadcast-threshold\tbroadcasr join threshold (10000)\n"
+                      "-inmem-threshold\tinmemory join threshold (10000000)\n", stderr);
+                return 1;                
+            }
+        } else { 
+            break;
+        }
     }
-    int nodeId = atoi(argv[1]);
-    int nNodes = atoi(argv[2]);
+    if (i+2 >= argc) {  
+        goto Usage;
+    }
+    int nodeId = atoi(argv[i]);
+    int nNodes = atoi(argv[i+1]);
     if (nodeId < 0 || nodeId >= nNodes)  { 
         fprintf(stderr, "Invalid node ID %d\n", nodeId);
         return 1;
     }
-    if (argc != 3 + nNodes) { 
-        fprintf(stderr, "At least one node has to be specified\nUsage: kraps NODE_ID N_NODES address1:port1  address2:port2...\n");
-        return 1;
+    if (argc != i + 2 + nNodes) { 
+        fprintf(stderr, "At least one node has to be specified\n");
+        goto Usage;
     }
     printf("Node %d started...\n", nodeId);
-    Cluster cluster(nodeId, nNodes, &argv[3]);
+    Cluster cluster(nodeId, nNodes, &argv[3], nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold);
 
-    // execute("Q1", Q1::query);    
-#if JUST_Q5
-    execute("Q5", Q5::query);
-#else
     time_t start = time(NULL);
-    cache = new CachedData();
-    printf("Elapsed time for loading all data in memory: %d seconds\n", (int)(time(NULL) - start));
-    cluster.barrier(); 
+    if (useCache) { 
+        cache = new CachedData();
+        printf("Elapsed time for loading all data in memory: %d seconds\n", (int)(time(NULL) - start));
+        cluster.barrier(); 
+    }
     
-    execute("Q1",  Q1::cachedQuery);
-    execute("Q3",  Q3::cachedQuery);
-    execute("Q4",  Q4::cachedQuery);
-    execute("Q5",  Q5::cachedQuery);
-    execute("Q6",  Q6::cachedQuery);
-    execute("Q7",  Q7::cachedQuery);
-    execute("Q8",  Q8::cachedQuery);
-    execute("Q9",  Q9::cachedQuery);
-    execute("Q10", Q10::cachedQuery);
-    execute("Q12", Q12::cachedQuery);
-    execute("Q13", Q13::cachedQuery);
-    execute("Q14", Q14::cachedQuery);
-    execute("Q19", Q19::cachedQuery);
+    execute("Q1",  Q1::query);
+    execute("Q3",  Q3::query);
+    execute("Q4",  Q4::query);
+    execute("Q5",  Q5::query);
+    execute("Q6",  Q6::query);
+    execute("Q7",  Q7::query);
+    execute("Q8",  Q8::query);
+    execute("Q9",  Q9::query);
+    execute("Q10", Q10::query);
+    execute("Q12", Q12::query);
+    execute("Q13", Q13::query);
+    execute("Q14", Q14::query);
+    execute("Q19", Q19::query);
 
     delete cache;
-#endif    
+
     printf("Node %d finished.\n", nodeId);
     return 0;
 }

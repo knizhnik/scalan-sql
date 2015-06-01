@@ -1141,9 +1141,10 @@ public:
                     char buf[MAX_PATH_LEN];
                     FILE* innerFile;
                     while (true) {
-                        if (fileNo++ == nFiles) { 
+                        if (fileNo == nFiles) { 
                             return false;
                         }
+                        fileNo += 1;
                         sprintf(buf, "inner-%d.%d", (int)qid, (int)fileNo);            
                         innerFile = fopen(buf, "r");
                         if (innerFile != NULL) {                
@@ -1173,13 +1174,13 @@ public:
                 if (fread(&outerRec, sizeof(O), 1, outerFile) != 1) { 
                     fclose(outerFile);
                     outerFile = NULL;
-                    continue;
+                } else { 
+                    outerKey(key, outerRec);
+                    hash = hashCode(key);
+                    size_t h = hash % size;
+                    for (inner = table[h]; inner != NULL && !(inner->hash == hash && key == inner->key); inner = inner->collision);
                 }
-                outerKey(key, outerRec);
-                hash = hashCode(key);
-                size_t h = hash % size;
-                for (inner = table[h]; inner != NULL && !(inner->hash == hash && key == inner->key); inner = inner->collision);
-            } while (inner == NULL && kind == InnerJoin);
+            } while (outerFile == NULL || (inner == NULL && kind == InnerJoin));
             
             if (inner == NULL) { 
                 (O&)record = outerRec;
@@ -1218,6 +1219,166 @@ protected:
     K       key;
     size_t  hash;
     Entry*  inner;
+    qid_t   qid;
+    size_t  fileNo;
+
+    void saveOuterFiles(RDD<O>* input)
+    {
+        char buf[MAX_PATH_LEN];
+        FILE** files = new FILE*[nFiles];
+        for (size_t i = 0; i < nFiles; i++) {
+            sprintf(buf, "outer-%d.%d", (int)qid, (int)i+1);
+            files[i] = fopen(buf, "w");
+            assert(files[i] != NULL);
+        }
+        O record;
+        while (input->next(record)) { 
+            K key;
+            outerKey(key, record);
+            size_t h = hashCode(key) % nFiles;
+            fwrite(&record, sizeof record, 1, files[h]);
+        }
+        for (size_t i = 0; i < nFiles; i++) {
+            fclose(files[i]);
+        }
+        delete[] files;
+        delete input;
+    }
+            
+    void saveInnerFiles(RDD<I>* input)
+    {
+        char buf[MAX_PATH_LEN];
+        FILE** files = new FILE*[nFiles];
+        for (size_t i = 0; i < nFiles; i++) {
+            sprintf(buf, "inner-%d.%d", (int)qid, (int)i+1);
+            files[i] = fopen(buf, "w");
+            assert(files[i] != NULL);
+        }
+        I record;
+        while (input->next(record)) { 
+            K key;
+            innerKey(key, record);
+            size_t h = hashCode(key) % nFiles;
+            fwrite(&record, sizeof record, 1, files[h]);
+        }
+        for (size_t i = 0; i < nFiles; i++) {
+            fclose(files[i]);
+        }
+        delete[] files;
+        delete input;
+    }
+            
+
+    void clearHash() {
+        for (size_t i = 0; i < size; i++) { 
+            Entry *curr, *next;
+            for (curr = table[i]; curr != NULL; curr = next) { 
+                next = curr->collision;
+                delete curr;
+            }
+            table[i] = NULL;
+        }
+    }
+};
+    
+  
+//
+// Simejoin two RDDs using shuffle join
+//
+template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner)>
+class ShuffleSemiJoinRDD : public RDD<O>
+{
+public:
+    ShuffleSemiJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t nShuffleFiles, size_t estimation, JoinKind joinKind) 
+    : kind(joinKind), table(new Entry*[estimation]), nFiles(nShuffleFiles), size(estimation), outerFile(NULL) {
+        assert(kind != OuterJoin);
+        {
+            // shuffle inner RDD
+            Queue* queue = Cluster::instance->getQueue();
+            Thread loader(new ScatterJob<I,K,innerKey>(innerRDD, queue));
+            qid = queue->qid;
+            saveInnerFiles(new GatherRDD<I>(queue));
+        }
+        {
+            // shuffle outer RDD
+            Queue* queue = Cluster::instance->getQueue();
+            Thread loader(new ScatterJob<O,K,outerKey>(outerRDD, queue));
+            saveOuterFiles(new GatherRDD<O>(queue));
+        }
+        fileNo = 0;
+    }
+
+    bool next(Join<O,I>& record)
+    {
+        while (true) { 
+            if (outerFile == NULL) {
+                char buf[MAX_PATH_LEN];
+                FILE* innerFile;
+                while (true) {
+                    if (fileNo == nFiles) { 
+                        return false;
+                    }
+                    fileNo += 1;
+                    sprintf(buf, "inner-%d.%d", (int)qid, (int)fileNo);            
+                    innerFile = fopen(buf, "r");
+                    if (innerFile != NULL) {                
+                        sprintf(buf, "outer-%d.%d", (int)qid, (int)fileNo);            
+                        outerFile = fopen(buf, "r");
+                        if (outerFile == NULL) {
+                            fclose(innerFile);
+                            innerFile = NULL;
+                        } else {
+                            break;
+                        }                
+                        }
+                }
+                Entry* entry = new Entry();
+                clearHash();
+                while (fread(&entry->record, sizeof(I), 1, innerFile) == 1) { 
+                    innerKey(entry->key, entry->record);
+                    entry->hash = hashCode(entry->key);
+                    size_t h = entry->hash % size;  
+                    entry->collision = table[h]; 
+                    table[h] = entry;
+                    entry = new Entry();
+                }
+                delete entry;
+                fclose(innerFile);
+            }
+            if (fread(&record, sizeof(O), 1, outerFile) != 1) { 
+                fclose(outerFile);
+                outerFile = NULL;
+            } else { 
+                K key;
+                outerKey(key, record);
+                size_t hash = hashCode(key);
+                size_t h = hash % size;
+                Entry* inner;            
+                for (inner = table[h]; inner != NULL && !(inner->hash == hash && key == inner->key); inner = inner->collision);
+                if ((inner != NULL) ^ (kind == AntiJoin)) {
+                    return true;
+                }                
+            }
+        }
+    }
+
+    ~ShuffleSemiJoinRDD() { 
+        clearHash();
+        delete[] table;
+    }
+protected:
+    struct Entry {
+        K      key;
+        I      record;
+        Entry* collision;
+        size_t hash;
+    };
+    
+    JoinKind const kind;
+    Entry** const table;
+    size_t  const nFiles;
+    size_t  const size;
+    FILE*   outerFile;
     qid_t   qid;
     size_t  fileNo;
 
@@ -1408,7 +1569,11 @@ RDD< Join<T,I> >* RDD<T>::join(RDD<I>* with, size_t estimation, JoinKind kind) {
 template<class T>
 template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner)>
 RDD<T>* RDD<T>::semijoin(RDD<I>* with, size_t estimation, JoinKind kind) {
-    return new HashSemiJoinRDD<T,I,K,outerKey,innerKey>(this, with, estimation, kind);
+    if (estimation <= Cluster::instance->inmemJoinThreshold) { 
+        return new HashSemiJoinRDD<T,I,K,outerKey,innerKey>(this, with, estimation, kind);
+    }
+    size_t nFiles = (estimation + Cluster::instance->inmemJoinThreshold - 1) / Cluster::instance->inmemJoinThreshold;
+    return new ShuffleSemiJoinRDD<T,I,K,outerKey,innerKey>(this, with, nFiles, estimation/nFiles, kind);
 }
 
 #endif
