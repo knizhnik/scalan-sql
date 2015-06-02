@@ -804,7 +804,7 @@ class TopRDD : public RDD<T>
         Queue* queue = Cluster::instance->getQueue();
         if (Cluster::instance->isCoordinator()) {         
             GatherRDD<T> gather(queue);
-            queue->put(Buffer::eof(queue->qid)); // Coordinator already finished it's part of work
+            queue->putFirst(Buffer::eof(queue->qid)); // Coordinator already finished it's part of work
             size = loadTop(&gather, n, top);
         } else {
             assert(n*sizeof(T) < Cluster::instance->bufferSize);
