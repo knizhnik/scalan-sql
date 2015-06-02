@@ -1714,7 +1714,8 @@ int main(int argc, char* argv[])
     size_t broadcastJoinThreshold = 10000;
     size_t inmemJoinThreshold = 10000000;
     char const* option;
-
+    char const* tmp = "/tmp";
+    
     for (i = 1; i < argc; i++) { 
         if (*argv[i] == '-') { 
             option = argv[i]+1;
@@ -1734,39 +1735,43 @@ int main(int argc, char* argv[])
                 broadcastJoinThreshold = atol(argv[++i]);
             } else if (strcmp(option, "inmem-threshold") == 0) { 
                 inmemJoinThreshold = atol(argv[++i]);
+            } else if (strcmp(option, "tmp") == 0) { 
+                tmp = argv[++i];
             } else { 
                 fprintf(stderr, "Unrecognized option %s\n", option);
               Usage:
                 fputs("Usage: kraps [Options] NODE_ID N_NODES address1:port1  address2:port2...\n"
                       "Options:\n"
-                      "-queues\tnumber of queues (64)\n"
-                      "-buffer\tbuffer size (256Kb)\n"
-                      "-recv-queue\treceive queue size (256Mb)\n"
-                      "-send-queue\tsend  queue size (16Mb)\n"
-                      "-sync\tsycnhronization interval (64Mb)\n"
-                      "-broadcast-threshold\tbroadcasr join threshold (10000)\n"
-                      "-inmem-threshold\tinmemory join threshold (10000000)\n", stderr);
+                      "-cache\tCache all data in memory\n"
+                      "-tmp DIR\ttemporary files location (/tmp)\n"
+                      "-queues N\tnumber of queues (64)\n"
+                      "-buffer SIZE\tbuffer size (256Kb)\n"
+                      "-recv-queue SIZE\treceive queue size (256Mb)\n"
+                      "-send-queue SIZE\tsend  queue size (16Mb)\n"
+                      "-sync SIZE\tsycnhronization interval (64Mb)\n"
+                      "-broadcast-threshold SIZE\tbroadcast join threshold (10000)\n"
+                      "-inmem-threshold SIZE\tinmemory join threshold (10000000)\n", stderr);
                 return 1;                
             }
         } else { 
             break;
         }
     }
-    if (i+2 >= argc) {  
+    if (i+2 > argc) {  
         goto Usage;
     }
-    int nodeId = atoi(argv[i]);
-    int nNodes = atoi(argv[i+1]);
+    int nodeId = atoi(argv[i++]);
+    int nNodes = atoi(argv[i++]);
     if (nodeId < 0 || nodeId >= nNodes)  { 
         fprintf(stderr, "Invalid node ID %d\n", nodeId);
         return 1;
     }
-    if (argc != i + 2 + nNodes) { 
+    if (argc != i + nNodes) { 
         fprintf(stderr, "At least one node has to be specified\n");
         goto Usage;
     }
     printf("Node %d started...\n", nodeId);
-    Cluster cluster(nodeId, nNodes, &argv[3], nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold);
+    Cluster cluster(nodeId, nNodes, &argv[i], nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp);
 
     time_t start = time(NULL);
     if (useCache) { 

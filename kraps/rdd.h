@@ -8,8 +8,6 @@
 #include "cluster.h"
 #include "pack.h"
 
-const size_t MAX_PATH_LEN = 1024;
-
 //
 // Hash function for scalar fields
 //
@@ -536,7 +534,7 @@ class DirRDD : public RDD<T>
 };
 
 //
-// File manaber to created proper file RDD based on file name
+// File manager to created proper file RDD based on file name
 // TODO: support Parquet
 //
 class FileManager
@@ -1131,6 +1129,7 @@ public:
             saveOuterFiles(new GatherRDD<O>(queue));
         }
         fileNo = 0;
+        memset(table, 0, size*sizeof(Entry*));
     }
 
     bool next(Join<O,I>& record)
@@ -1138,26 +1137,13 @@ public:
         if (inner == NULL) { 
             do { 
                 if (outerFile == NULL) {
-                    char buf[MAX_PATH_LEN];
-                    FILE* innerFile;
-                    while (true) {
-                        if (fileNo == nFiles) { 
-                            return false;
-                        }
-                        fileNo += 1;
-                        sprintf(buf, "inner-%d.%d", (int)qid, (int)fileNo);            
-                        innerFile = fopen(buf, "r");
-                        if (innerFile != NULL) {                
-                            sprintf(buf, "outer-%d.%d", (int)qid, (int)fileNo);            
-                            outerFile = fopen(buf, "r");
-                            if (outerFile == NULL) {
-                                fclose(innerFile);
-                                innerFile = NULL;
-                            } else {
-                                break;
-                            }                
-                        }
+                    if (fileNo == nFiles) { 
+                        return false;
                     }
+                    fileNo += 1;
+                    FILE* innerFile = Cluster::instance->openTempFile("inner", qid, fileNo);
+                    outerFile = Cluster::instance->openTempFile("outer", qid, fileNo);
+
                     Entry* entry = new Entry();
                     clearHash();
                     while (fread(&entry->record, sizeof(I), 1, innerFile) == 1) { 
@@ -1224,18 +1210,16 @@ protected:
 
     void saveOuterFiles(RDD<O>* input)
     {
-        char buf[MAX_PATH_LEN];
         FILE** files = new FILE*[nFiles];
         for (size_t i = 0; i < nFiles; i++) {
-            sprintf(buf, "outer-%d.%d", (int)qid, (int)i+1);
-            files[i] = fopen(buf, "w");
-            assert(files[i] != NULL);
+            files[i] = Cluster::instance->openTempFile("outer", qid, i+1, "w");
         }
         O record;
+        size_t nNodes = Cluster::instance->nNodes;
         while (input->next(record)) { 
             K key;
             outerKey(key, record);
-            size_t h = hashCode(key) % nFiles;
+            size_t h = hashCode(key) / nNodes % nFiles;
             fwrite(&record, sizeof record, 1, files[h]);
         }
         for (size_t i = 0; i < nFiles; i++) {
@@ -1247,18 +1231,16 @@ protected:
             
     void saveInnerFiles(RDD<I>* input)
     {
-        char buf[MAX_PATH_LEN];
         FILE** files = new FILE*[nFiles];
         for (size_t i = 0; i < nFiles; i++) {
-            sprintf(buf, "inner-%d.%d", (int)qid, (int)i+1);
-            files[i] = fopen(buf, "w");
-            assert(files[i] != NULL);
+            files[i] = Cluster::instance->openTempFile("inner", qid, i+1, "w");
         }
         I record;
+        size_t nNodes = Cluster::instance->nNodes;
         while (input->next(record)) { 
             K key;
             innerKey(key, record);
-            size_t h = hashCode(key) % nFiles;
+            size_t h = hashCode(key) / nNodes % nFiles;
             fwrite(&record, sizeof record, 1, files[h]);
         }
         for (size_t i = 0; i < nFiles; i++) {
@@ -1306,32 +1288,20 @@ public:
             saveOuterFiles(new GatherRDD<O>(queue));
         }
         fileNo = 0;
+        memset(table, 0, size*sizeof(Entry*));
     }
 
     bool next(Join<O,I>& record)
     {
         while (true) { 
             if (outerFile == NULL) {
-                char buf[MAX_PATH_LEN];
-                FILE* innerFile;
-                while (true) {
-                    if (fileNo == nFiles) { 
-                        return false;
-                    }
-                    fileNo += 1;
-                    sprintf(buf, "inner-%d.%d", (int)qid, (int)fileNo);            
-                    innerFile = fopen(buf, "r");
-                    if (innerFile != NULL) {                
-                        sprintf(buf, "outer-%d.%d", (int)qid, (int)fileNo);            
-                        outerFile = fopen(buf, "r");
-                        if (outerFile == NULL) {
-                            fclose(innerFile);
-                            innerFile = NULL;
-                        } else {
-                            break;
-                        }                
-                        }
+                if (fileNo == nFiles) { 
+                    return false;
                 }
+                fileNo += 1;
+                FILE* innerFile = Cluster::instance->openTempFile("inner", qid, fileNo);
+                outerFile = Cluster::instance->openTempFile("outer", qid, fileNo);
+                
                 Entry* entry = new Entry();
                 clearHash();
                 while (fread(&entry->record, sizeof(I), 1, innerFile) == 1) { 
@@ -1384,18 +1354,16 @@ protected:
 
     void saveOuterFiles(RDD<O>* input)
     {
-        char buf[MAX_PATH_LEN];
         FILE** files = new FILE*[nFiles];
         for (size_t i = 0; i < nFiles; i++) {
-            sprintf(buf, "outer-%d.%d", (int)qid, (int)i+1);
-            files[i] = fopen(buf, "w");
-            assert(files[i] != NULL);
+            files[i] = Cluster::instance->openTempFile("outer", qid, i+1, "w");
         }
         O record;
+        size_t nNodes = Cluster::instance->nNodes;
         while (input->next(record)) { 
             K key;
             outerKey(key, record);
-            size_t h = hashCode(key) % nFiles;
+            size_t h = hashCode(key) / nNodes % nFiles;
             fwrite(&record, sizeof record, 1, files[h]);
         }
         for (size_t i = 0; i < nFiles; i++) {
@@ -1407,18 +1375,16 @@ protected:
             
     void saveInnerFiles(RDD<I>* input)
     {
-        char buf[MAX_PATH_LEN];
         FILE** files = new FILE*[nFiles];
         for (size_t i = 0; i < nFiles; i++) {
-            sprintf(buf, "inner-%d.%d", (int)qid, (int)i+1);
-            files[i] = fopen(buf, "w");
-            assert(files[i] != NULL);
+            files[i] = Cluster::instance->openTempFile("inner", qid, i+1, "w");
         }
         I record;
+        size_t nNodes = Cluster::instance->nNodes;
         while (input->next(record)) { 
             K key;
             innerKey(key, record);
-            size_t h = hashCode(key) % nFiles;
+            size_t h = hashCode(key) / nNodes % nFiles;
             fwrite(&record, sizeof record, 1, files[h]);
         }
         for (size_t i = 0; i < nFiles; i++) {

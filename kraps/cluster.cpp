@@ -68,8 +68,17 @@ Queue* Cluster::getQueue()
     return recvQueues[qid++];
 }
 
-Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nQueues, size_t bufSize, size_t recvQueueSize, size_t sendQueueSize, size_t syncPeriod, size_t broadcastThreshold, size_t inmemThreshold) 
-: nNodes(nHosts), maxQueues(nQueues), nodeId(selfId), bufferSize(bufSize), syncInterval(syncPeriod), broadcastJoinThreshold(broadcastThreshold), inmemJoinThreshold(inmemThreshold), shutdown(false)
+FILE* Cluster::openTempFile(char const* prefix, qid_t qid, size_t fno, char const* mode)
+{
+    char path[MAX_PATH_LEN];    
+    sprintf(path, "%s/%s-%ld-%ld.%ld", tmpDir, prefix, nodeId, qid, fno);            
+    FILE* f = fopen(path, mode);
+    assert(f != NULL);
+    return f;
+}
+    
+Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nQueues, size_t bufSize, size_t recvQueueSize, size_t sendQueueSize, size_t syncPeriod, size_t broadcastThreshold, size_t inmemThreshold, char const* tmp) 
+: nNodes(nHosts), maxQueues(nQueues), nodeId(selfId), bufferSize(bufSize), syncInterval(syncPeriod), broadcastJoinThreshold(broadcastThreshold), inmemJoinThreshold(inmemThreshold), tmpDir(tmp), shutdown(false)
 {
     instance = this;
 

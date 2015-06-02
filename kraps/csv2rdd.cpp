@@ -60,7 +60,7 @@ int main(int argc, char* argv[])
 
     in = fopen("lineitem.tbl", "r");
     if (in != NULL) { 
-        openShards(out, nShards, "lineitem");
+        openShards(out, nShards, "Lineitem");
         Lineitem lineitem;
         
         for (i = 0; fgets(buf, sizeof buf, in); i++) { 
@@ -92,7 +92,7 @@ int main(int argc, char* argv[])
 
     in = fopen("orders.tbl", "r");
     if (in != NULL) { 
-        openShards(out, nShards, "orders");
+        openShards(out, nShards, "Orders");
         Orders orders;
         
         for (i = 0; fgets(buf, sizeof buf, in); i++) { 
@@ -117,7 +117,7 @@ int main(int argc, char* argv[])
 
     in = fopen("customer.tbl", "r");
     if (in != NULL) { 
-        openShards(out, nShards, "customer");
+        openShards(out, nShards, "Customer");
         Customer customer;
         
         for (i = 0; fgets(buf, sizeof buf, in); i++) { 
@@ -141,7 +141,7 @@ int main(int argc, char* argv[])
 
     in = fopen("supplier.tbl", "r");
     if (in != NULL) { 
-        openShards(out, nShards, "supplier");
+        openShards(out, nShards, "Supplier");
         Supplier supplier;
         
         for (i = 0; fgets(buf, sizeof buf, in); i++) { 
@@ -164,7 +164,7 @@ int main(int argc, char* argv[])
 
     in = fopen("partsupp.tbl", "r");
     if (in != NULL) { 
-        openShards(out, nShards, "partsupp");
+        openShards(out, nShards, "Partsupp");
         Partsupp partsupp;
         
         for (i = 0; fgets(buf, sizeof buf, in); i++) { 
@@ -185,7 +185,7 @@ int main(int argc, char* argv[])
 
     in = fopen("region.tbl", "r");
     if (in != NULL) { 
-        openShards(out, nShards, "region");
+        openShards(out, nShards, "Region");
         Region region;
         
         for (i = 0; fgets(buf, sizeof buf, in); i++) { 
@@ -204,7 +204,7 @@ int main(int argc, char* argv[])
 
     in = fopen("nation.tbl", "r");
     if (in != NULL) { 
-        openShards(out, nShards, "nation");
+        openShards(out, nShards, "Nation");
         Nation nation;
         
         for (i = 0; fgets(buf, sizeof buf, in); i++) { 
@@ -224,7 +224,7 @@ int main(int argc, char* argv[])
 
     in = fopen("part.tbl", "r");
     if (in != NULL) { 
-        openShards(out, nShards, "part");
+        openShards(out, nShards, "Part");
         Part part;
         
         for (i = 0; fgets(buf, sizeof buf, in); i++) { 
