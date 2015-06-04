@@ -9,7 +9,7 @@ class ExternalRDD(input: SchemaRDD, push: Boolean) extends RDD[Int]
 
     def compute(split: Partition, context: TaskContext): Iterator[Int] = {
       val i = input.compute(split, context)
-      val sum = if push nativeSumPush(i.toArray) else nativeSumPull(i)
+      val sum = if (push) nativeSumPush(i.toArray) else nativeSumPull(i)
       Seq(sum).iterator
       /*
       var jobResult = 0
