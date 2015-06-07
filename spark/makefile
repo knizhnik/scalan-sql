@@ -8,6 +8,6 @@ NativeTest.jar: NativeTest.scala
 	jar cvf NativeTest.jar *.class
 
 run:
-	./bin/spark-submit --master local[4] --class NativeTest  NativeTest.jar
+	../spark-1.3.0-bin-hadoop2.4/bin/spark-submit --master local[16] --driver-memory 16G --executor-cores 16 --num-executors 1  --executor-memory 64H --class NativeTest  NativeTest.jar 2> spark.log
 
 

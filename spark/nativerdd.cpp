@@ -7,7 +7,7 @@ extern "C" {
 
 JNIEXPORT jint Java_ExternalRDD_nativeSumPush(JNIEnv *env, jobject self, jobjectArray arr)
 {
-    jclass rowClass = (jclass)env->FindClass("org/apache/spark/sql/catalyst/expressions/Row");
+    jclass rowClass = (jclass)env->FindClass("org/apache/spark/sql/Row");
     jmethodID get = env->GetMethodID(rowClass, "getInt", "(I)I");
     jint len = env->GetArrayLength(arr);
     jint sum = 0;
@@ -20,7 +20,7 @@ JNIEXPORT jint Java_ExternalRDD_nativeSumPush(JNIEnv *env, jobject self, jobject
 
 JNIEXPORT jint Java_ExternalRDD_nativeSumPull(JNIEnv *env, jobject self, jobject iterator)
 {
-    jclass rowClass = (jclass)env->FindClass("org/apache/spark/sql/catalyst/expressions/Row");
+    jclass rowClass = (jclass)env->FindClass("org/apache/spark/sql/Row");
     jclass iteratorClass = (jclass)env->FindClass("scala/collection/Iterator");
     jmethodID get = env->GetMethodID(rowClass, "getInt", "(I)I");
     jmethodID hasNext = env->GetMethodID(iteratorClass, "hasNext", "()Z");

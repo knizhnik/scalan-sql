@@ -109,25 +109,6 @@ namespace Q1
         size_t count_order;
     };
     
-    struct Projection
-    {
-        char   l_returnflag;
-        char   l_linestatus;
-        double sum_qty;
-        double sum_base_price;
-        double sum_disc_price;
-        double sum_charge;
-        double avg_qty;
-        double avg_price;
-        double avg_disc;
-        size_t count_order;
-
-        friend void print(Projection const& p, FILE* out) { 
-            fprintf(out, "%c, %c, %f, %f, %f, %f, %f, %f, %f, %lu", 
-                    p.l_returnflag, p.l_linestatus, p.sum_qty, p.sum_base_price, p.sum_disc_price, p.sum_charge, p.avg_qty, p.avg_price, p.avg_disc, p.count_order);
-        }
-    };
-
     bool predicate(Lineitem const& lineitem) 
     {
         return lineitem.l_shipdate <= 19981201;
