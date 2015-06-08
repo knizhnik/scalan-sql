@@ -1,8 +1,10 @@
-#include <parquet/parquet.h>
+#if USE_PARQUET
+
 #include <iostream>
 #include <stdio.h>
 
-#include <rdd.h>
+#include "parquet/parquet.h"
+#include "rdd.h"
 
 using namespace parquet;
 using namespace parquet_cpp;
@@ -72,9 +74,9 @@ bool GetFileMetadata(const string& path, FileMetaData* metadata) {
 bool ParquetReader::loadPart(char const* dir, size_t partNo)
 {
     char path[1024];
-    sprintf(path, "%s/part-r-%05d%.parquet", dir, segno + 1);
-    f = fopen(path, "rb");
-    if (f == NULL) { 
+    sprintf(path, "%s/part-r-%05d%.parquet", dir, partNo + 1);
+    FILE* file = fopen(path, "rb");
+    if (file == NULL) { 
         return false;
     }
     if (!GetFileMetadata(path, &metadata)) { 
@@ -85,8 +87,8 @@ bool ParquetReader::loadPart(char const* dir, size_t partNo)
         const RowGroup& row_group = metadata.row_groups[i];
         for (size_t c = 0; c < row_group.columns.size(); ++c) {
             const ColumnChunk& col = row_group.columns[c];
-            columns.push_back(ColumnReader());
-            ColumnReader& cr = columns.back();
+            columns.push_back(ParquetColumnReader());
+            ParquetColumnReader& cr = columns.back();
             
             size_t col_start = col.meta_data.data_page_offset;
             if (col.meta_data.__isset.dictionary_page_offset) {
@@ -100,7 +102,7 @@ bool ParquetReader::loadPart(char const* dir, size_t partNo)
             assert(num_read == cr.column_buffer.size());
             
             cr.stream = new InMemoryInputStream(&cr.column_buffer[0], cr.column_buffer.size());
-            cr.input = new ColumnReader(&col.meta_data, &cr.metadata.schema[c + 1], &cr.stream);
+            cr.reader = new ColumnReader(&col.meta_data, &metadata.schema[c + 1], cr.stream);
         }
     }
     return true;
@@ -120,12 +122,12 @@ bool ParquetReader::extractRow(char* buf)
     return true;
 }
  
-bool ColumnReader::next(const ColumnChunk &col, char* &dst)
+bool ParquetReader::ParquetColumnReader::next(const ColumnChunk &col, char* &dst)
 {
     int def_level;
     int rep_level;
 
-    if (!reader.HasNext()) { 
+    if (!reader->HasNext()) { 
         return false;
     }
 
@@ -133,49 +135,49 @@ bool ColumnReader::next(const ColumnChunk &col, char* &dst)
     {
     case Type::BOOLEAN: 
     {
-        bool val = reader.GetBool(&def_level, &rep_level);
+        bool val = reader->GetBool(&def_level, &rep_level);
         assert(def_level >= rep_level);
         *dst++ = (char)val;
         break;
     }
     case Type::INT32: 
     {
-        int32_t val = reader.GetInt32(&def_level, &rep_level);
+        int32_t val = reader->GetInt32(&def_level, &rep_level);
         assert(def_level >= rep_level);
         memcpy(dst, &val, sizeof(val));
-        buf += sizeof(val);
+        dst += sizeof(val);
         break;
     }
     case Type::INT64:
     {
-        int64_t val = reader.GetInt64(&def_level, &rep_level);;
+        int64_t val = reader->GetInt64(&def_level, &rep_level);
         assert(def_level >= rep_level);
         memcpy(dst, &val, sizeof(val));
-        buf += sizeof(val);
+        dst += sizeof(val);
         break;
     }
     case Type::FLOAT: 
     {
-        float val = reader.GetFloat(&def_level, &rep_level);;
+        float val = reader->GetFloat(&def_level, &rep_level);
         assert(def_level >= rep_level);
         memcpy(dst, &val, sizeof(val));
-        buf += sizeof(val);
+        dst += sizeof(val);
         break;
     }
     case Type::DOUBLE: 
     {
-        double val = reader.GetDouble(&def_level, &rep_level);;
+        double val = reader->GetDouble(&def_level, &rep_level);
         assert(def_level >= rep_level);
         memcpy(dst, &val, sizeof(val));
-        buf += sizeof(val);
+        dst += sizeof(val);
         break;
     }
     case Type::BYTE_ARRAY: 
     {
-        ByteArray val = reader.GetByteArray(&def_level, &rep_level);;
+        ByteArray val = reader->GetByteArray(&def_level, &rep_level);
         assert(def_level >= rep_level);
         memcpy(dst, val.ptr, val.len);
-        buf += val.len;
+        dst += val.len;
     }
     default:
         assert(false);
@@ -183,3 +185,4 @@ bool ColumnReader::next(const ColumnChunk &col, char* &dst)
     return true;
 }
             
+#endif

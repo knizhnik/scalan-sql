@@ -1,4 +1,5 @@
 #include <time.h>
+#include <ctype.h>
 #include "rdd.h"
 #include "tpch.h"
 
@@ -9,7 +10,7 @@ const size_t SF = 100; // scale factor
 #define STRCPY(d,s) strncpy(d,s,sizeof(d))
 #define SCALE(x)    ((x + Cluster::instance->nNodes - 1)*SF/(Cluster::instance->nNodes) + (x / 100)) // take in accoutn data skews
 
-#define TABLE(x) (cache ? (RDD<x>*)cache->_##x.get() : (RDD<x>*)FileManager::load<x>(#x))
+#define TABLE(x) (cache ? (RDD<x>*)cache->_##x.get() : (RDD<x>*)FileManager::load<x>(filePath(#x)))
 
 class CachedData
 {
@@ -36,7 +37,21 @@ class CachedData
 };
 
 CachedData* cache;
+char const* dataDir;
+char const* dataFormat;
 
+static char const* filePath(char const* fileName)
+{ 
+    static char path[MAX_PATH_LEN];
+    if (dataDir == NULL) { 
+        return fileName;
+    }
+    int n = sprintf(path, "%s/%c%s", dataDir, tolower(*fileName), fileName+1);
+    if (dataFormat != NULL) { 
+        sprintf(path + n, ".%s", dataFormat);
+    }
+    return path;
+}
 
 void sum(double& dst, double const& src)
 {
@@ -1702,6 +1717,10 @@ int main(int argc, char* argv[])
             option = argv[i]+1;
             if (strcmp(option, "cache") == 0) { 
                 useCache = true;
+            } else if (strcmp(option, "dir") == 0) { 
+                dataDir = argv[++i];
+            } else if (strcmp(option, "format") == 0) { 
+                dataFormat = argv[++i];
             } else if (strcmp(option, "queues") == 0) { 
                 nQueues = atol(argv[++i]);
             } else if (strcmp(option, "buffer") == 0) { 
@@ -1723,6 +1742,8 @@ int main(int argc, char* argv[])
               Usage:
                 fputs("Usage: kraps [Options] NODE_ID N_NODES address1:port1  address2:port2...\n"
                       "Options:\n"
+                      "-dir\tdata directory (.)\n"
+                      "-format\tdata format: parquet, plain-file,... ()\n"
                       "-cache\tCache all data in memory\n"
                       "-tmp DIR\ttemporary files location (/tmp)\n"
                       "-queues N\tnumber of queues (64)\n"

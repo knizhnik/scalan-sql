@@ -1,13 +1,10 @@
 #ifndef __PARQUET_H__
 #define __PARQUET_H__
 
-#include <parquet/parquet.h>
-#include <rdd.h>
+#include "parquet/parquet.h"
 
 using namespace parquet;
 using namespace parquet_cpp;
-
-
 using namespace std;
 
 // 
@@ -17,10 +14,7 @@ using namespace std;
 class ParquetReader
 {
 public:
-    FileMetaData metadata;
-    vector<ColumnReader> columns;
-
-    struct ColumnReader 
+    struct ParquetColumnReader 
     { 
         vector<uint8_t> column_buffer;
         InMemoryInputStream* stream;
@@ -28,8 +22,8 @@ public:
 
         bool next(const ColumnChunk &col, char* &dst);
 
-        ColumnReader() : stream(NULL), reader(NULL) {}
-        ~ColumnReader() { 
+        ParquetColumnReader() : stream(NULL), reader(NULL) {}
+        ~ParquetColumnReader() { 
             delete reader;
             delete stream;
         }
@@ -37,6 +31,9 @@ public:
 
     bool loadPart(char const* dir, size_t partNo);
     bool extractRow(char* buf);
+
+    FileMetaData metadata;
+    vector<ParquetColumnReader> columns;
 };
 
 template<class T>
@@ -54,8 +51,8 @@ class ParquetRDD : public RDD<T>
                 nextPart = false;
             } 
             char buf[sizeof(T)];
-            if (reader.extractRaw(buf)) {
-                record.unpack(buf);
+            if (reader.extractRow(buf)) {
+                unpack(record, buf);
                 return true;
             } else { 
                 segno += step;

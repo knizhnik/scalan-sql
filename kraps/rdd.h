@@ -533,9 +533,12 @@ class DirRDD : public RDD<T>
     FILE* f;    
 };
 
+#if USE_PARQUET
+#include "parquet.h"
+#endif
+
 //
 // File manager to created proper file RDD based on file name
-// TODO: support Parquet
 //
 class FileManager
 {
@@ -546,7 +549,11 @@ public:
         
         return (strcmp(fileName + len - 4, ".rdd") == 0) 
             ? (RDD<T>*)new FileRDD<T>(fileName)
-            : (RDD<T>*)new DirRDD<T>(fileName);
+#if USE_PARQUET
+            : (strcmp(fileName + len - 4, ".parquet") == 0) 
+              ? (RDD<T>*)new ParquetRDD<T>(fileName)
+#endif
+              : (RDD<T>*)new DirRDD<T>(fileName);
     }
 };
 
