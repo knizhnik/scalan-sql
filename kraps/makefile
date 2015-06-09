@@ -2,6 +2,7 @@ all: tpch csv2rdd
 
 SIMDCOMP_HOME=~/simdcomp
 PARQUET_CPP_HOME=~/parquet++
+HADOOP_HOME=~/hadoop-2.7.0
 
 #CPP=g++ -pthread -fPIC -O3 -g -Wall
 #CPP=g++ -pthread -fPIC -O3 -g -Wall -DUSE_ZLIB
@@ -9,7 +10,7 @@ PARQUET_CPP_HOME=~/parquet++
 #CPP=g++ -pthread -fPIC -O0 -g -Wall
 #CPP=g++ -pthread -fPIC -O3 -g -Wall -DUSE_SIMDCOMP -I $(SIMDCOMP_HOME)/include
 #CPP=g++ -pthread -fPIC -O3 -g -Wall -DUSE_ZLIB
-CPP=g++ -pthread -fPIC -O3 -g -Wall -DUSE_ZLIB -DUSE_PARQUET -I $(PARQUET_CPP_HOME)/src -I $(PARQUET_CPP_HOME)/generated
+CPP=g++ -pthread -fPIC -O3 -g -Wall -DUSE_ZLIB -DUSE_PARQUET -I $(PARQUET_CPP_HOME)/src -I $(PARQUET_CPP_HOME)/generated $(HADOOP_HOME)/include 
 
 JNI_INCLUDES = -I/usr/lib/jvm/java/include/ -I/usr/lib/jvm/java/include/linux -I/usr/java/default/include -I/usr/java/default/include/linux -I/usr/java/include -I$(JAVA_HOME)/include -I$(JAVA_HOME)/include/linux -I/usr/lib/jvm/java-7-openjdk-amd64/include 
 
@@ -32,7 +33,7 @@ tpch: tpch.o cluster.o sockio.o compress.o parquet.o
 #	$(CPP) -o tpch tpch.o cluster.o sockio.o compress.o
 #	$(CPP) -o tpch tpch.o cluster.o sockio.o compress.o -lz
 #	$(CPP) -o tpch tpch.o cluster.o sockio.o compress.o -L $(SIMDCOMP_HOME) -lsimdcomp 
-	$(CPP) -o tpch tpch.o cluster.o sockio.o compress.o  parquet.o $(PARQUET_CPP_HOME)/build/libParquet.a $(PARQUET_CPP_HOME)/build/libParquetCompression.a $(PARQUET_CPP_HOME)/build/libThriftParquet.a $(PARQUET_CPP_HOME)/thirdparty/installed/lib/libsnappy.a  $(PARQUET_CPP_HOME)/thirdparty/installed/lib/liblz4.a /usr/local/lib/libthrift.a -lz
+	$(CPP) -o tpch tpch.o cluster.o sockio.o compress.o  parquet.o $(PARQUET_CPP_HOME)/build/libParquet.a $(PARQUET_CPP_HOME)/build/libParquetCompression.a $(PARQUET_CPP_HOME)/build/libThriftParquet.a $(PARQUET_CPP_HOME)/thirdparty/installed/lib/libsnappy.a  $(PARQUET_CPP_HOME)/thirdparty/installed/lib/liblz4.a /usr/local/lib/libthrift.a $(HADOOP_HOME)/lab/native/libhdfs.a -lz
 
 
 libq1rdd.so: Q1_RDD.cpp cluster.o sockio.o compress.o
