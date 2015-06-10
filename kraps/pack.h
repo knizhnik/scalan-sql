@@ -4,15 +4,17 @@
 #include <string.h>
 
 //
-// Default pack/unpack functions
+// Default pack/unpack functions for scalar types
 //
 template<class T>
-inline size_t pack(T const& src, char* dst) { 
+inline size_t pack(T const& src, char* dst, size_t size = 0) 
+{ 
     memcpy(dst, &src, sizeof(T));
     return sizeof(T);
 }
 template<class T>
-inline size_t unpack(T& dst, char const* src) { 
+inline size_t unpack(T& dst, char const* src, size_t size = 0) 
+{ 
     memcpy(&dst, src, sizeof(T));
     return sizeof(T);
 }
@@ -28,11 +30,46 @@ inline size_t strcopy(char* dst, char const* src, size_t len)
 }
 
 //
-// Macros for packing/unpacking class components
+// Pack/unpack functions for fixed size strings
 //
-#define PACK(x) memcpy(dst + size, &src.x, sizeof(src.x)), size += sizeof(src.x)
-#define UNPACK(x) memcpy(&dst.x, src + size, sizeof(dst.x)), size += sizeof(dst.x)
-#define PACK_STR(x) size += strcopy(dst + size, src.x, sizeof(src.x))
-#define UNPACK_STR(x) size += strcopy(dst.x, src + size, sizeof(dst.x))
+template<>
+inline size_t pack(char const* src, char* dst, size_t size)
+{
+    return strcopy(dst, src, size);
+}
+
+template<>
+inline size_t unpack(char* dst, char const* src, size_t size)
+{
+    return strcopy(dst, src, size);
+}
+
+#define PACK_FIELD(x) size += pack(src.x, dst + size, sizeof(src.x));
+
+#define PACK(Class)                                 \
+inline size_t pack(Class const& src, char* dst)     \
+{                                                   \
+    size_t size = 0;                                \
+    Class#Fields(PACK_FIELD);                       \
+    returm size;                                    \
+}
+
+#define UNPACK_FIELD(x) size += unpack(dst.x, src + size, sizeof(dst.x));
+
+#define UNPACK(Class)                               \
+inline size_t unpack(Class& dst, char const* src)   \
+{                                                   \
+    size_t size = 0;                                \
+    Class#Fields(UNPACK_FIELD);                     \
+    returm size;                                    \
+}
+
+#define PARQUET_FIELD(x) unpackParquet(dst.x, reader.columns[i++].reader, sizeof(dst.x)) && 
+#define PARQUET_UNPACK(Class)                       \
+inline bool unpackParquet(Class& dst, ParquetReader& reader)   \
+{                                                   \
+    size_t i = 0;                                   \
+    return Class#Fields(PARQUET_FIELD) true;        \
+}
 
 #endif

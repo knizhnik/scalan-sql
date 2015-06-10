@@ -20,8 +20,6 @@ public:
         InMemoryInputStream* stream;
         ColumnReader* reader;
 
-        bool next(const ColumnChunk &col, char* &dst);
-
         ParquetColumnReader() : stream(NULL), reader(NULL) {}
         ~ParquetColumnReader() { 
             delete reader;
@@ -30,7 +28,6 @@ public:
     };
 
     bool loadPart(char const* dir, size_t partNo);
-    bool extractRow(char* buf);
 
     FileMetaData metadata;
     vector<ParquetColumnReader> columns;
@@ -50,9 +47,7 @@ class ParquetRDD : public RDD<T>
                 }
                 nextPart = false;
             } 
-            char buf[sizeof(T)];
-            if (reader.extractRow(buf)) {
-                unpack(record, buf);
+            if (unpackParquet(record, reader)) {
                 return true;
             } else { 
                 segno += step;
@@ -69,4 +64,66 @@ class ParquetRDD : public RDD<T>
     bool nextPart;
 };
 
+inline bool unpackParquet(int32_t& dst, ColumnReader* reader, size_t)
+{
+    int def_level, rep_level;
+    if (reader->HasNext()) {     
+        dst = reader->GetInt32(&def_level, &rep_level);
+        assert(def_level >= rep_level);
+        return true;
+    }
+    return false;
+}
+
+inline bool unpackParquet(int64_t& dst, ColumnReader* reader, size_t)
+{
+    int def_level, rep_level;
+    if (reader->HasNext()) {     
+        dst = reader->GetInt64(&def_level, &rep_level);
+        assert(def_level >= rep_level);
+        return true;
+    }
+    return false;
+}
+
+inline bool unpackParquet(float& dst, ColumnReader* reader, size_t)
+{
+    int def_level, rep_level;
+    if (reader->HasNext()) {     
+        dst = reader->GetFloat(&def_level, &rep_level);
+        assert(def_level >= rep_level);
+        return true;
+    }
+    return false;
+}
+
+inline bool unpackParquet(double& dst, ColumnReader* reader, size_t)
+{
+    int def_level, rep_level;
+    if (reader->HasNext()) {     
+        dst = reader->GetDouble(&def_level, &rep_level);
+        assert(def_level >= rep_level);
+        return true;
+    }
+    return false;
+}
+
+inline bool unpackParquet(char* dst, ColumnReader* reader, size_t size)
+{
+    int def_level, rep_level;
+    if (reader->HasNext()) {     
+        ByteArray arr = reader->GetByteArray(&def_level, &rep_level);
+        assert(def_level >= rep_level);
+        assert(arr.len <= size)
+        memcpy(dst, arr.ptr, arr.len);
+        if (arr.len < size) { 
+            dst[arr.len] = '\0';
+        }
+        return true;
+    }
+    return false;
+}
+
+
+    
 #endif

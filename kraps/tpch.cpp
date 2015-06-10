@@ -12,6 +12,8 @@ const size_t SF = 100; // scale factor
 
 #define TABLE(x) (cache ? (RDD<x>*)cache->_##x.get() : (RDD<x>*)FileManager::load<x>(filePath(#x)))
 
+
+
 class CachedData
 {
   public:
@@ -704,25 +706,6 @@ namespace Q7
         name_t cust_nation;
         int    l_year;
 
-        friend size_t pack(Shipping const& src, char* dst)
-        {
-            size_t size = 0;
-            PACK_STR(supp_nation);
-            PACK_STR(cust_nation);
-            PACK(l_year);
-            return size;
-        }
-
-        friend size_t unpack(Shipping& dst, char const* src)
-        {
-            size_t size = 0;
-            UNPACK_STR(supp_nation);
-            UNPACK_STR(cust_nation);
-            UNPACK(l_year);
-            return size;
-        }
-            
-        
         bool operator == (Shipping const& other) const
         {
             return STREQ(supp_nation, other.supp_nation)
@@ -740,6 +723,14 @@ namespace Q7
             fprintf(out, "%s, %s, %d", s.supp_nation, s.cust_nation, s.l_year);
         }
     };
+
+    #define ShippingFields(FIELD) \
+        FIELD(supp_nation)        \
+        FIELD(cust_nation)        \
+        FIELD(l_year)
+
+    PACK(Shipping)
+    UNPACK(Shipping)
 
     void map(Pair<Shipping,double>& pair, Join<Join<Join<Join<Join<LineitemProjection,OrdersProjection>,SupplierProjection>,CustomerProjection>,Nation1>,Nation2> const& r)
     {
@@ -1135,21 +1126,6 @@ namespace Q9
         name_t nation;
         int    o_year;
         
-        friend size_t pack(Profit const& src, char* dst)
-        {
-            size_t size = 0;       
-            PACK_STR(nation);
-            PACK(o_year);
-            return size;
-        }
-        friend size_t unpack(Profit& dst, char const* src)
-        {
-            size_t size = 0;       
-            UNPACK_STR(nation);
-            UNPACK(o_year);
-            return size;
-        }
-           
         bool operator==(Profit const& other) const
         { 
             return STREQ(nation, other.nation) && o_year == other.o_year;
@@ -1163,6 +1139,13 @@ namespace Q9
             fprintf(out, "%s, %d", p.nation, p.o_year);
         } 
     };
+
+    #define ProfitFields(FIELD) \
+        FIELD(nation)           \
+        FIELD(o_year)
+
+    PACK(Profit)
+    UNPACK(Profit)
 
     void map(Pair<Profit,double>& pair, Join<Join<Join<Join<Join<LineitemProjection,OrdersProjection>,PartProjection>,PartsuppProjection>,SupplierProjection>,Nation> const& r)
     {
@@ -1270,31 +1253,6 @@ namespace Q10
         char c_phone[15];
         char c_comment[117];
         
-        friend size_t pack(GroupBy const& src, char* dst)
-        {
-            size_t size = 0;       
-            PACK(c_custkey);
-            PACK_STR(c_name);
-            PACK(c_acctball);
-            PACK_STR(n_name);
-            PACK_STR(c_address);
-            PACK_STR(c_phone);
-            PACK_STR(c_comment);
-            return size;
-        }
-        friend size_t unpack(GroupBy& dst, char const* src)
-        {
-            size_t size = 0;       
-            UNPACK(c_custkey);
-            UNPACK_STR(c_name);
-            UNPACK(c_acctball);
-            UNPACK_STR(n_name);
-            UNPACK_STR(c_address);
-            UNPACK_STR(c_phone);
-            UNPACK_STR(c_comment);
-            return size;
-        }            
-
         bool operator == (GroupBy const& other) const
         {
             return c_custkey == other.c_custkey
@@ -1316,6 +1274,18 @@ namespace Q10
         } 
     };
 
+    #define GroupByFields(FIELD) \
+        FIELD(c_custkey) \
+        FIELD(c_name) \
+        FIELD(c_acctball) \
+        FIELD(n_name) \
+        FIELD(c_address) \
+        FIELD(c_phone) \
+        FIELD(c_comment)
+
+    PACK(GroupBy)
+    UNPACK(GroupBy)
+    
     void map(Pair<GroupBy,double>& pair, Join<Join<Join<LineitemProjection,OrdersProjection>,Customer>,Nation> const& r)
     {
         pair.key.c_custkey = r.c_custkey;
