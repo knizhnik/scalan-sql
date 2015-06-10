@@ -5,6 +5,7 @@
 
 #include "parquet/parquet.h"
 #include "rdd.h"
+#include "hdfs.h"
 
 using namespace parquet;
 using namespace parquet_cpp;
@@ -16,36 +17,92 @@ using namespace std;
 const uint32_t FOOTER_SIZE = 8;
 const uint8_t PARQUET_MAGIC[4] = {'P', 'A', 'R', '1'};
 
-struct ScopedFile {
-public:
-    ScopedFile(FILE* f) : file_(f) { }
-    ~ScopedFile() { fclose(file_); }
+class ParquetFile {
+  public:
+    ParquetFile(char const* url) {
+        if (strncmp(url, "hdfs://", 7) == 0) {
+            path = (char*)strchr(url+7, '/');
+            if (fs == NULL) {
+                *path = '\0';
+                fs = hdfsConnect(path, 0);
+                assert(fs);
+                *path = '/';
+            }
+            hf = hdfsOpenFile(fs, path, O_RDONLY, 0, 0, 0);
+            assert(hf);
+            f = NULL;
+        } else {
+            hf = NULL;
+            f = fopen(url, "rb");
+            assert(f);
+        }        
+    }
 
-private:
-    FILE* file_;
+    size_t size() { 
+        if (hf) {
+            /* 
+               hdfsFileInfo* info = hdfsGetPathInfo(fs, path);
+               size_t sz = info->mSize;
+               hdfsFreeFileInfo(info, 1);
+               return sz;
+            */
+            return hdfsAvailable(fs, hf);
+        } else { 
+            int rc = fseek(f, 0, SEEK_END);
+            assert(rc == 0);
+            return ftell(f);
+        }
+    }
+
+    void seek(size_t pos) {
+        if (hf){ 
+            int rc = hdfsSeek(fs, hf, pos);
+            assert(rc == 0);
+        } else {
+            int rc = fseek(f, pos, SEEK_SET);
+            assert(rc == 0);
+        }
+    }
+
+    void read(void* buf, size_t size) {
+        if (hf) {
+            size_t n = hdfsRead(fs, hf, buf, size);
+            assert(n == size);
+        } else {
+            int rc = fread(buf, size, 1, f);
+            assert(rc == 1);
+        }
+    }
+    
+    ~ParquetFile() {
+        if (f != NULL) { 
+            fclose(f);
+        } else if (hf != NULL) { 
+            hdfsCloseFile(fs, hf);
+        }
+    }
+
+  private:
+    static hdfsFS fs;
+    hdfsFile hf;
+    char* path;
+    FILE* f;
 };
 
-bool GetFileMetadata(const string& path, FileMetaData* metadata) {
-    FILE* file = fopen(path.c_str(), "r");
-    if (!file) {
-        cerr << "Could not open file: " << path << endl;
-        return false;
-    }
-    ScopedFile cleanup(file);
-    fseek(file, 0L, SEEK_END);
-    size_t file_len = ftell(file);
+
+hdfsFS ParquetFile::fs;
+
+bool GetFileMetadata(ParquetFile& file, FileMetaData* metadata)
+{
+    size_t file_len = file.size();
     if (file_len < FOOTER_SIZE) {
         cerr << "Invalid parquet file. Corrupt footer." << endl;
         return false;
     }
 
     uint8_t footer_buffer[FOOTER_SIZE];
-    fseek(file, file_len - FOOTER_SIZE, SEEK_SET);
-    size_t bytes_read = fread(footer_buffer, 1, FOOTER_SIZE, file);
-    if (bytes_read != FOOTER_SIZE) {
-        cerr << "Invalid parquet file. Corrupt footer." << endl;
-        return false;
-    }
+    file.seek(file_len - FOOTER_SIZE);
+    file.read(footer_buffer, FOOTER_SIZE);
     if (memcmp(footer_buffer + 4, PARQUET_MAGIC, 4) != 0) {
         cerr << "Invalid parquet file. Corrupt footer." << endl;
         return false;
@@ -58,13 +115,9 @@ bool GetFileMetadata(const string& path, FileMetaData* metadata) {
         return false;
     }
 
-    fseek(file, metadata_start, SEEK_SET);
+    file.seek(metadata_start);
     uint8_t metadata_buffer[metadata_len];
-    bytes_read = fread(metadata_buffer, 1, metadata_len, file);
-    if (bytes_read != metadata_len) {
-        cerr << "Invalid parquet file. Could not read metadata bytes." << endl;
-        return false;
-    }
+    file.read(metadata_buffer, metadata_len);
 
     DeserializeThriftMsg(metadata_buffer, &metadata_len, metadata);
     return true;
@@ -73,13 +126,11 @@ bool GetFileMetadata(const string& path, FileMetaData* metadata) {
     
 bool ParquetReader::loadPart(char const* dir, size_t partNo)
 {
-    char path[1024];
-    sprintf(path, "%s/part-r-%05d%.parquet", dir, partNo + 1);
-    FILE* file = fopen(path, "rb");
-    if (file == NULL) { 
-        return false;
-    }
-    if (!GetFileMetadata(path, &metadata)) { 
+    char path[MAX_PATH_LEN];
+    sprintf(path, "%s/part-r-%05d.parquet", dir, (int)partNo + 1);
+    ParquetFile file(path);
+
+    if (!GetFileMetadata(file, &metadata)) { 
         return false;
     }
     columns.resize(0);
@@ -96,10 +147,9 @@ bool ParquetReader::loadPart(char const* dir, size_t partNo)
                     col_start = col.meta_data.dictionary_page_offset;
                 }
             }
-            fseek(file, col_start, SEEK_SET);
+            file.seek(col_start);
             cr.column_buffer.resize(col.meta_data.total_compressed_size);
-            size_t num_read = fread(&cr.column_buffer[0], 1, cr.column_buffer.size(), file);
-            assert(num_read == cr.column_buffer.size());
+            file.read(&cr.column_buffer[0], cr.column_buffer.size());
             
             cr.stream = new InMemoryInputStream(&cr.column_buffer[0], cr.column_buffer.size());
             cr.reader = new ColumnReader(&col.meta_data, &metadata.schema[c + 1], cr.stream);
@@ -107,5 +157,5 @@ bool ParquetReader::loadPart(char const* dir, size_t partNo)
     }
     return true;
 }
-            
+
 #endif

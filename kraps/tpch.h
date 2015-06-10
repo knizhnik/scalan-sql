@@ -74,10 +74,10 @@ struct Orders
     FIELD(o_orderstatus) \
     FIELD(o_totalprice) \
     FIELD(o_orderdate) \
-    FIELD_STR(o_orderpriority) \
-    FIELD_STR(o_clerk) \
+    FIELD(o_orderpriority) \
+    FIELD(o_clerk) \
     FIELD(o_shippriority) \
-    FIELD_STR(o_comment)
+    FIELD(o_comment)
 
 struct Customer
 {
@@ -94,12 +94,12 @@ struct Customer
 #define CustomerFields(FIELD) \
     FIELD(c_custkey) \
     FIELD(c_name) \
-    FIELD_STR(c_address) \
+    FIELD(c_address) \
     FIELD(c_nationkey) \
-    FIELD_STR(c_phone) \
+    FIELD(c_phone) \
     FIELD(c_acctball) \
-    FIELD_STR(c_mktsegment) \
-    FIELD_STR(c_comment) 
+    FIELD(c_mktsegment) \
+    FIELD(c_comment) 
 
 struct Supplier
 {
@@ -115,11 +115,11 @@ struct Supplier
 #define SupplierFields(FIELD) \
     FIELD(s_suppkey) \
     FIELD(s_name) \
-    FIELD_STR(s_address) \
+    FIELD(s_address) \
     FIELD(s_nationkey) \
-    FIELD_STR(s_phone) \
+    FIELD(s_phone) \
     FIELD(s_acctbal) \
-    FIELD_STR(s_comment)
+    FIELD(s_comment)
 
 struct Partsupp
 {
@@ -135,7 +135,7 @@ struct Partsupp
     FIELD(ps_suppkey) \
     FIELD(ps_availqty) \
     FIELD(ps_supplycost) \
-    FIELD_STR(ps_comment)
+    FIELD(ps_comment)
 
 struct Region
 {
@@ -147,7 +147,7 @@ struct Region
 #define RegionFields(FIELD) \
     FIELD(r_regionkey) \
     FIELD(r_name) \
-    FIELD_STR(r_comment)
+    FIELD(r_comment)
 
 struct Nation
 {
@@ -162,7 +162,7 @@ struct Nation
     FIELD(n_nationkey) \
     FIELD(n_name) \
     FIELD(n_regionkey) \
-    FIELD_STR(n_comment)
+    FIELD(n_comment)
 
 
 struct Part
@@ -178,16 +178,16 @@ struct Part
     char p_comment[23];
 };
 
-define PartFields(FIELD) \
+#define PartFields(FIELD) \
     FIELD(p_partkey) \
-    FIELD_STR(p_name) \
-    FIELD_STR(p_mfgr) \
-    FIELD_STR(p_brand) \
-    FIELD_STR(p_type) \
+    FIELD(p_name) \
+    FIELD(p_mfgr) \
+    FIELD(p_brand) \
+    FIELD(p_type) \
     FIELD(p_size) \
-    FIELD_STR(p_container) \
+    FIELD(p_container) \
     FIELD(p_retailprice) \
-    FIELD_STR(p_comment) 
+    FIELD(p_comment) 
 
 namespace Q1
 {
