@@ -48,7 +48,7 @@ static char const* filePath(char const* fileName)
     if (dataDir == NULL) { 
         return fileName;
     }
-    int n = sprintf(path, "%s/%c%s", dataDir, tolower(*fileName), fileName+1);
+    int n = sprintf(path, "%s/%s", dataDir, fileName);
     if (dataFormat != NULL) { 
         sprintf(path + n, ".%s", dataFormat);
     }

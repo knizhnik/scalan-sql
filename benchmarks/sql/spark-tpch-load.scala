@@ -2,8 +2,8 @@ import org.apache.spark.sql._
 import org.apache.spark.sql.types._
 val sqlContext = new org.apache.spark.sql.SQLContext(sc)
 
-val data_dir = "hdfs://strong:9000/"
-//val data_dir = "/mnt/tpch/"
+//val data_dir = "hdfs://strong:9000/"
+val data_dir = "/srv/remote/all-common/tpch/data/"
 
 val lineitems = sc.textFile(data_dir + "lineitem.tbl")
 val orders = sc.textFile(data_dir + "orders.tbl")
@@ -113,11 +113,12 @@ val regionSchemaRDD = sqlContext.applySchema(regionRDD, regionSchema)
 val nationSchemaRDD = sqlContext.applySchema(nationRDD, nationSchema)
 val partSchemaRDD = sqlContext.applySchema(partRDD, partSchema)
 
-lineitemSchemaRDD.saveAsParquetFile(data_dir + "lineitem.parquet")
-ordersSchemaRDD.saveAsParquetFile(data_dir + "orders.parquet")
-customerSchemaRDD.saveAsParquetFile(data_dir + "customer.parquet")
-supplierSchemaRDD.saveAsParquetFile(data_dir + "supplier.parquet")
-partsuppSchemaRDD.saveAsParquetFile(data_dir + "partsupp.parquet")
-regionSchemaRDD.saveAsParquetFile(data_dir + "region.parquet")
-nationSchemaRDD.saveAsParquetFile(data_dir + "nation.parquet")
-partSchemaRDD.saveAsParquetFile(data_dir + "part.parquet")
+val data_dir = "hdfs://strong:9121/"
+lineitemSchemaRDD.saveAsParquetFile(data_dir + "Lineitem.parquet")
+ordersSchemaRDD.saveAsParquetFile(data_dir + "Orders.parquet")
+customerSchemaRDD.saveAsParquetFile(data_dir + "Customer.parquet")
+supplierSchemaRDD.saveAsParquetFile(data_dir + "Supplier.parquet")
+partsuppSchemaRDD.saveAsParquetFile(data_dir + "Partsupp.parquet")
+regionSchemaRDD.saveAsParquetFile(data_dir + "Region.parquet")
+nationSchemaRDD.saveAsParquetFile(data_dir + "Nation.parquet")
+partSchemaRDD.saveAsParquetFile(data_dir + "Part.parquet")

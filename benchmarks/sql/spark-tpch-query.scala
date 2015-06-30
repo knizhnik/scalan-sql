@@ -1,18 +1,18 @@
 import org.apache.spark.sql._
 val sqlContext = new org.apache.spark.sql.SQLContext(sc)
 
-val data_dir = "hdfs://strong:9000/"
+val data_dir = "hdfs://strong:9121/"
 //val data_dir = "/mnt/tpch/"
 sqlContext.sql("set spark.sql.codegen=true")
 
-sqlContext.parquetFile(data_dir + "lineitem.parquet").registerTempTable("lineitem")
-sqlContext.parquetFile(data_dir + "orders.parquet").registerTempTable("orders")
-sqlContext.parquetFile(data_dir + "customer.parquet").registerTempTable("customer")
-sqlContext.parquetFile(data_dir + "supplier.parquet").registerTempTable("supplier")
-sqlContext.parquetFile(data_dir + "partsupp.parquet").registerTempTable("partsupp")
-sqlContext.parquetFile(data_dir + "region.parquet").registerTempTable("region")
-sqlContext.parquetFile(data_dir + "nation.parquet").registerTempTable("nation")
-sqlContext.parquetFile(data_dir + "part.parquet").registerTempTable("part")
+sqlContext.parquetFile(data_dir + "Lineitem.parquet").registerTempTable("lineitem")
+sqlContext.parquetFile(data_dir + "Orders.parquet").registerTempTable("orders")
+sqlContext.parquetFile(data_dir + "Customer.parquet").registerTempTable("customer")
+sqlContext.parquetFile(data_dir + "Supplier.parquet").registerTempTable("supplier")
+sqlContext.parquetFile(data_dir + "Partsupp.parquet").registerTempTable("partsupp")
+sqlContext.parquetFile(data_dir + "Region.parquet").registerTempTable("region")
+sqlContext.parquetFile(data_dir + "Nation.parquet").registerTempTable("nation")
+sqlContext.parquetFile(data_dir + "Part.parquet").registerTempTable("part")
 
 def now: Long = java.lang.System.currentTimeMillis()
 
@@ -23,14 +23,14 @@ def exec(query: String, df: DataFrame) = {
   println(s"Elapsed time for ${query}: ${now - start}")
 }
 
-val lineitem = sqlContext.parquetFile(data_dir + "lineitem.parquet")
-val orders = sqlContext.parquetFile(data_dir + "orders.parquet")
-val customer = sqlContext.parquetFile(data_dir + "customer.parquet")
-val supplier = sqlContext.parquetFile(data_dir + "supplier.parquet")
-val partsupp = sqlContext.parquetFile(data_dir + "partsupp.parquet")
-val region = sqlContext.parquetFile(data_dir + "region.parquet")
-val nation = sqlContext.parquetFile(data_dir + "nation.parquet")
-val part = sqlContext.parquetFile(data_dir + "part.parquet")
+val lineitem = sqlContext.parquetFile(data_dir + "Lineitem.parquet")
+val orders = sqlContext.parquetFile(data_dir + "Orders.parquet")
+val customer = sqlContext.parquetFile(data_dir + "Customer.parquet")
+val supplier = sqlContext.parquetFile(data_dir + "Supplier.parquet")
+val partsupp = sqlContext.parquetFile(data_dir + "Partsupp.parquet")
+val region = sqlContext.parquetFile(data_dir + "Region.parquet")
+val nation = sqlContext.parquetFile(data_dir + "Nation.parquet")
+val part = sqlContext.parquetFile(data_dir + "Part.parquet")
 
 val q1 = lineitem.filter(lineitem("l_shipdate") <= 19981201).groupBy("l_returnflag", "l_linestatus").agg(
     $"l_returnflag",
