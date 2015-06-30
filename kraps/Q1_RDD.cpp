@@ -28,7 +28,7 @@ public:
         return false;
     }
 
-    Q1_RDD(JNIEnv* _env, jobject _iterator) : env(_env), iterator(_iterator) 
+    Q1_RDD(JNIEnv* _env, jobject _iterator, jint nodeId, jint nNodes) : env(_env), iterator(_iterator) 
     {
         jclass rowClass = (jclass)env->FindClass("org/apache/spark/sql/Row");
         jclass iteratorClass = (jclass)env->FindClass("scala/collection/Iterator");
@@ -38,8 +38,24 @@ public:
         getDouble = env->GetMethodID(rowClass, "getDouble", "(I)D");
         getByte = env->GetMethodID(rowClass, "geByte", "(I)B");
         getLong = env->GetMethodID(rowClass, "getLong", "(I)J");
-    }
         
+        hosts = new char*[nNodes];
+        for (int i = 0; i < nNodes; i++) { 
+            hosts[i] = new char[16];
+            sprintf(hosts[i], "lite%d:5001", nodeId); 
+
+        }
+        cluster = new Cluster(nodeId, nNodes, hosts);
+    }
+
+    ~Q1_RDD() {
+        for (size_t i = 0; i < cluster->nNodes; i++) { 
+            delete hosts[i];
+        }
+        delete[] hosts;
+        delete cluster;
+    }
+    
 private:    
     JNIEnv *env;
     jobject iterator; 
@@ -49,14 +65,29 @@ private:
     jmethodID getDouble;
     jmethodID hasNext;
     jmethodID getNext;
+    Cluster* cluster;
+    char** hosts;
 };
 
 extern "C" {
 
-JNIEXPORT jlong Java_Q1_rdd(JNIEnv *env, jobject self, jobject iterator)
+JNIEXPORT jlong Java_Q1_begin(JNIEnv *env, jobject self, jobject iterator, jint nodeId, jint nNodes)
 {
-    return (jlong)(size_t)new Q1_RDD(env, iterator);
+    return (jlong)(size_t)new Q1_RDD(env, iterator, nodeId, nNodes);
 }
+
+JNIEXPORT jvoid Java_Q1_end(JNIEnv *env, jobject self, jlong query)
+{
+    Q1_RDD* query = (Q1_RDD*)(size_t)query;
+    delete query;
+}
+
+JNIEXPORT jlong Java_Q1_run(JNIEnv *env, jobject self, jlong query)
+{
+    Q1_RDD* query = (Q1_RDD*)(size_t)query;
+    return (jlong)(size_t)Q1::query();
+}
+
 
 JNIEXPORT jlong Java_Q1_nextRow(JNIEnv *env, jobject self, jlong rdd)
 {

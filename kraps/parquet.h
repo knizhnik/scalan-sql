@@ -42,14 +42,23 @@ class ParquetRDD : public RDD<T>
     bool next(T& record) {
         while (true) {
             if (nextPart) { 
-                if (!reader.loadPart(dir, segno + 1)) { 
+                if (!reader.loadPart(dir, segno)) { 
                     return false;
                 }
+
+                char path[MAX_PATH_LEN];
+                sprintf(path, "%s/part-r-%05d.parquet", dir, (int)seqno);
+                cout << path << " doesn't exists" << endl;
+
                 nextPart = false;
             } 
             if (unpackParquet(record, reader)) {
                 return true;
             } else { 
+                char path[MAX_PATH_LEN];
+                sprintf(path, "%s/part-r-%05d.parquet", dir, (int)seqno);
+                cout << "End of part " << path << endl;
+
                 segno += step;
                 nextPart = true;
             }
