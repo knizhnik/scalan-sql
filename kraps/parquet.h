@@ -47,7 +47,7 @@ class ParquetRDD : public RDD<T>
                 }
 
                 char path[MAX_PATH_LEN];
-                sprintf(path, "%s/part-r-%05d.parquet", dir, (int)seqno);
+                sprintf(path, "%s/part-r-%05d.parquet", dir, (int)segno);
                 cout << path << " doesn't exists" << endl;
 
                 nextPart = false;
@@ -56,7 +56,7 @@ class ParquetRDD : public RDD<T>
                 return true;
             } else { 
                 char path[MAX_PATH_LEN];
-                sprintf(path, "%s/part-r-%05d.parquet", dir, (int)seqno);
+                sprintf(path, "%s/part-r-%05d.parquet", dir, (int)segno);
                 cout << "End of part " << path << endl;
 
                 segno += step;

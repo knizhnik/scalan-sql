@@ -24,7 +24,6 @@ public:
             env->DeleteLocalRef(row);
             return true;
         }
-        delete this;
         return false;
     }
 
@@ -42,7 +41,7 @@ public:
         hosts = new char*[nNodes];
         for (int i = 0; i < nNodes; i++) { 
             hosts[i] = new char[16];
-            sprintf(hosts[i], "lite%d:5001", nodeId); 
+            sprintf(hosts[i], "lite%d:5001", i); 
 
         }
         cluster = new Cluster(nodeId, nNodes, hosts);
@@ -69,25 +68,122 @@ private:
     char** hosts;
 };
 
+namespace Q1
+{
+    struct Projection
+    {
+        double sum_qty;
+        double sum_base_price;
+        double sum_disc_price;
+        double sum_charge;
+        double avg_qty;
+        double avg_price;
+        double avg_disc;
+        size_t count_order;
+        char   l_returnflag;
+        char   l_linestatus;
+
+        friend void print(Projection const& p, FILE* out) { 
+            fprintf(out, "%c, %c, %f, %f, %f, %f, %f, %f, %f, %lu", 
+                    p.l_returnflag, p.l_linestatus, p.sum_qty, p.sum_base_price, p.sum_disc_price, p.sum_charge, p.avg_qty, p.avg_price, p.avg_disc, p.count_order);
+        }
+    };
+
+    struct GroupBy
+    {
+        char   l_returnflag;
+        char   l_linestatus;
+
+        bool operator == (GroupBy const& other) const
+        { 
+            return l_returnflag == other.l_returnflag && l_linestatus == other.l_linestatus;
+        }
+
+        friend size_t hashCode(GroupBy const& gby) {
+            return (gby.l_returnflag << 8) ^ gby.l_linestatus;
+        }
+    };
+    
+    struct Aggregate
+    {
+        double sum_qty;
+        double sum_base_price;
+        double sum_disc_price;
+        double sum_charge;
+        double sum_disc;
+        size_t count_order;
+    };
+    
+    bool predicate(Lineitem const& lineitem) 
+    {
+        return lineitem.l_shipdate <= 19981201;
+    }
+
+    void map(Pair<GroupBy,Aggregate>& pair, Lineitem const& lineitem)
+    {
+        pair.key.l_returnflag = lineitem.l_returnflag;
+        pair.key.l_linestatus = lineitem.l_linestatus;
+        pair.value.sum_qty = lineitem.l_quantity;
+        pair.value.sum_base_price = lineitem.l_extendedprice;
+        pair.value.sum_disc_price = lineitem.l_extendedprice*(1-lineitem.l_discount);
+        pair.value.sum_charge = lineitem.l_extendedprice*(1-lineitem.l_discount)*(1+lineitem.l_tax);
+        pair.value.sum_disc = lineitem.l_discount;
+        pair.value.count_order = 1;
+    }
+
+    void reduce(Aggregate& dst, Aggregate const& src)
+    {
+        dst.sum_qty += src.sum_qty;
+        dst.sum_base_price += src.sum_base_price;
+        dst.sum_disc_price += src.sum_disc_price;
+        dst.sum_charge += src.sum_charge;
+        dst.sum_disc  += src.sum_disc;
+        dst.count_order += src.count_order;
+    }
+
+
+    void projection(Projection& out, Pair<GroupBy,Aggregate> const& in)
+    {
+        out.l_returnflag = in.key.l_returnflag;
+        out.l_linestatus = in.key.l_linestatus;
+        out.sum_qty = in.value.sum_qty;
+        out.sum_base_price = in.value.sum_base_price;
+        out.sum_disc_price = in.value.sum_disc_price;
+        out.sum_charge = in.value.sum_charge;
+        out.avg_qty = in.value.sum_qty / in.value.count_order;
+        out.avg_price = in.value.sum_base_price / in.value.count_order;
+        out.avg_disc = in.value.sum_disc / in.value.count_order;
+        out.count_order = in.value.count_order;
+    }
+
+    int compare(Projection const* a, Projection const* b)
+    {
+        int diff = a->l_returnflag - b->l_returnflag;
+        return diff != 0 ? diff : a->l_linestatus - b->l_linestatus;
+    }
+
+    RDD<Projection>* query(Q1_RDD* lineitem) 
+    { 
+        return
+            lineitem->
+            filter<predicate>()->
+            mapReduce<GroupBy,Aggregate,map,reduce>(10000)->
+            project<Projection, projection>()->
+            sort<compare>(100);
+    }
+}
+
 extern "C" {
 
-JNIEXPORT jlong Java_Q1_begin(JNIEnv *env, jobject self, jobject iterator, jint nodeId, jint nNodes)
+JNIEXPORT jlong Java_Q1_prepareQuery(JNIEnv *env, jobject self, jobject iterator, jint nodeId, jint nNodes)
 {
-    return (jlong)(size_t)new Q1_RDD(env, iterator, nodeId, nNodes);
+    return (jlong)(size_t)Q1::query(new Q1_RDD(env, iterator, nodeId, nNodes));
 }
 
-JNIEXPORT jvoid Java_Q1_end(JNIEnv *env, jobject self, jlong query)
+JNIEXPORT void Java_Q1_freeQuery(JNIEnv *env, jobject self, jlong query)
 {
-    Q1_RDD* query = (Q1_RDD*)(size_t)query;
-    delete query;
+    delete (RDD<Q1::Projection>*)query;
 }
-
-JNIEXPORT jlong Java_Q1_run(JNIEnv *env, jobject self, jlong query)
-{
-    Q1_RDD* query = (Q1_RDD*)(size_t)query;
-    return (jlong)(size_t)Q1::query();
-}
-
 
 JNIEXPORT jlong Java_Q1_nextRow(JNIEnv *env, jobject self, jlong rdd)
 {

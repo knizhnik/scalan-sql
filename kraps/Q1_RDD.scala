@@ -20,8 +20,13 @@ class Q1(sc: SparkContext, input: RDD[Row]) extends RDD[Row](sc, input.dependenc
     var row:Long = 0
 
     def hasNext = {
-      if (row == 0) row = nextRow(input)
-      row != 0
+      if (row == 0) row = nextRow(input) 
+      if (row == 0) { 
+        freeQuery(input)        
+        false
+      } else { 
+        true
+      }
     }
 
     def next:Row = {
@@ -43,19 +48,18 @@ class Q1(sc: SparkContext, input: RDD[Row]) extends RDD[Row](sc, input.dependenc
   }
 
   def compute(split: Partition, context: TaskContext): Iterator[Row] = {
-    query = begin(input.compute(split, context), split.index, input.partitions.size)
-    new Q1Iterator(run(query))
+    // Is it right way to get executor node address?
+    val executorId = sc.getConf.get("spark.executor.id").substr(4).toInt
+    val driverHost = sc.getConf.get("spark.driver.host")
+    new Q1Iterator(prepareQuery(input.compute(split, context), executorId, input.partitions.size))
   }      
   
-  def close() = end(query)
-
   protected def getPartitions: Array[Partition] = input.partitions
 
-  @native def begin(iterator: Iterator[Row], nodeId: Int, nNodes: Int): Long
+  @native def prepareQuery(iterator: Iterator[Row], executorId: Int, nNodes: Int): Long
   @native def nextRow(rdd:Long): Long
   @native def freeRow(row:Long)
-  @native def run(query:Long):Long
-  @native def end(query:Long)
+  @native def freeQuery(query:Long)
 }
 
 object NativeTest
@@ -65,7 +69,7 @@ object NativeTest
   def exec(rdd: RDD[Row]) = {
     val start = now
     rdd.collect().foreach(println)
-    println(s"Elapsed time ${now - start} second")
+    println(s"Elapsed time ${now - start} seconds")
   }
  
   def main(args: Array[String]) = {
