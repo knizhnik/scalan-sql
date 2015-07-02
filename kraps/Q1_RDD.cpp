@@ -1,6 +1,7 @@
 #define _JNI_IMPLEMENTATION_ 1
 #include <jni.h>
 #include "tpch.h"
+#include <sys/utsname.h>
 
 class Q1_RDD : public RDD<Lineitem>
 {
@@ -27,7 +28,7 @@ public:
         return false;
     }
 
-    Q1_RDD(JNIEnv* _env, jobject _iterator, jint nodeId, jint nNodes) : env(_env), iterator(_iterator) 
+    Q1_RDD(JNIEnv* _env, jobject _iterator, jint nNodes) : env(_env), iterator(_iterator) 
     {
         jclass rowClass = (jclass)env->FindClass("org/apache/spark/sql/Row");
         jclass iteratorClass = (jclass)env->FindClass("scala/collection/Iterator");
@@ -38,12 +39,20 @@ public:
         getByte = env->GetMethodID(rowClass, "geByte", "(I)B");
         getLong = env->GetMethodID(rowClass, "getLong", "(I)J");
         
+        struct utsname localHost;
+        uname(&localHost);
+
         hosts = new char*[nNodes];
+        int nodeId = -1;
         for (int i = 0; i < nNodes; i++) { 
             hosts[i] = new char[16];
-            sprintf(hosts[i], "lite%d:5001", i); 
-
+            sprintf(hosts[i], "lite%d", i); 
+            if (strcmp(hosts[i], localHost) == 0) {
+                nodeId = i;
+            }
+            strcat(hosts[i], ":5001");
         }
+        assert(nodeId >= 0);
         cluster = new Cluster(nodeId, nNodes, hosts);
     }
 
@@ -175,9 +184,9 @@ namespace Q1
 
 extern "C" {
 
-JNIEXPORT jlong Java_Q1_prepareQuery(JNIEnv *env, jobject self, jobject iterator, jint nodeId, jint nNodes)
+JNIEXPORT jlong Java_Q1_prepareQuery(JNIEnv *env, jobject self, jobject iterator, jint nNodes)
 {
-    return (jlong)(size_t)Q1::query(new Q1_RDD(env, iterator, nodeId, nNodes));
+    return (jlong)(size_t)Q1::query(new Q1_RDD(env, iterator, nNodes));
 }
 
 JNIEXPORT void Java_Q1_freeQuery(JNIEnv *env, jobject self, jlong query)

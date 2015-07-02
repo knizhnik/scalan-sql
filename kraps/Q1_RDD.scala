@@ -11,7 +11,7 @@ class RowDecoder
   @native def getDouble(row: Long, offs: Int): Double
 }
 
-class Q1(sc: SparkContext, input: RDD[Row]) extends RDD[Row](sc, input.dependencies) {
+class Q1(input: RDD[Row]) extends RDD[Row](input) {
   var iterator:Long = 0
   val decoder = new RowDecoder()
   var query:Long = 0
@@ -48,10 +48,7 @@ class Q1(sc: SparkContext, input: RDD[Row]) extends RDD[Row](sc, input.dependenc
   }
 
   def compute(split: Partition, context: TaskContext): Iterator[Row] = {
-    // Is it right way to get executor node address?
-    val executorId = sc.getConf.get("spark.executor.id").substr(4).toInt
-    val driverHost = sc.getConf.get("spark.driver.host")
-    new Q1Iterator(prepareQuery(input.compute(split, context), executorId, input.partitions.size))
+    new Q1Iterator(prepareQuery(input.compute(split, context), input.partitions.size))
   }      
   
   protected def getPartitions: Array[Partition] = input.partitions
@@ -76,12 +73,12 @@ object NativeTest
     val conf = new SparkConf().setAppName("Spark intergration with native code")
     val sc = new SparkContext(conf)
     val sqlContext = new SQLContext(sc)
-    val nExecutors = sc.getExecutorMemoryStatus().size()
-    val data_dir = "hdfs://strong:9212/"
+    val nExecutors = 4
+    val data_dir = "hdfs://strong:9121/"
     val lineitem = sqlContext.parquetFile(data_dir + "Lineitem.parquet").rdd.coalesce(nExecutors)
 
     System.loadLibrary("q1rdd")
 
-    exec(new Q1(sc, lineitem))
+    exec(new Q1(lineitem))
   }
 }
