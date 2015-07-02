@@ -24,18 +24,23 @@ class ParquetFile {
             path = (char*)strchr(url+7, '/');
             if (fs == NULL) {
                 *path = '\0';
-                fs = hdfsConnect(path, 0);
+		printf("Try to connct to %s\n", url);
+                fs = hdfsConnect(url, 0);
                 assert(fs);
                 *path = '/';
             }
             hf = hdfsOpenFile(fs, path, O_RDONLY, 0, 0, 0);
-            assert(hf);
+            //assert(hf);
             f = NULL;
         } else {
             hf = NULL;
             f = fopen(url, "rb");
-            assert(f);
+            //assert(f);
         }        
+    }
+
+    bool exists() { 
+        return hf != NULL || f != NULL;
     }
 
     size_t size() { 
@@ -68,8 +73,12 @@ class ParquetFile {
 
     void read(void* buf, size_t size) {
         if (hf) {
-            size_t n = hdfsRead(fs, hf, buf, size);
-            assert(n == size);
+	    size_t offs = 0;
+	    while (offs < size) { 
+                int n = hdfsRead(fs, hf, (char*)buf + offs, size - offs);
+                assert(n > 0);
+		offs += n;
+	    }
         } else {
             int rc = fread(buf, size, 1, f);
             assert(rc == 1);
@@ -96,6 +105,9 @@ hdfsFS ParquetFile::fs;
 
 bool GetFileMetadata(ParquetFile& file, FileMetaData* metadata)
 {
+    if (!file.exists()) { 
+    	return false;
+    }
     size_t file_len = file.size();
     if (file_len < FOOTER_SIZE) {
         cerr << "Invalid parquet file. Corrupt footer." << endl;
