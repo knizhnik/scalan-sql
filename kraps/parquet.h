@@ -45,20 +45,11 @@ class ParquetRDD : public RDD<T>
                 if (!reader.loadPart(dir, segno)) { 
                     return false;
                 }
-
-                char path[MAX_PATH_LEN];
-                sprintf(path, "%s/part-r-%05d.parquet", dir, (int)segno);
-                cout << path << " doesn't exists" << endl;
-
                 nextPart = false;
             } 
             if (unpackParquet(record, reader)) {
                 return true;
             } else { 
-                char path[MAX_PATH_LEN];
-                sprintf(path, "%s/part-r-%05d.parquet", dir, (int)segno);
-                cout << "End of part " << path << endl;
-
                 segno += step;
                 nextPart = true;
             }

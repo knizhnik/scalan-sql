@@ -24,7 +24,6 @@ class ParquetFile {
             path = (char*)strchr(url+7, '/');
             if (fs == NULL) {
                 *path = '\0';
-		printf("Try to connct to %s\n", url);
                 fs = hdfsConnect(url, 0);
                 assert(fs);
                 *path = '/';
@@ -147,13 +146,20 @@ bool ParquetReader::loadPart(char const* dir, size_t partNo)
     if (!GetFileMetadata(file, &metadata)) { 
         return false;
     }
-    columns.resize(0);
+    size_t nColumns = 0;
+    for (size_t i = 0; i < metadata.row_groups.size(); ++i) {
+        const RowGroup& row_group = metadata.row_groups[i];
+        nColumns += metadata.row_groups.size();
+    }
+    columns.resize(0); // do cleanup
+    columns.resize(nColumns);
+    nColumns = 0;
+    
     for (size_t i = 0; i < metadata.row_groups.size(); ++i) {
         const RowGroup& row_group = metadata.row_groups[i];
         for (size_t c = 0; c < row_group.columns.size(); ++c) {
             const ColumnChunk& col = row_group.columns[c];
-            columns.push_back(ParquetColumnReader());
-            ParquetColumnReader& cr = columns.back();
+            ParquetColumnReader& cr = columns[nColumns++];
             
             size_t col_start = col.meta_data.data_page_offset;
             if (col.meta_data.__isset.dictionary_page_offset) {
