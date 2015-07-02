@@ -28,8 +28,12 @@ class ParquetFile {
                 assert(fs);
                 *path = '/';
             }
-            hf = hdfsOpenFile(fs, path, O_RDONLY, 0, 0, 0);
-            //assert(hf);
+	    if (hdfsExists(fs, path) == 0) { 
+                hf = hdfsOpenFile(fs, path, O_RDONLY, 0, 0, 0);
+                assert(hf);
+	    } else {
+	        hf = NULL;
+	    }
             f = NULL;
         } else {
             hf = NULL;
@@ -44,15 +48,11 @@ class ParquetFile {
 
     size_t size() { 
         if (hf) {
-            /* 
-               hdfsFileInfo* info = hdfsGetPathInfo(fs, path);
-               size_t sz = info->mSize;
-               hdfsFreeFileInfo(info, 1);
-               return sz;
-            */
-            size_t size = hdfsAvailable(fs, hf);
-            cout << "Parquet file size " << size << endl;
-            return size;
+            hdfsFileInfo* info = hdfsGetPathInfo(fs, path);
+            size_t sz = info->mSize;
+            hdfsFreeFileInfo(info, 1);
+            return sz;
+            //return hdfsAvailable(fs, hf);
         } else { 
             int rc = fseek(f, 0, SEEK_END);
             assert(rc == 0);
@@ -149,7 +149,7 @@ bool ParquetReader::loadPart(char const* dir, size_t partNo)
     size_t nColumns = 0;
     for (size_t i = 0; i < metadata.row_groups.size(); ++i) {
         const RowGroup& row_group = metadata.row_groups[i];
-        nColumns += metadata.row_groups.size();
+        nColumns += row_group.columns.size();
     }
     columns.resize(0); // do cleanup
     columns.resize(nColumns);

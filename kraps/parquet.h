@@ -9,7 +9,6 @@ using namespace std;
 
 // 
 // Parquet file reader (based on https://github.com/Parquet/parquet-cpp)
-// TODO: parquet-cpp is not supporting compression now
 //
 class ParquetReader
 {
