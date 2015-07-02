@@ -1,5 +1,4 @@
-#SPARK_HOME=../spark-1.3.0-bin-hadoop2.4
-SPARK_HOME=/srv/remote/all-common/spark-1.3.1-bin-hadoop2.6 
+SPARK_HOME=/srv/remote/all-common/spark-1.3.1-bin-hadoop2.6
 
 all: libnativerdd.so NativeTest.jar CustomRDDTest.jar
 
@@ -8,13 +7,13 @@ libnativerdd.so: nativerdd.cpp
 
 NativeTest.jar: NativeTest.scala
 	rm -f *.class
-	scalac -classpath $(SPARK_HOME)/lib/spark-assembly-1.3.0-hadoop2.4.0.jar:$(SPARK_HOME)/lib/spark-1.3.0-yarn-shuffle.jar NativeTest.scala
+	scalac -classpath $(SPARK_HOME)/lib/spark-assembly-1.3.1-hadoop2.6.0.jar:$(SPARK_HOME)/lib/spark-1.3.1-yarn-shuffle.jar NativeTest.scala
 	jar cvf NativeTest.jar *.class
 
 
 CustomRDDTest.jar: CustomRDDTest.scala
 	rm -f *.class
-	scalac -classpath $(SPARK_HOME)/lib/spark-assembly-1.3.0-hadoop2.4.0.jar:$(SPARK_HOME)/lib/spark-1.3.0-yarn-shuffle.jar CustomRDDTest.scala
+	scalac -classpath $(SPARK_HOME)/lib/spark-assembly-1.3.1-hadoop2.6.0.jar:$(SPARK_HOME)/lib/spark-1.3.1-yarn-shuffle.jar CustomRDDTest.scala
 	jar cvf CustomRDDTest.jar *.class
 
 run:
