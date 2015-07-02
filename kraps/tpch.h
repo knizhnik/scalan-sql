@@ -189,30 +189,6 @@ struct Part
     FIELD(p_retailprice) \
     FIELD(p_comment) 
 
-namespace Q1
-{
-    struct Projection
-    {
-        double sum_qty;
-        double sum_base_price;
-        double sum_disc_price;
-        double sum_charge;
-        double avg_qty;
-        double avg_price;
-        double avg_disc;
-        size_t count_order;
-        char   l_returnflag;
-        char   l_linestatus;
-
-        friend void print(Projection const& p, FILE* out) { 
-            fprintf(out, "%c, %c, %f, %f, %f, %f, %f, %f, %f, %lu", 
-                    p.l_returnflag, p.l_linestatus, p.sum_qty, p.sum_base_price, p.sum_disc_price, p.sum_charge, p.avg_qty, p.avg_price, p.avg_disc, p.count_order);
-        }
-    };
-
-    RDD<Projection>* query();
-}
-
 
 PACK(Lineitem)
 PACK(Orders)

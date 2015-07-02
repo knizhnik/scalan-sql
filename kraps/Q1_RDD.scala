@@ -11,16 +11,22 @@ class RowDecoder
   @native def getDouble(row: Long, offs: Int): Double
 }
 
-class Q1(sc: SparkContext, input: RDD[Row], push: Boolean) extends RDD[Row](sc, input.dependencies) {
+class Q1(sc: SparkContext, input: RDD[Row]) extends RDD[Row](sc, input.dependencies) {
   var iterator:Long = 0
   val decoder = new RowDecoder()
+  var query:Long = 0
 
   class Q1Iterator(input:Long) extends Iterator[Row] {
     var row:Long = 0
 
     def hasNext = {
-      if (row == 0) row = nextRow(input)
-      row != 0
+      if (row == 0) row = nextRow(input) 
+      if (row == 0) { 
+        freeQuery(input)        
+        false
+      } else { 
+        true
+      }
     }
 
     def next:Row = {
@@ -42,40 +48,40 @@ class Q1(sc: SparkContext, input: RDD[Row], push: Boolean) extends RDD[Row](sc, 
   }
 
   def compute(split: Partition, context: TaskContext): Iterator[Row] = {
-    new Q1Iterator(begin(input.compute(split, context)))
+    // Is it right way to get executor node address?
+    val executorId = sc.getConf.get("spark.executor.id").substr(4).toInt
+    val driverHost = sc.getConf.get("spark.driver.host")
+    new Q1Iterator(prepareQuery(input.compute(split, context), executorId, input.partitions.size))
   }      
-
+  
   protected def getPartitions: Array[Partition] = input.partitions
 
-  @native def rdd(iterator: Iterator[Row]): Long
+  @native def prepareQuery(iterator: Iterator[Row], executorId: Int, nNodes: Int): Long
   @native def nextRow(rdd:Long): Long
+  @native def freeRow(row:Long)
+  @native def freeQuery(query:Long)
 }
 
 object NativeTest
 {
   def now: Long = java.lang.System.currentTimeMillis()
 
-  def exec(rdd: ExternalRDD) = {
+  def exec(rdd: RDD[Row]) = {
     val start = now
-    val result = rdd.fold(0)((x:Int,y:Int) => x+y)
-    println(s"Result ${result} produced in ${now - start} second")
+    rdd.collect().foreach(println)
+    println(s"Elapsed time ${now - start} seconds")
   }
  
   def main(args: Array[String]) = {
     val conf = new SparkConf().setAppName("Spark intergration with native code")
     val sc = new SparkContext(conf)
     val sqlContext = new SQLContext(sc)
-
-    val data_dir = "/mnt/tpch/"
-    val lineitem = sqlContext.parquetFile(data_dir + "lineitem.parquet").rdd
+    val nExecutors = sc.getExecutorMemoryStatus().size()
+    val data_dir = "hdfs://string:9212/"
+    val lineitem = sqlContext.parquetFile(data_dir + "Lineitem.parquet").rdd.coalesce(nExecutors)
 
     System.loadLibrary("q1rdd")
 
-    exec(new ExternalRDD(sc, lineitem, true))
-    exec(new ExternalRDD(sc, lineitem, false))
-    exec(new ExternalRDD(sc, lineitem, true))
-    exec(new ExternalRDD(sc, lineitem, false))
-    exec(new ExternalRDD(sc, lineitem, true))
-    exec(new ExternalRDD(sc, lineitem, false)) 
+    exec(new Q1(sc, lineitem))
   }
 }

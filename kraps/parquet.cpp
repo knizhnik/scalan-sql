@@ -46,7 +46,9 @@ class ParquetFile {
                hdfsFreeFileInfo(info, 1);
                return sz;
             */
-            return hdfsAvailable(fs, hf);
+            size_t size = hdfsAvailable(fs, hf);
+            cout << "Parquet file size " << size << endl;
+            return size;
         } else { 
             int rc = fseek(f, 0, SEEK_END);
             assert(rc == 0);

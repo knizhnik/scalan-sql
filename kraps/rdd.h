@@ -550,7 +550,7 @@ public:
         return (strcmp(fileName + len - 4, ".rdd") == 0) 
             ? (RDD<T>*)new FileRDD<T>(fileName)
 #if USE_PARQUET
-            : (strcmp(fileName + len - 4, ".parquet") == 0) 
+            : (strcmp(fileName + len - 8, ".parquet") == 0) 
               ? (RDD<T>*)new ParquetRDD<T>(fileName)
 #endif
               : (RDD<T>*)new DirRDD<T>(fileName);
