@@ -476,8 +476,9 @@ template<class T>
 class FileRDD : public RDD<T>
 {
   public:
-    FileRDD(char const* path) : f(fopen(path, "rb")) {
+    FileRDD(char* path) : f(fopen(path, "rb")) {
         assert(f != NULL);
+        delete[] path;
     }
 
     bool next(T& record) {
@@ -498,7 +499,7 @@ template<class T>
 class DirRDD : public RDD<T>
 {
   public:
-    DirRDD(char const* path) : dir(path), segno(Cluster::instance->nodeId), step(Cluster::instance->nNodes), f(NULL) {}
+    DirRDD(char* path) : dir(path), segno(Cluster::instance->nodeId), step(Cluster::instance->nNodes), f(NULL) {}
 
     RDD<T>* replicate() { 
         segno = 0;
@@ -526,8 +527,12 @@ class DirRDD : public RDD<T>
         }
     }
 
+    ~DirRDD() {
+        delete[] dir;
+    }
+    
   private:
-    char const* dir;
+    char* dir;
     size_t segno;
     size_t step;
     FILE* f;    

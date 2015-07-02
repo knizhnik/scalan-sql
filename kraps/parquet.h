@@ -36,7 +36,7 @@ template<class T>
 class ParquetRDD : public RDD<T>
 {
   public:
-    ParquetRDD(char const* path) : dir(path), segno(Cluster::instance->nodeId), step(Cluster::instance->nNodes), nextPart(true) {}
+    ParquetRDD(char* path) : dir(path), segno(Cluster::instance->nodeId), step(Cluster::instance->nNodes), nextPart(true) {}
 
     bool next(T& record) {
         while (true) {
@@ -55,9 +55,12 @@ class ParquetRDD : public RDD<T>
         }
     }
 
+    ~ParquetRDD() {
+        delete[] dir;
+    }
   private:
     ParquetReader reader;
-    char const* dir;
+    char* dir;
     size_t segno;
     size_t step;
     bool nextPart;

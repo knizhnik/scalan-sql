@@ -42,17 +42,17 @@ CachedData* cache;
 char const* dataDir;
 char const* dataFormat;
 
-static char const* filePath(char const* fileName)
+static char* filePath(char const* fileName)
 { 
-    static char path[MAX_PATH_LEN];
+    char path[MAX_PATH_LEN];
     if (dataDir == NULL) { 
-        return fileName;
+        return strdup(fileName);
     }
     int n = sprintf(path, "%s/%s", dataDir, fileName);
     if (dataFormat != NULL) { 
         sprintf(path + n, ".%s", dataFormat);
     }
-    return path;
+    return strdup(path);
 }
 
 void sum(double& dst, double const& src)
