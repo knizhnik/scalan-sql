@@ -26,22 +26,23 @@ public:
         }
     };
 
-    bool loadPart(char const* dir, size_t partNo);
+    bool loadFile(char const* dir, size_t partNo);
+    bool loadBlock(char const* dir, size_t partNo, bool& eof);
 
     FileMetaData metadata;
     vector<ParquetColumnReader> columns;
 };
 
 template<class T>
-class ParquetRDD : public RDD<T>
+class ParquetFileRDD : public RDD<T>
 {
   public:
-    ParquetRDD(char* path) : dir(path), segno(Cluster::instance->nodeId), step(Cluster::instance->nNodes), nextPart(true) {}
+    ParquetFileRDD(char* path) : dir(path), segno(Cluster::instance->nodeId), step(Cluster::instance->nNodes), nextPart(true) {}
 
     bool next(T& record) {
         while (true) {
             if (nextPart) { 
-                if (!reader.loadPart(dir, segno)) { 
+                if (!reader.loadFile(dir, segno)) { 
                     return false;
                 }
                 nextPart = false;
@@ -55,7 +56,7 @@ class ParquetRDD : public RDD<T>
         }
     }
 
-    ~ParquetRDD() {
+    ~ParquetFileRDD() {
         delete[] dir;
     }
   private:
@@ -63,6 +64,44 @@ class ParquetRDD : public RDD<T>
     char* dir;
     size_t segno;
     size_t step;
+    bool nextPart;
+};
+
+template<class T>
+class ParquetBlockRDD : public RDD<T>
+{
+  public:
+    ParquetBlockRDD(char* path) : dir(path), segNo(0), nextPart(true) {}
+
+    bool next(T& record) {
+        while (true) {
+            if (nextPart) { 
+                bool eof;
+                if (!reader.loadBlock(dir, eof)) { 
+                    if (eof) { 
+                        return false;
+                    } else { 
+                        continue;
+                    }
+                }
+                nextPart = false;
+            } 
+            if (unpackParquet(record, reader)) {
+                return true;
+            } else { 
+                segno += 1;
+                nextPart = true;
+            }
+        }
+    }
+
+    ~ParquetBlockRDD() {
+        delete[] dir;
+    }
+  private:
+    ParquetReader reader;
+    char* dir;
+    size_t segno;
     bool nextPart;
 };
 

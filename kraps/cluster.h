@@ -139,12 +139,14 @@ class Cluster {
     size_t const syncInterval;
     size_t const broadcastJoinThreshold;
     size_t const inmemJoinThreshold;
+    bool   const sharedNothing;
     char const* tmpDir;
     Socket** sockets;
     Queue** recvQueues;
     Queue** sendQueues;
     Queue*  syncQueue;
     Thread** senders;
+    char** hosts;
     qid_t qid;
     Thread* receiver;
     bool shutdown;
@@ -155,7 +157,9 @@ class Cluster {
     Queue* getQueue();
     void barrier();
 
-    Cluster(size_t nodeId, size_t nHosts, char** hosts, size_t nQueues = 64, size_t bufferSize = 4*64*1024, size_t recvQueueSize = 4*64*1024*1024,  size_t sendQueueSize = 4*4*1024*1024, size_t syncInterval = 64*1024*1024, size_t broadcastJoinThreshold = 10000, size_t inmemJoinThreshold = 10000000, char const* tmp = "/tmp");
+    bool isLocalNode(char const* host);
+
+    Cluster(size_t nodeId, size_t nHosts, char** hosts, size_t nQueues = 64, size_t bufferSize = 4*64*1024, size_t recvQueueSize = 4*64*1024*1024,  size_t sendQueueSize = 4*4*1024*1024, size_t syncInterval = 64*1024*1024, size_t broadcastJoinThreshold = 10000, size_t inmemJoinThreshold = 10000000, char const* tmp = "/tmp", bool sharedNothing = true);
     ~Cluster();
 
     static Cluster* instance;

@@ -28,18 +28,30 @@ class ParquetFile {
                 assert(fs);
                 *path = '/';
             }
-	    if (hdfsExists(fs, path) == 0) { 
+            if (hdfsExists(fs, path) == 0) { 
                 hf = hdfsOpenFile(fs, path, O_RDONLY, 0, 0, 0);
                 assert(hf);
-	    } else {
-	        hf = NULL;
-	    }
+            } else {
+                hf = NULL;
+            }
             f = NULL;
         } else {
             hf = NULL;
             f = fopen(url, "rb");
             //assert(f);
         }        
+    }
+
+    bool isLocal(size_t start, size_t size) {
+        bool my = false;
+        if (hf) { 
+            char*** hosts = hdfsGetHosts(fs, path); 
+            if (hosts[0][0] != NULL) { 
+                my = Cluster::instance->isLocalNode(hosts[0][0]);
+            }
+            hdfsFreeHosts(hosts);
+        }
+        return my;
     }
 
     bool exists() { 
@@ -61,7 +73,7 @@ class ParquetFile {
     }
 
     void seek(size_t pos) {
-        if (hf){ 
+        if (hf) { 
             int rc = hdfsSeek(fs, hf, pos);
             assert(rc == 0);
         } else {
@@ -104,9 +116,6 @@ hdfsFS ParquetFile::fs;
 
 bool GetFileMetadata(ParquetFile& file, FileMetaData* metadata)
 {
-    if (!file.exists()) { 
-    	return false;
-    }
     size_t file_len = file.size();
     if (file_len < FOOTER_SIZE) {
         cerr << "Invalid parquet file. Corrupt footer." << endl;
@@ -137,12 +146,15 @@ bool GetFileMetadata(ParquetFile& file, FileMetaData* metadata)
 
 }
     
-bool ParquetReader::loadPart(char const* dir, size_t partNo)
+bool ParquetReader::loadFile(char const* dir, size_t partNo)
 {
     char path[MAX_PATH_LEN];
     sprintf(path, "%s/part-r-%05d.parquet", dir, (int)partNo + 1);
     ParquetFile file(path);
 
+    if (!file.exists()) { 
+    	return false;
+    }
     if (!GetFileMetadata(file, &metadata)) { 
         return false;
     }
@@ -167,6 +179,57 @@ bool ParquetReader::loadPart(char const* dir, size_t partNo)
                     col_start = col.meta_data.dictionary_page_offset;
                 }
             }
+            file.seek(col_start);
+            cr.column_buffer.resize(col.meta_data.total_compressed_size);
+            file.read(&cr.column_buffer[0], cr.column_buffer.size());
+            
+            cr.stream = new InMemoryInputStream(&cr.column_buffer[0], cr.column_buffer.size());
+            cr.reader = new ColumnReader(&col.meta_data, &metadata.schema[c + 1], cr.stream);
+        }
+    }
+    return true;
+}
+
+bool ParquetReader::loadBlock(char const* dir, size_t partNo, bool eof)
+{
+    char path[MAX_PATH_LEN];
+    sprintf(path, "%s/part-r-%05d.parquet", dir, (int)partNo + 1);
+    ParquetFile file(path);
+
+    eof = true;
+    if (!file.exists()) { 
+    	return false;
+    }
+    if (!GetFileMetadata(file, &metadata)) { 
+        return false;
+    }
+    eof = false;
+    size_t nColumns = 0;
+    for (size_t i = 0; i < metadata.row_groups.size(); ++i) {
+        const RowGroup& row_group = metadata.row_groups[i];
+        nColumns += row_group.columns.size();
+    }
+    columns.resize(0); // do cleanup
+    columns.resize(nColumns);
+    nColumns = 0;
+
+    for (size_t i = 0; i < metadata.row_groups.size(); ++i) {
+        const RowGroup& row_group = metadata.row_groups[i];
+        for (size_t c = 0; c < row_group.columns.size(); ++c) {
+            const ColumnChunk& col = row_group.columns[c];
+            
+            size_t col_start = col.meta_data.data_page_offset;
+            if (col.meta_data.__isset.dictionary_page_offset) {
+                if (col_start > col.meta_data.dictionary_page_offset) {
+                    col_start = col.meta_data.dictionary_page_offset;
+                }
+            }
+            if (nColumns == 0) { 
+                if (!file.isLocal(col_start, col.meta_data.total_compressed_size)) {
+                    return false;
+                }
+            } 
+            ParquetColumnReader& cr = columns[nColumns++];
             file.seek(col_start);
             cr.column_buffer.resize(col.meta_data.total_compressed_size);
             file.read(&cr.column_buffer[0], cr.column_buffer.size());

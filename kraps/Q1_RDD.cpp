@@ -1,7 +1,6 @@
 #define _JNI_IMPLEMENTATION_ 1
 #include <jni.h>
 #include "tpch.h"
-#include <sys/utsname.h>
 
 class Q1_RDD : public RDD<Lineitem>
 {
@@ -39,15 +38,12 @@ public:
         getByte = env->GetMethodID(rowClass, "geByte", "(I)B");
         getLong = env->GetMethodID(rowClass, "getLong", "(I)J");
         
-        struct utsname localHost;
-        uname(&localHost);
-
         hosts = new char*[nNodes];
         int nodeId = -1;
         for (int i = 0; i < nNodes; i++) { 
             hosts[i] = new char[16];
             sprintf(hosts[i], "lite0%d", i+1); 
-            if (strcmp(hosts[i], localHost.nodename) == 0) {
+            if (Cluster::instance->isLocalNode(hosts[i])) {
                 nodeId = i;
             }
             strcat(hosts[i], ":5001");

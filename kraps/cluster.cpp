@@ -76,11 +76,20 @@ FILE* Cluster::openTempFile(char const* prefix, qid_t qid, size_t fno, char cons
     assert(f != NULL);
     return f;
 }
+
+bool Cluster::isLocalNode(char const* host)
+{
+    size_t len = strlen(host);
+    char const* localNode = hosts[nodeId];
+    return strncmp(localNode, host, len) == 0 && (localNode[len] == ':' || localNode[len] == '\0');
+}
+
     
-Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nQueues, size_t bufSize, size_t recvQueueSize, size_t sendQueueSize, size_t syncPeriod, size_t broadcastThreshold, size_t inmemThreshold, char const* tmp) 
-: nNodes(nHosts), maxQueues(nQueues), nodeId(selfId), bufferSize(bufSize), syncInterval(syncPeriod), broadcastJoinThreshold(broadcastThreshold), inmemJoinThreshold(inmemThreshold), tmpDir(tmp), shutdown(false)
+Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nQueues, size_t bufSize, size_t recvQueueSize, size_t sendQueueSize, size_t syncPeriod, size_t broadcastThreshold, size_t inmemThreshold, char const* tmp, bool sharedNothingDFS) 
+  : nNodes(nHosts), maxQueues(nQueues), nodeId(selfId), bufferSize(bufSize), syncInterval(syncPeriod), broadcastJoinThreshold(broadcastThreshold), inmemJoinThreshold(inmemThreshold), tmpDir(tmp), shutdown(false), sharedNothing(_sharedNothingDFS)
 {
     instance = this;
+    this->hosts = hosts;
 
     sockets = new Socket*[nHosts];
     memset(sockets, 0, nHosts*sizeof(Socket*));

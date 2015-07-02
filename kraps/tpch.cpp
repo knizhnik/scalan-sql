@@ -1697,6 +1697,7 @@ int main(int argc, char* argv[])
     size_t syncInterval = 64*1024*1024;
     size_t broadcastJoinThreshold = 10000;
     size_t inmemJoinThreshold = 10000000;
+    bool   sharedNothing = true;
     char const* option;
     char const* tmp = "/tmp";
     
@@ -1725,6 +1726,8 @@ int main(int argc, char* argv[])
                 inmemJoinThreshold = atol(argv[++i]);
             } else if (strcmp(option, "tmp") == 0) { 
                 tmp = argv[++i];
+            } else if (strcmp(option, "shared-nothing") == 0) { 
+                sharedNothing = atoi(argv[++i]) != 0;
             } else { 
                 fprintf(stderr, "Unrecognized option %s\n", option);
               Usage:
@@ -1734,6 +1737,7 @@ int main(int argc, char* argv[])
                       "-format\tdata format: parquet, plain-file,... ()\n"
                       "-cache\tCache all data in memory\n"
                       "-tmp DIR\ttemporary files location (/tmp)\n"
+                      "-shared-nothing 0/1\tdata is located at executor nodes (1)\n"
                       "-queues N\tnumber of queues (64)\n"
                       "-buffer SIZE\tbuffer size (256Kb)\n"
                       "-recv-queue SIZE\treceive queue size (256Mb)\n"
