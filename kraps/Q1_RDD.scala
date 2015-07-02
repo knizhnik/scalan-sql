@@ -53,7 +53,7 @@ class Q1(input: RDD[Row]) extends RDD[Row](input) {
   
   protected def getPartitions: Array[Partition] = input.partitions
 
-  @native def prepareQuery(iterator: Iterator[Row], executorId: Int, nNodes: Int): Long
+  @native def prepareQuery(iterator: Iterator[Row], nNodes: Int): Long
   @native def nextRow(rdd:Long): Long
   @native def freeRow(row:Long)
   @native def freeQuery(query:Long)

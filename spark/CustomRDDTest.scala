@@ -3,13 +3,15 @@ import org.apache.spark.rdd._
 import org.apache.spark.sql._ 
 import org.apache.spark.sql.catalyst.expressions.Row
 
-class CustomRDD(sc: SparkContext, input: RDD[Row]) extends RDD[Int](sc, input.dependencies) {
-    def compute(split: Partition, context: TaskContext): Iterator[Int] = {
-      val nodes = sc.getExecutorMemoryStatus.size
-      val executor = sc.getConf.get("spark.executor.id")
-      val driver = sc.getConf.get("spark.driver.host")
+class CustomRDD(@transient sc: SparkContext, input: RDD[Row]) extends RDD[Int](sc, input.dependencies) {
+    def compute(split: Partition, ctx: TaskContext): Iterator[Int] = {
+      /*
+      val nodes = context.getExecutorMemoryStatus.size
+      val executor = context.getConf.get("spark.executor.id")
+      val driver = context.getConf.get("spark.driver.host")
       println(s"executor=${executor} driver=${driver} nodes=${nodes}")
-      val i = input.compute(split, context)
+      */
+      val i = input.compute(split, ctx)
       var sum = 0
       while (i.hasNext) sum = sum + i.next.getInt(0)
       Seq(sum).iterator
@@ -34,8 +36,7 @@ object CustomRDDTest
     val sqlContext = new SQLContext(sc)
 
     val data_dir = "hdfs://strong:9121/"
-    val nExecutors = sc.getExecutorMemoryStatus.size - 1
-    println(s"Executors=${nExecutors}"); 
+    val nExecutors =  4
     val lineitem = sqlContext.parquetFile(data_dir + "Supplier.parquet").rdd.coalesce(nExecutors)
 
     exec(new CustomRDD(sc, lineitem))
