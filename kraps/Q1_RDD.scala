@@ -77,7 +77,7 @@ object NativeTest
     val sc = new SparkContext(conf)
     val sqlContext = new SQLContext(sc)
     val nExecutors = sc.getExecutorMemoryStatus().size()
-    val data_dir = "hdfs://string:9212/"
+    val data_dir = "hdfs://strong:9212/"
     val lineitem = sqlContext.parquetFile(data_dir + "Lineitem.parquet").rdd.coalesce(nExecutors)
 
     System.loadLibrary("q1rdd")
