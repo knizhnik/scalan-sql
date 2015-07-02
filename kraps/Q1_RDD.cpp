@@ -47,7 +47,7 @@ public:
         for (int i = 0; i < nNodes; i++) { 
             hosts[i] = new char[16];
             sprintf(hosts[i], "lite%d", i); 
-            if (strcmp(hosts[i], localHost) == 0) {
+            if (strcmp(hosts[i], localHost.nodename) == 0) {
                 nodeId = i;
             }
             strcat(hosts[i], ":5001");

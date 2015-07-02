@@ -77,7 +77,7 @@ object NativeTest
     val data_dir = "hdfs://strong:9121/"
     val lineitem = sqlContext.parquetFile(data_dir + "Lineitem.parquet").rdd.coalesce(nExecutors)
 
-    System.loadLibrary("q1rdd")
+    System.loadLibrary("/srv/remote/all-common/tpch/data/libq1rdd.so")
 
     exec(new Q1(lineitem))
   }
