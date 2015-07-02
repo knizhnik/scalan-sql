@@ -54,7 +54,8 @@ group by
     o_shippriority
 order by
     revenue desc,
-    o_orderdate;
+    o_orderdate
+limit 10;
 
 -- Q4
 select
@@ -221,7 +222,8 @@ group by
     c_address,
     c_comment
 order by
-    revenue desc;
+    revenue desc
+limit 20;
 
 
 -- Q12
