@@ -11,10 +11,10 @@ class RowDecoder
   @native def getDouble(row: Long, offs: Int): Double
 }
 
-class Q1(input: RDD[Row]) extends RDD[Row](input) {
-  var iterator:Long = 0
-  val decoder = new RowDecoder()
-  var query:Long = 0
+class Q1(input: RDD[Row], nNodes: Int) extends RDD[Row](input) {
+  @transient var iterator:Long = 0
+  @transient val decoder = new RowDecoder()
+  @transient var query:Long = 0
 
   class Q1Iterator(input:Long) extends Iterator[Row] {
     var row:Long = 0
@@ -48,9 +48,10 @@ class Q1(input: RDD[Row]) extends RDD[Row](input) {
   }
 
   def compute(split: Partition, context: TaskContext): Iterator[Row] = {
-    new Q1Iterator(prepareQuery(input.compute(split, context), input.partitions.size))
+    System.load("/srv/remote/all-common/tpch/data/libq1rdd.so")
+    new Q1Iterator(prepareQuery(input.compute(split, context), nNodes))
   }      
-  
+ 
   protected def getPartitions: Array[Partition] = input.partitions
 
   @native def prepareQuery(iterator: Iterator[Row], nNodes: Int): Long
@@ -59,7 +60,7 @@ class Q1(input: RDD[Row]) extends RDD[Row](input) {
   @native def freeQuery(query:Long)
 }
 
-object NativeTest
+object Q1
 {
   def now: Long = java.lang.System.currentTimeMillis()
 
@@ -77,8 +78,6 @@ object NativeTest
     val data_dir = "hdfs://strong:9121/"
     val lineitem = sqlContext.parquetFile(data_dir + "Lineitem.parquet").rdd.coalesce(nExecutors)
 
-    System.loadLibrary("/srv/remote/all-common/tpch/data/libq1rdd.so")
-
-    exec(new Q1(lineitem))
+    exec(new Q1(lineitem, nExecutors))
   }
 }

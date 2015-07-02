@@ -46,12 +46,15 @@ public:
         int nodeId = -1;
         for (int i = 0; i < nNodes; i++) { 
             hosts[i] = new char[16];
-            sprintf(hosts[i], "lite%d", i); 
+            sprintf(hosts[i], "lite0%d", i+1); 
             if (strcmp(hosts[i], localHost.nodename) == 0) {
                 nodeId = i;
             }
             strcat(hosts[i], ":5001");
         }
+	FILE* log = fopen("/srv/remote/all-common/tpch/data/q1.log", "a");
+	fprintf(log, "Start executor on node %d (%s)\n", nodeId, localHost.nodename);
+	fclose(log);
         assert(nodeId >= 0);
         cluster = new Cluster(nodeId, nNodes, hosts);
     }
