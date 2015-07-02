@@ -12,7 +12,21 @@ const size_t SF = 100; // scale factor
 
 #define TABLE(x) (cache ? (RDD<x>*)cache->_##x.get() : (RDD<x>*)FileManager::load<x>(filePath(#x)))
 
+char const* dataDir;
+char const* dataFormat;
 
+static char* filePath(char const* fileName)
+{ 
+    char path[MAX_PATH_LEN];
+    if (dataDir == NULL) { 
+        return strdup(fileName);
+    }
+    int n = sprintf(path, "%s/%s", dataDir, fileName);
+    if (dataFormat != NULL) { 
+        sprintf(path + n, ".%s", dataFormat);
+    }
+    return strdup(path);
+}
 
 class CachedData
 {
@@ -39,21 +53,6 @@ class CachedData
 };
 
 CachedData* cache;
-char const* dataDir;
-char const* dataFormat;
-
-static char* filePath(char const* fileName)
-{ 
-    char path[MAX_PATH_LEN];
-    if (dataDir == NULL) { 
-        return strdup(fileName);
-    }
-    int n = sprintf(path, "%s/%s", dataDir, fileName);
-    if (dataFormat != NULL) { 
-        sprintf(path + n, ".%s", dataFormat);
-    }
-    return strdup(path);
-}
 
 void sum(double& dst, double const& src)
 {
