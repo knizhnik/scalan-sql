@@ -549,7 +549,7 @@ class FileManager
 {
 public:
     template<class T>
-    static RDD<T>* load(char const* fileName) { 
+    static RDD<T>* load(char* fileName) { 
         size_t len = strlen(fileName);
         
         return (strcmp(fileName + len - 4, ".rdd") == 0) 

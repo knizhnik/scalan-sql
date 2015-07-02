@@ -27,14 +27,14 @@ class CachedData
     CachedRDD<Region> _Region;
 
     CachedData() : 
-    _Lineitem(FileManager::load<Lineitem>("Lineitem"), SCALE(6000000)),
-    _Orders(FileManager::load<Orders>("Orders"),       SCALE(1500000)),
-    _Supplier(FileManager::load<Supplier>("Supplier"), SCALE(10000)),
-    _Customer(FileManager::load<Customer>("Customer"), SCALE(150000)),
-    _Part(FileManager::load<Part>("Part"),             SCALE(200000)),
-    _Partsupp(FileManager::load<Partsupp>("Partsupp"), SCALE(800000)),
-    _Nation(FileManager::load<Nation>("Nation"),       25),
-    _Region(FileManager::load<Region>("Region"),       5) {}
+    _Lineitem(FileManager::load<Lineitem>(TABLE("Lineitem")), SCALE(6000000)),
+    _Orders(FileManager::load<Orders>(TABLE("Orders")),       SCALE(1500000)),
+    _Supplier(FileManager::load<Supplier>(TABLE("Supplier")), SCALE(10000)),
+    _Customer(FileManager::load<Customer>(TABLE("Customer")), SCALE(150000)),
+    _Part(FileManager::load<Part>(TABLE("Part")),             SCALE(200000)),
+    _Partsupp(FileManager::load<Partsupp>(TABLE("Partsupp")), SCALE(800000)),
+    _Nation(FileManager::load<Nation>(TABLE("Nation")),       25),
+    _Region(FileManager::load<Region>(TABLE("Region")),       5) {}
 
 };
 
