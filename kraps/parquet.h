@@ -27,17 +27,17 @@ public:
     };
 
     bool loadFile(char const* dir, size_t partNo);
-    bool loadBlock(char const* dir, size_t partNo, bool& eof);
+    bool loadLocalFile(char const* dir, size_t partNo, bool& eof);
 
     FileMetaData metadata;
     vector<ParquetColumnReader> columns;
 };
 
 template<class T>
-class ParquetFileRDD : public RDD<T>
+class ParquetRoundRobinRDD : public RDD<T>
 {
   public:
-    ParquetFileRDD(char* path) : dir(path), segno(Cluster::instance->nodeId), step(Cluster::instance->nNodes), nextPart(true) {}
+    ParquetRoundRobinRDD(char* path) : dir(path), segno(Cluster::instance->nodeId), step(Cluster::instance->nNodes), nextPart(true) {}
 
     bool next(T& record) {
         while (true) {
@@ -56,7 +56,7 @@ class ParquetFileRDD : public RDD<T>
         }
     }
 
-    ~ParquetFileRDD() {
+    ~ParquetRoundRobinRDD() {
         delete[] dir;
     }
   private:
@@ -68,16 +68,16 @@ class ParquetFileRDD : public RDD<T>
 };
 
 template<class T>
-class ParquetBlockRDD : public RDD<T>
+class ParquetLocalRDD : public RDD<T>
 {
   public:
-    ParquetBlockRDD(char* path) : dir(path), segNo(0), nextPart(true) {}
+    ParquetLocalRDD(char* path) : dir(path), segNo(0), nextPart(true) {}
 
     bool next(T& record) {
         while (true) {
             if (nextPart) { 
                 bool eof;
-                if (!reader.loadBlock(dir, eof)) { 
+                if (!reader.loadLocalFile(dir, eof)) { 
                     if (eof) { 
                         return false;
                     } else { 
@@ -95,7 +95,7 @@ class ParquetBlockRDD : public RDD<T>
         }
     }
 
-    ~ParquetBlockRDD() {
+    ~ParquetLocalRDD() {
         delete[] dir;
     }
   private:

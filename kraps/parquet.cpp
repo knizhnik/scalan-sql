@@ -42,15 +42,20 @@ class ParquetFile {
         }        
     }
 
-    bool isLocal(size_t start, size_t size) {
-        bool my = false;
-        if (hf) { 
-            char*** hosts = hdfsGetHosts(fs, path); 
-            if (hosts[0][0] != NULL) { 
-                my = Cluster::instance->isLocalNode(hosts[0][0]);
-            }
-            hdfsFreeHosts(hosts);
+    static bool isLocal(char const* url) {
+        char* path = (char*)strchr(url+7, '/');
+        if (fd == NULL) { 
+            *path = '\0';
+            fs = hdfsConnect(url, 0);
+            assert(fs);
+            *path = '/';
         }
+        bool my = true;
+        char*** hosts = hdfsGetHosts(fs, path, 0, FOOTER_SIZE); 
+        if (hosts[0][0] != NULL) { 
+            my = Cluster::instance->isLocalNode(hosts[0][0]);
+        }
+        hdfsFreeHosts(hosts);
         return my;
     }
 
@@ -84,12 +89,12 @@ class ParquetFile {
 
     void read(void* buf, size_t size) {
         if (hf) {
-	    size_t offs = 0;
-	    while (offs < size) { 
+            size_t offs = 0;
+            while (offs < size) { 
                 int n = hdfsRead(fs, hf, (char*)buf + offs, size - offs);
                 assert(n > 0);
-		offs += n;
-	    }
+                offs += n;
+            }
         } else {
             int rc = fread(buf, size, 1, f);
             assert(rc == 1);
@@ -171,7 +176,6 @@ bool ParquetReader::loadFile(char const* dir, size_t partNo)
         const RowGroup& row_group = metadata.row_groups[i];
         for (size_t c = 0; c < row_group.columns.size(); ++c) {
             const ColumnChunk& col = row_group.columns[c];
-            ParquetColumnReader& cr = columns[nColumns++];
             
             size_t col_start = col.meta_data.data_page_offset;
             if (col.meta_data.__isset.dictionary_page_offset) {
@@ -180,6 +184,7 @@ bool ParquetReader::loadFile(char const* dir, size_t partNo)
                 }
             }
             file.seek(col_start);
+            ParquetColumnReader& cr = columns[nColumns++];
             cr.column_buffer.resize(col.meta_data.total_compressed_size);
             file.read(&cr.column_buffer[0], cr.column_buffer.size());
             
@@ -190,52 +195,50 @@ bool ParquetReader::loadFile(char const* dir, size_t partNo)
     return true;
 }
 
-bool ParquetReader::loadBlock(char const* dir, size_t partNo, bool eof)
+bool ParquetReader::loadLocalFile(char const* dir, size_t partNo, bool eof)
 {
-    char path[MAX_PATH_LEN];
-    sprintf(path, "%s/part-r-%05d.parquet", dir, (int)partNo + 1);
-    ParquetFile file(path);
+    char url[MAX_PATH_LEN];
+    sprintf(url, "%s/part-r-%05d.parquet", dir, (int)partNo + 1);
+    
+    if (ParquetFile::isLocal(url)) { 
+        ParquetFile file(url);
 
-    eof = true;
-    if (!file.exists()) { 
-    	return false;
-    }
-    if (!GetFileMetadata(file, &metadata)) { 
-        return false;
-    }
-    eof = false;
-    size_t nColumns = 0;
-    for (size_t i = 0; i < metadata.row_groups.size(); ++i) {
-        const RowGroup& row_group = metadata.row_groups[i];
-        nColumns += row_group.columns.size();
-    }
-    columns.resize(0); // do cleanup
-    columns.resize(nColumns);
-    nColumns = 0;
-
-    for (size_t i = 0; i < metadata.row_groups.size(); ++i) {
-        const RowGroup& row_group = metadata.row_groups[i];
-        for (size_t c = 0; c < row_group.columns.size(); ++c) {
-            const ColumnChunk& col = row_group.columns[c];
-            
-            size_t col_start = col.meta_data.data_page_offset;
-            if (col.meta_data.__isset.dictionary_page_offset) {
-                if (col_start > col.meta_data.dictionary_page_offset) {
-                    col_start = col.meta_data.dictionary_page_offset;
+        eof = true;
+        if (!file.exists()) { 
+            return false;
+        }
+        if (!GetFileMetadata(file, &metadata)) { 
+            return false;
+        }
+        eof = false;
+        size_t nColumns = 0;
+        for (size_t i = 0; i < metadata.row_groups.size(); ++i) {
+            const RowGroup& row_group = metadata.row_groups[i];
+            nColumns += row_group.columns.size();
+        }
+        columns.resize(0); // do cleanup
+        columns.resize(nColumns);
+        nColumns = 0;
+        
+        for (size_t i = 0; i < metadata.row_groups.size(); ++i) {
+            const RowGroup& row_group = metadata.row_groups[i];
+            for (size_t c = 0; c < row_group.columns.size(); ++c) {
+                const ColumnChunk& col = row_group.columns[c];
+                
+                size_t col_start = col.meta_data.data_page_offset;
+                if (col.meta_data.__isset.dictionary_page_offset) {
+                    if (col_start > col.meta_data.dictionary_page_offset) {
+                        col_start = col.meta_data.dictionary_page_offset;
+                    }
                 }
+                file.seek(col_start);
+                ParquetColumnReader& cr = columns[nColumns++];
+                cr.column_buffer.resize(col.meta_data.total_compressed_size);
+                file.read(&cr.column_buffer[0], cr.column_buffer.size());
+                
+                cr.stream = new InMemoryInputStream(&cr.column_buffer[0], cr.column_buffer.size());
+                cr.reader = new ColumnReader(&col.meta_data, &metadata.schema[c + 1], cr.stream);
             }
-            if (nColumns == 0) { 
-                if (!file.isLocal(col_start, col.meta_data.total_compressed_size)) {
-                    return false;
-                }
-            } 
-            ParquetColumnReader& cr = columns[nColumns++];
-            file.seek(col_start);
-            cr.column_buffer.resize(col.meta_data.total_compressed_size);
-            file.read(&cr.column_buffer[0], cr.column_buffer.size());
-            
-            cr.stream = new InMemoryInputStream(&cr.column_buffer[0], cr.column_buffer.size());
-            cr.reader = new ColumnReader(&col.meta_data, &metadata.schema[c + 1], cr.stream);
         }
     }
     return true;

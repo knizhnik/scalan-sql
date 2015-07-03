@@ -557,8 +557,8 @@ public:
 #if USE_PARQUET
             : (strcmp(fileName + len - 8, ".parquet") == 0) 
               ? Cluster::instance->sharedNothing 
-                ? (RDD<T>*)new ParquetBlockRDD<T>(fileName)
-                : (RDD<T>*)new ParquetFileRDD<T>(fileName)
+                ? (RDD<T>*)new ParquetLocalRDD<T>(fileName)
+                : (RDD<T>*)new ParquetRoundRobinRDD<T>(fileName)
 #endif
               : (RDD<T>*)new DirRDD<T>(fileName);
     }
