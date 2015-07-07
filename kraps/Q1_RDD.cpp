@@ -27,7 +27,7 @@ public:
         return false;
     }
 
-    Q1_RDD(JNIEnv* _env, jobject _iterator, jint nNodes) : env(_env), iterator(_iterator) 
+    Q1_RDD(JNIEnv* env, jobject _iterator, jint nNodes) : iterator(_iterator) 
     {
         jclass rowClass = (jclass)env->FindClass("org/apache/spark/sql/Row");
         jclass iteratorClass = (jclass)env->FindClass("scala/collection/Iterator");
@@ -35,24 +35,23 @@ public:
         getNext = env->GetMethodID(iteratorClass, "next", "()Ljava/lang/Object;");
         getInt = env->GetMethodID(rowClass, "getInt", "(I)I");
         getDouble = env->GetMethodID(rowClass, "getDouble", "(I)D");
-        getByte = env->GetMethodID(rowClass, "geByte", "(I)B");
+        getByte = env->GetMethodID(rowClass, "getByte", "(I)B");
         getLong = env->GetMethodID(rowClass, "getLong", "(I)J");
-        
         hosts = new char*[nNodes];
         int nodeId = -1;
         for (int i = 0; i < nNodes; i++) { 
             hosts[i] = new char[16];
-            sprintf(hosts[i], "lite0%d", i+1); 
-            if (Cluster::instance->isLocalNode(hosts[i])) {
+            sprintf(hosts[i], "lite0%d:5001", i+1); 
+            if (Socket::isLocalHost(hosts[i])) {
                 nodeId = i;
             }
-            strcat(hosts[i], ":5001");
         }
 	FILE* log = fopen("/srv/remote/all-common/tpch/data/q1.log", "a");
-	fprintf(log, "Start executor on node %d (%s)\n", nodeId, localHost.nodename);
+	fprintf(log, "Start executor on node %d\n", nodeId);
 	fclose(log);
         assert(nodeId >= 0);
         cluster = new Cluster(nodeId, nNodes, hosts);
+	//sleep(60);
     }
 
     ~Q1_RDD() {
@@ -63,8 +62,7 @@ public:
         delete cluster;
     }
     
-private:    
-    JNIEnv *env;
+    static JNIEnv *env;
     jobject iterator; 
     jmethodID getInt;
     jmethodID getLong;
@@ -75,6 +73,9 @@ private:
     Cluster* cluster;
     char** hosts;
 };
+
+JNIEnv* Q1_RDD::env;
+
 
 namespace Q1
 {
@@ -185,6 +186,7 @@ extern "C" {
 
 JNIEXPORT jlong Java_Q1_prepareQuery(JNIEnv *env, jobject self, jobject iterator, jint nNodes)
 {
+    Q1_RDD::env = env;
     return (jlong)(size_t)Q1::query(new Q1_RDD(env, iterator, nNodes));
 }
 
@@ -195,6 +197,7 @@ JNIEXPORT void Java_Q1_freeQuery(JNIEnv *env, jobject self, jlong query)
 
 JNIEXPORT jlong Java_Q1_nextRow(JNIEnv *env, jobject self, jlong rdd)
 {
+    Q1_RDD::env = env;
     RDD<Q1::Projection>* iter = (RDD<Q1::Projection>*)(size_t)rdd;
     Q1::Projection* projection = (Q1::Projection*)malloc(sizeof(Q1::Projection));
     if (iter->next(*projection)) { 

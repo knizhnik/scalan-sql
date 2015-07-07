@@ -48,7 +48,9 @@ class Q1(input: RDD[Row], nNodes: Int) extends RDD[Row](input) {
   }
 
   def compute(split: Partition, context: TaskContext): Iterator[Row] = {
+    println("Execute computer for parition " + split.index)
     System.load("/srv/remote/all-common/tpch/data/libq1rdd.so")
+    println("Create Q1 iterator")
     new Q1Iterator(prepareQuery(input.compute(split, context), nNodes))
   }      
  
@@ -71,13 +73,14 @@ object Q1
   }
  
   def main(args: Array[String]) = {
-    val conf = new SparkConf().setAppName("Spark intergration with native code")
+    val conf = new SparkConf().setAppName("Spark intergration with Kraps")
+    //conf.set("spark.default.parallelism", "1")
     val sc = new SparkContext(conf)
     val sqlContext = new SQLContext(sc)
     val nExecutors = 4
     val data_dir = "hdfs://strong:9121/"
     val lineitem = sqlContext.parquetFile(data_dir + "Lineitem.parquet").rdd.coalesce(nExecutors)
-
+    
     exec(new Q1(lineitem, nExecutors))
   }
 }

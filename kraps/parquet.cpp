@@ -42,7 +42,7 @@ class ParquetFile {
         }        
     }
 
-    static bool isLocal(char const* url) {
+    static bool isLocal(char const* url, bool& eof) {
         char* path = (char*)strchr(url+7, '/');
         if (fs == NULL) { 
             *path = '\0';
@@ -50,11 +50,13 @@ class ParquetFile {
             assert(fs);
             *path = '/';
         }
-        bool my = true;
         char*** hosts = hdfsGetHosts(fs, path, 0, FOOTER_SIZE); 
-        if (hosts[0][0] != NULL) { 
-            my = Cluster::instance->isLocalNode(hosts[0][0]);
-        }
+	if (hosts == NULL) { 
+	    eof = true;
+	    return false;
+	}
+	eof = false;
+	bool my = Cluster::instance->isLocalNode(hosts[0][0]);
         hdfsFreeHosts(hosts);
         return my;
     }
@@ -200,17 +202,11 @@ bool ParquetReader::loadLocalFile(char const* dir, size_t partNo, bool& eof)
     char url[MAX_PATH_LEN];
     sprintf(url, "%s/part-r-%05d.parquet", dir, (int)partNo + 1);
     
-    if (ParquetFile::isLocal(url)) { 
+    if (ParquetFile::isLocal(url, eof)) { 
         ParquetFile file(url);
-
-        eof = true;
-        if (!file.exists()) { 
-            return false;
-        }
         if (!GetFileMetadata(file, &metadata)) { 
             return false;
         }
-        eof = false;
         size_t nColumns = 0;
         for (size_t i = 0; i < metadata.row_groups.size(); ++i) {
             const RowGroup& row_group = metadata.row_groups[i];
@@ -240,8 +236,9 @@ bool ParquetReader::loadLocalFile(char const* dir, size_t partNo, bool& eof)
                 cr.reader = new ColumnReader(&col.meta_data, &metadata.schema[c + 1], cr.stream);
             }
         }
+	return true;
     }
-    return true;
+    return false;
 }
 
 #endif

@@ -77,7 +77,7 @@ class ParquetLocalRDD : public RDD<T>
         while (true) {
             if (nextPart) { 
                 bool eof;
-                if (!reader.loadLocalFile(dir, segno, eof)) { 
+                if (!reader.loadLocalFile(dir, segno++, eof)) { 
                     if (eof) { 
                         return false;
                     } else { 
@@ -89,7 +89,6 @@ class ParquetLocalRDD : public RDD<T>
             if (unpackParquet(record, reader)) {
                 return true;
             } else { 
-                segno += 1;
                 nextPart = true;
             }
         }
