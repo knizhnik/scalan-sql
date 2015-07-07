@@ -44,7 +44,7 @@ class ParquetFile {
 
     static bool isLocal(char const* url) {
         char* path = (char*)strchr(url+7, '/');
-        if (fd == NULL) { 
+        if (fs == NULL) { 
             *path = '\0';
             fs = hdfsConnect(url, 0);
             assert(fs);
@@ -195,7 +195,7 @@ bool ParquetReader::loadFile(char const* dir, size_t partNo)
     return true;
 }
 
-bool ParquetReader::loadLocalFile(char const* dir, size_t partNo, bool eof)
+bool ParquetReader::loadLocalFile(char const* dir, size_t partNo, bool& eof)
 {
     char url[MAX_PATH_LEN];
     sprintf(url, "%s/part-r-%05d.parquet", dir, (int)partNo + 1);

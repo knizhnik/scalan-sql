@@ -86,7 +86,7 @@ bool Cluster::isLocalNode(char const* host)
 
     
 Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nQueues, size_t bufSize, size_t recvQueueSize, size_t sendQueueSize, size_t syncPeriod, size_t broadcastThreshold, size_t inmemThreshold, char const* tmp, bool sharedNothingDFS) 
-  : nNodes(nHosts), maxQueues(nQueues), nodeId(selfId), bufferSize(bufSize), syncInterval(syncPeriod), broadcastJoinThreshold(broadcastThreshold), inmemJoinThreshold(inmemThreshold), tmpDir(tmp), shutdown(false), sharedNothing(_sharedNothingDFS)
+  : nNodes(nHosts), maxQueues(nQueues), nodeId(selfId), bufferSize(bufSize), syncInterval(syncPeriod), broadcastJoinThreshold(broadcastThreshold), inmemJoinThreshold(inmemThreshold), sharedNothing(sharedNothingDFS), tmpDir(tmp), shutdown(false)
 {
     instance = this;
     this->hosts = hosts;

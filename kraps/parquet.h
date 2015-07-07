@@ -71,13 +71,13 @@ template<class T>
 class ParquetLocalRDD : public RDD<T>
 {
   public:
-    ParquetLocalRDD(char* path) : dir(path), segNo(0), nextPart(true) {}
+    ParquetLocalRDD(char* path) : dir(path), segno(0), nextPart(true) {}
 
     bool next(T& record) {
         while (true) {
             if (nextPart) { 
                 bool eof;
-                if (!reader.loadLocalFile(dir, eof)) { 
+                if (!reader.loadLocalFile(dir, segno, eof)) { 
                     if (eof) { 
                         return false;
                     } else { 

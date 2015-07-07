@@ -1765,7 +1765,7 @@ int main(int argc, char* argv[])
         goto Usage;
     }
     printf("Node %d started...\n", nodeId);
-    Cluster cluster(nodeId, nNodes, &argv[i], nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp);
+    Cluster cluster(nodeId, nNodes, &argv[i], nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing);
 
     time_t start = time(NULL);
     if (useCache) { 
