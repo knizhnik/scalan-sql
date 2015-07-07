@@ -1,0 +1,15 @@
+   7.84%  libjvm.so              [.] jni_invoke_nonstatic(JNIEnv_*, JavaValue*, _jobject*, JNICallType, _jmethodID*, JNI_ArgumentPusher*, Thread*)
+   6.75%  libjvm.so              [.] JavaCalls::call_helper(JavaValue*, methodHandle*, JavaCallArguments*, Thread*)
+   2.55%  libzip.so              [.] inflate_fast
+   2.40%  perf-20222.map         [.] 0x00007f15b992af6c
+   2.34%  perf-20222.map         [.] 0x00007f15b992af39
+   2.29%  perf-20222.map         [.] 0x00007f15b992af06
+   2.23%  [kernel]               [k] pageblock_pfn_to_page
+   2.23%  libjvm.so              [.] JavaCallWrapper::JavaCallWrapper(methodHandle, Handle, JavaValue*, Thread*)
+   1.63%  libjvm.so              [.] GrowableArray<Metadata*>::push(Metadata* const&)
+   1.39%  [kernel]               [k] isolate_freepages_block
+   1.30%  libjvm.so              [.] JNI_ArgumentPusherVaArg::JNI_ArgumentPusherVaArg(_jmethodID*, __va_list_tag*)
+   1.08%  libjvm.so              [.] InstanceKlass::method_at_itable(Klass*, int, Thread*)
+   1.03%  libjvm.so              [.] methodHandle::~methodHandle()
+   0.95%  libjvm.so              [.] os::stack_shadow_pages_available(Thread*, methodHandle)
+ 
