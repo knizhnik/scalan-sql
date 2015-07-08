@@ -18,14 +18,20 @@ class Q1(input: RDD[Row], nNodes: Int) extends RDD[Row](input) {
 
   class Q1Iterator(input:Long) extends Iterator[Row] {
     var row:Long = 0
+    var eof:Boolean = false
 
     def hasNext = {
-      if (row == 0) row = nextRow(input) 
-      if (row == 0) { 
-        freeQuery(input)        
-        false
-      } else { 
-        true
+      if (eof) { 
+         false
+      } else {  
+         if (row == 0) row = nextRow(input) 
+         if (row == 0) { 
+           freeQuery(input)        
+           eof = true
+           false
+         } else { 
+           true
+         }
       }
     }
 
