@@ -150,7 +150,8 @@ class Cluster {
     qid_t qid;
     Thread* receiver;
     bool shutdown;
-
+    size_t nExecutorsPerHost;
+    
     FILE* openTempFile(char const* prefix, qid_t qid, size_t no, char const* mode = "r");
     
     bool isCoordinator() { return nodeId == COORDINATOR; }
