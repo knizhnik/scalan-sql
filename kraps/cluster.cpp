@@ -121,7 +121,7 @@ Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nQueues, siz
     Socket* localGateway = Socket::createLocal(port, nHosts);
     Socket* globalGateway = Socket::createGlobal(port, nHosts);
 
-    size_t n, hostLen = strchr(hosts[0], ":") - hosts[0];    
+    size_t n, hostLen = strchr(hosts[0], ':') - hosts[0];    
     for (n = 1; n < nHosts && strncmp(hosts[0], hosts[n], hostLen) == 0 && hosts[n][hostLen] == ':'; n++);
     nExecutorsPerHost = n;
     
