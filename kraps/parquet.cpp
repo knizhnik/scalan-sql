@@ -201,8 +201,10 @@ bool ParquetReader::loadLocalFile(char const* dir, size_t partNo, bool& eof)
 {
     char url[MAX_PATH_LEN];
     sprintf(url, "%s/part-r-%05d.parquet", dir, (int)partNo + 1);
+    Cluster* cluster = Cluster::instance;
+    size_t nExecutors = cluster->nExecutorsPerHost;
     
-    if (ParquetFile::isLocal(url, eof)) { 
+    if (ParquetFile::isLocal(url, eof) && cluster->nodeId % nExecutors == partNo % nExecutors) { 
         ParquetFile file(url);
         if (!GetFileMetadata(file, &metadata)) { 
             return false;
