@@ -13,3 +13,25 @@
    1.03%  libjvm.so              [.] methodHandle::~methodHandle()
    0.95%  libjvm.so              [.] os::stack_shadow_pages_available(Thread*, methodHandle)
  
+
+
+Thread 12 (Thread 0x7fc00346c700 (LWP 27222)):
+#0  0x00007fc8b4925ee6 in HandleMark::initialize(Thread*) () from /opt/oracle-jdk-bin-1.8.0.45/jre/lib/amd64/server/libjvm.so
+#1  0x00007fc8b49a1992 in JavaCalls::call_helper(JavaValue*, methodHandle*, JavaCallArguments*, Thread*) ()
+   from /opt/oracle-jdk-bin-1.8.0.45/jre/lib/amd64/server/libjvm.so
+#2  0x00007fc8b49e432b in jni_invoke_nonstatic(JNIEnv_*, JavaValue*, _jobject*, JNICallType, _jmethodID*, JNI_ArgumentPusher*, Thread*) ()
+   from /opt/oracle-jdk-bin-1.8.0.45/jre/lib/amd64/server/libjvm.so
+#3  0x00007fc8b49e8caf in jni_CallDoubleMethodV () from /opt/oracle-jdk-bin-1.8.0.45/jre/lib/amd64/server/libjvm.so
+#4  0x00007fbf965f2f3d in JNIEnv_::CallDoubleMethod (this=0x7fbfbc1399f8, obj=0x7fbfe0118d30, methodID=0x7fbff0403e58)
+    at /etc/java-config-2/current-system-vm/include/jni.h:1038
+#5  0x00007fbf965f3ba8 in Q1_RDD::next (this=0x7fbff0410680, l=...) at Q1_RDD.cpp:18
+#6  0x00007fbf965f60c9 in FilterRDD<Lineitem, &Q1::predicate>::next (this=0x7fbff041dd90, record=...) at rdd.h:577
+#7  0x00007fbf965f4a2c in MapReduceRDD<Lineitem, Q1::GroupBy, Q1::Aggregate, &Q1::map, &Q1::reduce>::loadHash (this=0x7fbff041ddb0, 
+    input=0x7fbff041dd90) at rdd.h:669
+#8  0x00007fbf965f4678 in MapReduceRDD<Lineitem, Q1::GroupBy, Q1::Aggregate, &Q1::map, &Q1::reduce>::MapReduceRDD (this=0x7fbff041ddb0, 
+    input=0x7fbff041dd90, estimation=10000) at rdd.h:630
+#9  0x00007fbf965f4475 in RDD<Lineitem>::mapReduce<Q1::GroupBy, Q1::Aggregate, &Q1::map, &Q1::reduce> (this=0x7fbff041dd90, estimation=10000)
+    at rdd.h:1518
+#10 0x00007fbf965f27ad in Q1::query (lineitem=0x7fbff0410680) at Q1_RDD.cpp:181
+#11 0x00007fbf965f2817 in Java_Q1_prepareQuery (env=0x7fbfbc1399f8, self=0x7fc00346b4f0, iterator=0x7fc00346b4e8, nNodes=4) at Q1_RDD.cpp:190
+#12 0x00007fc89ff7f974 in ?? ()

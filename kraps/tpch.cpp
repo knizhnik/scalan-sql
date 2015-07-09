@@ -1698,7 +1698,7 @@ int main(int argc, char* argv[])
     size_t syncInterval = 64*1024*1024;
     size_t broadcastJoinThreshold = 10000;
     size_t inmemJoinThreshold = 10000000;
-    bool   sharedNothing = true;
+    bool   sharedNothing = false;
     char const* option;
     char const* tmp = "/tmp";
     
