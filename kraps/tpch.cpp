@@ -1684,6 +1684,7 @@ void execute(char const* name, RDD<T>* (*query)())
     }
        
     printf("Elapsed time for %s: %d seconds\n", name, (int)(time(NULL) - start));
+    fflush(stdout);
 }
 
 int main(int argc, char* argv[])
