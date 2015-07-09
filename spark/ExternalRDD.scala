@@ -2,7 +2,7 @@ package com.huawei.hispark
 
 import org.apache.spark.rdd
 import org.apache.spark.sql.catalyst.expressions.Row
-
+x
 class ExternalRDD(input: SchemaRDD, push: Boolean) extends RDD[Int]
 {
     System.loadLibrary("nativerdd")
