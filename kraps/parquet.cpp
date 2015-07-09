@@ -50,12 +50,13 @@ class ParquetFile {
             assert(fs);
             *path = '/';
         }
-        char*** hosts = hdfsGetHosts(fs, path, 0, FOOTER_SIZE); 
+        char*** hosts = hdfsGetHosts(fs, path, 0, 0);//FOOTER_SIZE); 
 	if (hosts == NULL) { 
 	    eof = true;
 	    return false;
 	}
 	eof = false;
+	printf("%s -> %s\n", hosts[0][0], url);
 	bool my = Cluster::instance->isLocalNode(hosts[0][0]);
         hdfsFreeHosts(hosts);
         return my;
@@ -204,8 +205,11 @@ bool ParquetReader::loadLocalFile(char const* dir, size_t partNo, bool& eof)
     Cluster* cluster = Cluster::instance;
     size_t nExecutors = cluster->nExecutorsPerHost;
     size_t nHosts = cluster->nNodes / nExecutors;
-    if (ParquetFile::isLocal(url, eof) && cluster->nodeId / nHosts == partNo * 1000003 % nExecutors) { 
-        ParquetFile file(url);
+    if (ParquetFile::isLocal(url, eof) && cluster->nodeId / nHosts == partNo % nExecutors) { 
+        printf("Node %ld loads file %s\n", cluster->nodeId,url);
+	fflush(stdout);
+	
+	ParquetFile file(url);
         if (!GetFileMetadata(file, &metadata)) { 
             return false;
         }
