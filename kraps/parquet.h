@@ -74,13 +74,10 @@ class ParquetLocalRDD : public RDD<T>
     ParquetLocalRDD(char* path) : dir(path), segno(0), nextPart(true) {}
 
     bool next(T& record) {
-        Cluster* cluster = Cluster::instance;
-        size_t executorId = cluster->nodeId % cluster->nExecutorsPerHost;
         while (true) {
             if (nextPart) { 
                 bool eof;
-                size_t seg = segno++;
-                if (!reader.loadLocalFile(dir, seg, eof) || (seg % cluster->nExecutorsPerHost) != executorId) { 
+                if (!reader.loadLocalFile(dir, segno++, eof)) { 
                     if (eof) { 
                         return false;
                     } else { 
