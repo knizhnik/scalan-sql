@@ -204,7 +204,7 @@ bool ParquetReader::loadLocalFile(char const* dir, size_t partNo, bool& eof)
     Cluster* cluster = Cluster::instance;
     size_t nExecutors = cluster->nExecutorsPerHost;
     
-    if (ParquetFile::isLocal(url, eof) && cluster->nodeId % nExecutors == partNo % nExecutors) { 
+    if (ParquetFile::isLocal(url, eof) && cluster->nodeId / nExecutors == partNo % nExecutors) { 
         ParquetFile file(url);
         if (!GetFileMetadata(file, &metadata)) { 
             return false;
