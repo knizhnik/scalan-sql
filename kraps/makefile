@@ -12,7 +12,7 @@ SPARK_HOME=/srv/remote/all-common/spark-1.3.1-bin-hadoop2.6
 #CPP=g++ -pthread -fPIC -O0 -g -Wall
 #CPP=g++ -pthread -fPIC -O3 -g -Wall -DUSE_SIMDCOMP -I $(SIMDCOMP_HOME)/include
 #CPP=g++ -pthread -fPIC -O3 -g -Wall -DUSE_ZLIB
-CPP=g++ -pthread -fPIC -O3 -g -Wall -Wno-unused-value -Wno-unused-variable -Wno-sign-compare -DUSE_ZLIB -DUSE_PARQUET -I $(PARQUET_CPP_HOME)/src -I $(PARQUET_CPP_HOME)/generated -I $(HADOOP_HOME)/include 
+CPP=g++ -pthread -fPIC -O0 -g -Wall -Wno-unused-value -Wno-unused-variable -Wno-sign-compare -DUSE_ZLIB -DUSE_PARQUET -I $(PARQUET_CPP_HOME)/src -I $(PARQUET_CPP_HOME)/generated -I $(HADOOP_HOME)/include 
 
 JNI_INCLUDES = -I/usr/lib/jvm/java/include/ -I/usr/lib/jvm/java/include/linux -I/usr/java/default/include -I/usr/java/default/include/linux -I/usr/java/include -I$(JAVA_HOME)/include -I$(JAVA_HOME)/include/linux -I/usr/lib/jvm/oracle-jdk-bin-1.8/include
 
@@ -39,7 +39,7 @@ tpch: tpch.o cluster.o sockio.o compress.o parquet.o
 
 
 libq1rdd.so: Q1_RDD.cpp cluster.o sockio.o compress.o
-	$(CPP) -shared $(JNI_INCLUDES) -o libq1rdd.so Q1_RDD.cpp cluster.o sockio.o compress.o
+	$(CPP) -shared $(JNI_INCLUDES) -o libq1rdd.so Q1_RDD.cpp cluster.o sockio.o compress.o -lz
 
 q1rdd.jar: Q1_RDD.scala
 	rm -f *.class
