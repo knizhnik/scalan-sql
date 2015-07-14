@@ -205,6 +205,12 @@ JNIEXPORT jlong Java_Q1_nextRow(JNIEnv *env, jobject self, jlong rdd)
     return 0;
 }
 
+JNIEXPORT void Java_Q1_freeRow(JNIEnv *env, jobject self, jlong row)
+{
+    free((Q1::Projection*)(size_t)projection);
+}
+
+
 JNIEXPORT jint Java_RowDecoder_getInt(JNIEnv *env, jobject self, jlong addr, jint offs)
 {
     char* record = (char*)(size_t)addr;
