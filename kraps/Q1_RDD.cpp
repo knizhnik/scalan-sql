@@ -59,7 +59,6 @@ public:
             delete hosts[i];
         }
         delete[] hosts;
-        delete cluster;
     }
     
     static JNIEnv *env;
@@ -199,8 +198,10 @@ JNIEXPORT jlong Java_Q1_nextRow(JNIEnv *env, jobject self, jlong rdd)
         return (jlong)(size_t)projection;
     } 
     free(projection);
-    Cluster::instance->barrier();
+    Clsuter* cluster = Cluster::instance;
+    cluster->barrier();
     delete iter;
+    delete cluster;
     return 0;
 }
 
