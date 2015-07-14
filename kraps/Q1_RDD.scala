@@ -26,7 +26,6 @@ class Q1(input: RDD[Row], nNodes: Int) extends RDD[Row](input) {
       } else {  
          if (row == 0) row = nextRow(input) 
          if (row == 0) { 
-           freeQuery(input)        
            eof = true
            false
          } else { 
@@ -57,15 +56,14 @@ class Q1(input: RDD[Row], nNodes: Int) extends RDD[Row](input) {
     println("Execute computer for parition " + split.index)
     System.load("/srv/remote/all-common/tpch/data/libq1rdd.so")
     println("Create Q1 iterator")
-    new Q1Iterator(prepareQuery(input.compute(split, context), nNodes))
+    new Q1Iterator(runQuery(input.compute(split, context), nNodes))
   }      
  
   protected def getPartitions: Array[Partition] = input.partitions
 
-  @native def prepareQuery(iterator: Iterator[Row], nNodes: Int): Long
+  @native def runQuery(iterator: Iterator[Row], nNodes: Int): Long
   @native def nextRow(rdd:Long): Long
   @native def freeRow(row:Long)
-  @native def freeQuery(query:Long)
 }
 
 object Q1
