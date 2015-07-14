@@ -193,11 +193,11 @@ JNIEXPORT jlong Java_Q1_nextRow(JNIEnv *env, jobject self, jlong rdd)
 {
     Q1_RDD::env = env;
     RDD<Q1::Projection>* iter = (RDD<Q1::Projection>*)(size_t)rdd;
-    Q1::Projection* projection = (Q1::Projection*)malloc(sizeof(Q1::Projection));
+    Q1::Projection* projection = new Q1::Projection();
     if (iter->next(*projection)) { 
         return (jlong)(size_t)projection;
     } 
-    free(projection);
+    delete projection;
     Cluster* cluster = Cluster::instance;
     cluster->barrier();
     delete iter;
@@ -207,7 +207,7 @@ JNIEXPORT jlong Java_Q1_nextRow(JNIEnv *env, jobject self, jlong rdd)
 
 JNIEXPORT void Java_Q1_freeRow(JNIEnv *env, jobject self, jlong row)
 {
-    free((Q1::Projection*)(size_t)projection);
+    delete (Q1::Projection*)(size_t)row;
 }
 
 
