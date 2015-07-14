@@ -136,8 +136,8 @@ Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nQueues, siz
     }
     delete localGateway;
     delete globalGateway;
-
-    receiver = new Thread(new ReceiveJob());
+    
+    receiver = nHosts != 1 ? new Thread(new ReceiveJob()) : NULL;
         
 }
 

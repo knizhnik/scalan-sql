@@ -18,10 +18,7 @@ char const* dataFormat;
 static char* filePath(char const* fileName)
 { 
     char path[MAX_PATH_LEN];
-    if (dataDir == NULL) { 
-        return strdup(fileName);
-    }
-    int n = sprintf(path, "%s/%s", dataDir, fileName);
+    int n = (dataDir == NULL) ? sprintf(path, "%s", fileName) : sprintf(path, "%s/%s", dataDir, fileName);
     if (dataFormat != NULL) { 
         sprintf(path + n, ".%s", dataFormat);
     }

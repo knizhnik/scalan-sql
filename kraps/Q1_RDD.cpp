@@ -59,7 +59,6 @@ public:
             delete hosts[i];
         }
         delete[] hosts;
-        delete cluster;
     }
     
     static JNIEnv *env;
@@ -184,15 +183,10 @@ namespace Q1
 
 extern "C" {
 
-JNIEXPORT jlong Java_Q1_prepareQuery(JNIEnv *env, jobject self, jobject iterator, jint nNodes)
+JNIEXPORT jlong Java_Q1_runQuery(JNIEnv *env, jobject self, jobject iterator, jint nNodes)
 {
     Q1_RDD::env = env;
     return (jlong)(size_t)Q1::query(new Q1_RDD(env, iterator, nNodes));
-}
-
-JNIEXPORT void Java_Q1_freeQuery(JNIEnv *env, jobject self, jlong query)
-{
-    delete (RDD<Q1::Projection>*)query;
 }
 
 JNIEXPORT jlong Java_Q1_nextRow(JNIEnv *env, jobject self, jlong rdd)
@@ -204,13 +198,11 @@ JNIEXPORT jlong Java_Q1_nextRow(JNIEnv *env, jobject self, jlong rdd)
         return (jlong)(size_t)projection;
     } 
     free(projection);
-    Cluster::instance->barrier();
+    Clsuter* cluster = Cluster::instance;
+    cluster->barrier();
+    delete iter;
+    delete cluster;
     return 0;
-}
-
-JNIEXPORT void Java_Q1_freeRow(JNIEnv *env, jobject self, jlong addr)
-{
-    free((void*)(size_t)addr);
 }
 
 JNIEXPORT jint Java_RowDecoder_getInt(JNIEnv *env, jobject self, jlong addr, jint offs)
