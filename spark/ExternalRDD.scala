@@ -1,34 +1,13 @@
 package com.huawei.hispark
 
-import org.apache.spark.rdd
+import org.apache.spark._
+import org.apache.spark.rdd._
+import org.apache.spark.sql._ 
 import org.apache.spark.sql.catalyst.expressions.Row
 
-class ExternalRDD(input: SchemaRDD, push: Boolean) extends RDD[Int]
+class ExternalRDD(sc: SparkContext, input: RDD[Row], push: Boolean) extends RDD[Int](sc, input.dependencies)
 {
     System.loadLibrary("nativerdd")
-
-    class CoalescedRDD[T](
-      @transient var prev: RDD[T],
-      maxPartitions: Int,
-      balanceSlack: Double = 0.10) extends CoalescedRDD[T](prev, maxPartitions, balanceSlack)
-    {
-      class CoalescedIterator(partitions: Iterator[Partition], context: TaskContext) extends Iterator[T]
-      {
-        var i : Iterator[T] = null
-        def hasNext() : Boolean = {        
-          while ((i == null || !i.hasNext()) && partitions.hasNext()) { 
-            i = firstParent[T].iterator(partitions.next, context)
-          }
-          i != null && i.hasNext()
-        }
-      
-        def next() = { i.next() }
-     }
-       
-     override def compute(partition: Partition, context: TaskContext): Iterator[T] = {
-        new CoalescedIterator(partition.asInstanceOf[CoalescedRDDPartition].parents.iterator, context)
-     }
-   }
 
     def compute(split: Partition, context: TaskContext): Iterator[Int] = {
       val i = input.compute(split, context)
@@ -43,8 +22,14 @@ class ExternalRDD(input: SchemaRDD, push: Boolean) extends RDD[Int]
     }
       
 
-    protected def getPartitions: Array[Partition] = input.getPartitions
-    protected def getDependencies: Seq[Dependency[_]] = input.getDependencies
+    class ExternalPartition(val index: Int) extends Partition {}
+     
+    protected def getPartitions: Array[Partition] = {
+      val nCores = 16
+      Array.tabulate(nCores)(i => new External Partition(i))
+    }
+
+    //    protected def getPartitions: Array[Partition] = input.partitions
 
     @native def nativeSumPush(arr: Array[Row]):Int
     @native def nativeSumPull(iter: Iterator[Row]):Int
