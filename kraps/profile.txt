@@ -35,3 +35,10 @@ Thread 12 (Thread 0x7fc00346c700 (LWP 27222)):
 #10 0x00007fbf965f27ad in Q1::query (lineitem=0x7fbff0410680) at Q1_RDD.cpp:181
 #11 0x00007fbf965f2817 in Java_Q1_prepareQuery (env=0x7fbfbc1399f8, self=0x7fc00346b4f0, iterator=0x7fc00346b4e8, nNodes=4) at Q1_RDD.cpp:190
 #12 0x00007fc89ff7f974 in ?? ()
+
+
+ 51.31%  [unknown]                      [.] 0x00007f6b5140539a                 ◆
+ 35.26%  libjvm.so                      [.] 0x000000000088fdd2                 ▒
+  5.05%  [kernel]                       [k] compaction_alloc                   ▒
+  2.07%  libz.so.1.2.3                  [.] inflate_fast                       ▒
+  1.85%  libnativerdd.so                [.] JNIEnv_::CallIntMethod(_jobject*, _▒

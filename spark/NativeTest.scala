@@ -3,13 +3,17 @@ import org.apache.spark.rdd._
 import org.apache.spark.sql._ 
 import org.apache.spark.sql.catalyst.expressions.Row
 import scala.reflect.ClassTag
+import scala.collection.mutable.ArrayBuffer
+import org.apache.spark.executor.TaskMetrics
+import org.apache.spark.unsafe.memory.TaskMemoryManager
+import org.apache.spark.util.{TaskCompletionListener, TaskCompletionListenerException}
 
 class ExternalRDD(sc: SparkContext, input: RDD[Row], push: Boolean) extends RDD[Int](sc, input.dependencies) {
     def compute(split: Partition, context: TaskContext): Iterator[Int] = {
       val i = input.compute(split, context)
       System.err.println(s"context.partitionId=${context.partitionId}")
-    //  val sum = scalaSum(i)
-      val sum = nativeSumPull(i)
+      val sum = scalaSum(i)
+    //  val sum = nativeSumPull(i)
       Seq(sum).iterator
     }      
 
@@ -39,7 +43,10 @@ class ExternalRDD(sc: SparkContext, input: RDD[Row], push: Boolean) extends RDD[
         var i = index
         def hasNext() : Boolean = {        
           while ((iter == null || !iter.hasNext) && i < partitions.length) { 
-            iter = firstParent[T].compute(partitions(i), context)
+            val ctx = new CombineTaskContext(context.stageId, context.partitionId, context.taskAttemptId, context.attemptNumber, null/*context.taskMemoryManager*/, context.isRunningLocally, context.taskMetrics)     
+            iter = firstParent[T].compute(partitions(i), ctx)
+            //ctx.complete()
+            partitions(i) = null
             i = i + maxPartitions
           }
           iter != null && iter.hasNext
@@ -47,6 +54,47 @@ class ExternalRDD(sc: SparkContext, input: RDD[Row], push: Boolean) extends RDD[
       
         def next() = { iter.next }
      }
+
+     class CombineTaskContext(val stageId: Int,
+       val partitionId: Int,
+       override val taskAttemptId: Long,
+       override val attemptNumber: Int,
+       override val taskMemoryManager: TaskMemoryManager,
+       val runningLocally: Boolean = true,
+       val taskMetrics: TaskMetrics = null) extends TaskContext 
+     {
+       @transient private val onCompleteCallbacks = new ArrayBuffer[TaskCompletionListener]
+
+       override def attemptId(): Long = taskAttemptId
+
+       override def addTaskCompletionListener(listener: TaskCompletionListener): this.type = {
+         onCompleteCallbacks += listener
+         this
+       }
+       def complete(): Unit = {
+         // Process complete callbacks in the reverse order of registration
+         onCompleteCallbacks.reverse.foreach { listener =>
+           listener.onTaskCompletion(this)
+         }
+       }
+       override def addTaskCompletionListener(f: TaskContext => Unit): this.type = {
+         onCompleteCallbacks += new TaskCompletionListener {
+           override def onTaskCompletion(context: TaskContext): Unit = f(context)
+         }
+         this
+       }
+       override def addOnCompleteCallback(f: () => Unit) {
+         onCompleteCallbacks += new TaskCompletionListener {
+           override def onTaskCompletion(context: TaskContext): Unit = f()
+         }
+       }
+       override def isCompleted(): Boolean = false
+
+       override def isRunningLocally(): Boolean = true
+
+       override def isInterrupted(): Boolean = false
+     } 
+
        
      case class CombinePartition(index : Int) extends Partition
 
@@ -77,7 +125,7 @@ object NativeTest
     val data_dir = "/mnt/tpch/"
     val lineitem = new CombineRDD[Row](sqlContext.parquetFile(data_dir + "lineitem.parquet").rdd, 16)
 
-    System.loadLibrary("nativerdd")
+    //System.loadLibrary("nativerdd")
 
     exec(new ExternalRDD(sc, lineitem, false))
   }
