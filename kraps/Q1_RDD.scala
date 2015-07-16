@@ -4,10 +4,10 @@ import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.expressions.Row
 import scala.collection.mutable.ArrayBuffer
 import org.apache.spark.executor.TaskMetrics
-import org.apache.spark.unsafe.memory.TaskMemoryManager
+// import org.apache.spark.unsafe.memory.TaskMemoryManager
 import org.apache.spark.util.TaskCompletionListener
 
-class RowDecoder
+class RowDecoder extends Serializable
 {
   @native def getInt(row: Long, offs: Int): Int
   @native def getLong(row: Long, offs: Int): Long
@@ -15,14 +15,14 @@ class RowDecoder
   @native def getDouble(row: Long, offs: Int): Double
 }
 
-class CombineIterator(partitions: Array[Partition], index: Int, nNodes: Int, context: TaskContext) extends Iterator[T]
+class CombineIterator(input: RDD[Row], partitions: Array[Partition], index: Int, nNodes: Int, context: TaskContext) extends Iterator[Row]
 {
-  var iter : Iterator[T] = null
+  var iter : Iterator[Row] = null
   var i = index
   def hasNext() : Boolean = {        
     while ((iter == null || !iter.hasNext) && i < partitions.length) { 
-      val ctx = new CombineTaskContext(context.stageId, context.partitionId, context.taskAttemptId, context.attemptNumber, null/*cot.skMemoryManager*/, context.isRunningLocally, context.taskMetrics)     
-      iter = firstParent[T].compute(partitions(i), ctx)
+      val ctx = new CombineTaskContext(context.stageId, context.partitionId, context.taskAttemptId, context.attemptNumber/*, null context.taskMemoryManager*/, context.isRunningLocally, context.taskMetrics)     
+      iter = input.compute(partitions(i), ctx)
       //ctx.complete()
       partitions(i) = null
       i = i + nNodes
@@ -38,7 +38,7 @@ class CombineTaskContext(
   val partitionId: Int,
   override val taskAttemptId: Long,
   override val attemptNumber: Int,
-  override val taskMemoryManager: TaskMemoryManager,
+ // override val taskMemoryManager: TaskMemoryManager,
   val runningLocally: Boolean = true,
   val taskMetrics: TaskMetrics = null) extends TaskContext 
 {
@@ -75,8 +75,8 @@ case class CombinePartition(index : Int) extends Partition
 class Q1(@transient input: RDD[Row], nNodes: Int) extends RDD[Row](input) {
   val inputPartitions = input.partitions
   @transient var iterator:Long = 0
-  @transient val decoder = new RowDecoder()
   @transient var query:Long = 0
+  val decoder = new RowDecoder()
 
   class Q1Iterator(input:Long) extends Iterator[Row] {
     var row:Long = 0
@@ -114,13 +114,13 @@ class Q1(@transient input: RDD[Row], nNodes: Int) extends RDD[Row](input) {
     }
   }
 
-  protected def getPartitions: Array[Partition] = Array.tabulate(maxPartitions){i => CombinePartition(i)}
+  protected def getPartitions: Array[Partition] = Array.tabulate(nNodes){i => CombinePartition(i)}
  
   def compute(split: Partition, context: TaskContext): Iterator[Row] = {
     println("Execute computer for parition " + split.index)
     System.load("/srv/remote/all-common/tpch/data/libq1rdd.so")
     println("Create Q1 iterator")
-    new Q1Iterator(runQuery(new CombineIterator(inputPartitions, split.index, nNodes, context), nNodes))
+    new Q1Iterator(runQuery(new CombineIterator(firstParent[Row], inputPartitions, split.index, nNodes, context), nNodes))
   }      
  
   @native def runQuery(iterator: Iterator[Row], nNodes: Int): Long
