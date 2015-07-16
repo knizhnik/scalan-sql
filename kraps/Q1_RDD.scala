@@ -16,12 +16,18 @@ class RowDecoder extends Serializable
   @native def getDouble(row: Long, offs: Int): Double
 }
 
-class RowIterator(input: RDD[Row], partitions: Array[Partition], index: Int, nNodes: Int, context: TaskContext, sizeof: Int, serialize: (Unsafe,Long,Row)=>Boolean)
+class RowIterator(input: RDD[Row], partitions: Array[Partition], index: Int, nNodes: Int, context: TaskContext, serialize: (Unsafe,Long,Row)=>Boolean)
 {
   var iter : Iterator[Row] = null
   var i = index
   val unsafe = getUnsafe
-  
+ 
+  def getUnsafe = {
+    val cons = classOf[Unsafe].getDeclaredConstructor()
+    cons.setAccessible(true)
+    cons.newInstance().asInstanceOf[Unsafe]
+  }
+
   def next(row:Long): Boolean = {        
     while ((iter == null || !iter.hasNext) && i < partitions.length) { 
       val ctx = new CombineTaskContext(context.stageId, context.partitionId, context.taskAttemptId, context.attemptNumber/*, null context.taskMemoryManager*/, context.isRunningLocally, context.taskMetrics)     
@@ -36,23 +42,6 @@ class RowIterator(input: RDD[Row], partitions: Array[Partition], index: Int, nNo
       false
     }
   }
-}
-
-def serializeLineitem(unsafe:Unsafe, dst: Long, src: Row) = {
-  unsafe.putLong(dst + 0, row.getLong(0))
-  unsafe.putInt(dst + 8, row.getInt(1))
-  unsafe.putInt(dst + 12, row.getInt(2))
-  unsafe.putInt(dst + 16, row.getInt(3))
-  unsafe.putDouble(dst + 24, row.getDouble(4))
-  unsafe.putDouble(dst + 32, row.getDouble(5))
-  unsafe.putDouble(dst + 40, row.getDouble(6))
-  unsafe.putDouble(dst + 48, row.getDouble(7))
-  unsafe.putByte(dst + 49, row.getByte(8))
-  unsafe.putByte(dst + 50, row.getByte(9))
-  unsafe.putInt(dst + 52, row.getInt(10))
-  unsafe.putInt(dst + 56, row.getInt(11))
-  unsafe.putInt(dst + 60, row.getInt(12))
-  true
 }
 
 class CombineIterator(input: RDD[Row], partitions: Array[Partition], index: Int, nNodes: Int, context: TaskContext) extends Iterator[Row]
@@ -156,12 +145,29 @@ class Q1(@transient input: RDD[Row], nNodes: Int) extends RDD[Row](input) {
 
   protected def getPartitions: Array[Partition] = Array.tabulate(nNodes){i => CombinePartition(i)}
  
+  def serializeLineitem(unsafe: Unsafe, dst: Long, src: Row): Boolean = {
+    unsafe.putLong(dst + 0, src.getLong(0))
+    unsafe.putInt(dst + 8, src.getInt(1))
+    unsafe.putInt(dst + 12, src.getInt(2))
+    unsafe.putInt(dst + 16, src.getInt(3))
+    unsafe.putDouble(dst + 24, src.getDouble(4))
+    unsafe.putDouble(dst + 32, src.getDouble(5))
+    unsafe.putDouble(dst + 40, src.getDouble(6))
+    unsafe.putDouble(dst + 48, src.getDouble(7))
+    unsafe.putByte(dst + 49, src.getByte(8))
+    unsafe.putByte(dst + 50, src.getByte(9))
+    unsafe.putInt(dst + 52, src.getInt(10))
+    unsafe.putInt(dst + 56, src.getInt(11))
+    unsafe.putInt(dst + 60, src.getInt(12))
+    true
+  }
+
   def compute(split: Partition, context: TaskContext): Iterator[Row] = {
     println("Execute computer for parition " + split.index)
     System.load("/srv/remote/all-common/tpch/data/libq1rdd.so")
     println("Create Q1 iterator")
     //new Q1Iterator(runQuery(new CombineIterator(firstParent[Row], inputPartitions, split.index, nNodes, context), nNodes))
-    new Q1Iterator(runQuery(new RowIterator(firstParent[Row], inputPartitions, split.index, nNodes, context, 128, serialize), nNodes))
+    new Q1Iterator(runQuery(new RowIterator(firstParent[Row], inputPartitions, split.index, nNodes, context, serializeLineitem), nNodes))
   }      
  
   @native def runQuery(iterator: Object, nNodes: Int): Long
