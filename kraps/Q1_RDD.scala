@@ -6,6 +6,7 @@ import scala.collection.mutable.ArrayBuffer
 import org.apache.spark.executor.TaskMetrics
 // import org.apache.spark.unsafe.memory.TaskMemoryManager
 import org.apache.spark.util.TaskCompletionListener
+import sun.misc.Unsafe
 
 class RowDecoder extends Serializable
 {
@@ -13,6 +14,45 @@ class RowDecoder extends Serializable
   @native def getLong(row: Long, offs: Int): Long
   @native def getByte(row: Long, offs: Int): Byte
   @native def getDouble(row: Long, offs: Int): Double
+}
+
+class RowIterator(input: RDD[Row], partitions: Array[Partition], index: Int, nNodes: Int, context: TaskContext, sizeof: Int, serialize: (Unsafe,Long,Row)=>Boolean)
+{
+  var iter : Iterator[Row] = null
+  var i = index
+  val unsafe = getUnsafe
+  
+  def next(row:Long): Boolean = {        
+    while ((iter == null || !iter.hasNext) && i < partitions.length) { 
+      val ctx = new CombineTaskContext(context.stageId, context.partitionId, context.taskAttemptId, context.attemptNumber/*, null context.taskMemoryManager*/, context.isRunningLocally, context.taskMetrics)     
+      iter = input.compute(partitions(i), ctx)
+      //ctx.complete()
+      partitions(i) = null
+      i = i + nNodes
+    }
+    if (iter != null && iter.hasNext) {
+      serialize(unsafe, row, iter.next)
+    } else {
+      false
+    }
+  }
+}
+
+def serializeLineitem(unsafe:Unsafe, dst: Long, src: Row) = {
+  unsafe.putLong(dst + 0, row.getLong(0))
+  unsafe.putInt(dst + 8, row.getInt(1))
+  unsafe.putInt(dst + 12, row.getInt(2))
+  unsafe.putInt(dst + 16, row.getInt(3))
+  unsafe.putDouble(dst + 24, row.getDouble(4))
+  unsafe.putDouble(dst + 32, row.getDouble(5))
+  unsafe.putDouble(dst + 40, row.getDouble(6))
+  unsafe.putDouble(dst + 48, row.getDouble(7))
+  unsafe.putByte(dst + 49, row.getByte(8))
+  unsafe.putByte(dst + 50, row.getByte(9))
+  unsafe.putInt(dst + 52, row.getInt(10))
+  unsafe.putInt(dst + 56, row.getInt(11))
+  unsafe.putInt(dst + 60, row.getInt(12))
+  true
 }
 
 class CombineIterator(input: RDD[Row], partitions: Array[Partition], index: Int, nNodes: Int, context: TaskContext) extends Iterator[Row]
@@ -120,12 +160,14 @@ class Q1(@transient input: RDD[Row], nNodes: Int) extends RDD[Row](input) {
     println("Execute computer for parition " + split.index)
     System.load("/srv/remote/all-common/tpch/data/libq1rdd.so")
     println("Create Q1 iterator")
-    new Q1Iterator(runQuery(new CombineIterator(firstParent[Row], inputPartitions, split.index, nNodes, context), nNodes))
+    //new Q1Iterator(runQuery(new CombineIterator(firstParent[Row], inputPartitions, split.index, nNodes, context), nNodes))
+    new Q1Iterator(runQuery(new RowIterator(firstParent[Row], inputPartitions, split.index, nNodes, context, 128, serialize), nNodes))
   }      
  
-  @native def runQuery(iterator: Iterator[Row], nNodes: Int): Long
+  @native def runQuery(iterator: Object, nNodes: Int): Long
   @native def nextRow(rdd:Long): Long
   @native def freeRow(row:Long)
+  @native def unsafeQuery(iterator: RowIterator, nNodes: Int): Long
 }
 
 object Q1

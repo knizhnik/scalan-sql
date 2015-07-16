@@ -2,10 +2,15 @@
 #include <jni.h>
 #include "tpch.h"
 
+#define USE_UNSAFE 1
+
 class Q1_RDD : public RDD<Lineitem>
 {
 public:
-    bool next(Lineitem& l) { 
+    bool next(Lineitem& l) {
+#if USE_UNSAFE
+        return env->CallBooleanMethod(iterator, nextRow, (jlong)(size_t)&l);
+#else
         if (env->CallBooleanMethod(iterator, hasNext)) {
             jobject row = env->CallObjectMethod(iterator, getNext);
             l.l_orderkey = env->CallLongMethod(row, getLong, 0);
@@ -25,12 +30,17 @@ public:
             return true;
         }
         return false;
+#endif
     }
 
     Q1_RDD(JNIEnv* env, jobject _iterator, jint nNodes) : iterator(_iterator) 
     {
         jclass rowClass = (jclass)env->FindClass("org/apache/spark/sql/Row");
         jclass iteratorClass = (jclass)env->FindClass("scala/collection/Iterator");
+#if USE_UNSAFE
+        jclass rowIteratorClass = (jclass)env->FindClass("RowIterator");
+        nextRow = env->GetMethodID(rowIteratorClass, "next", "(J)Z");
+#endif
         hasNext = env->GetMethodID(iteratorClass, "hasNext", "()Z");
         getNext = env->GetMethodID(iteratorClass, "next", "()Ljava/lang/Object;");
         getInt = env->GetMethodID(rowClass, "getInt", "(I)I");
@@ -46,12 +56,8 @@ public:
                 nodeId = i;
             }
         }
-	FILE* log = fopen("/srv/remote/all-common/tpch/data/q1.log", "a");
-	fprintf(log, "Start executor on node %d\n", nodeId);
-	fclose(log);
         assert(nodeId >= 0);
         cluster = new Cluster(nodeId, nNodes, hosts);
-	//sleep(60);
     }
 
     ~Q1_RDD() {
@@ -69,6 +75,7 @@ public:
     jmethodID getDouble;
     jmethodID hasNext;
     jmethodID getNext;
+    jmethodID nextRow;
     Cluster* cluster;
     char** hosts;
 };
