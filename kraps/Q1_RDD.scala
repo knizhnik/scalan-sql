@@ -7,6 +7,7 @@ import org.apache.spark.executor.TaskMetrics
 // import org.apache.spark.unsafe.memory.TaskMemoryManager
 import org.apache.spark.util.TaskCompletionListener
 import sun.misc.Unsafe
+import org.apache.spark.sql.functions._
 
 class RowDecoder extends Serializable
 {
@@ -143,8 +144,9 @@ class Q1(@transient input: RDD[Row], nNodes: Int) extends RDD[Row](input) {
     }
   }
 
-  protected def getPartitions: Array[Partition] = Array.tabulate(nNodes){i => CombinePartition(i)}
- 
+  //protected def getPartitions: Array[Partition] = Array.tabulate(nNodes){i => CombinePartition(i)}
+  protected def getPartitions: Array[Partition] = inputPartitions
+
   def serializeLineitem(unsafe: Unsafe, dst: Long, src: Row): Boolean = {
     unsafe.putLong(dst + 0, src.getLong(0))
     unsafe.putInt(dst + 8, src.getInt(1))
@@ -154,11 +156,11 @@ class Q1(@transient input: RDD[Row], nNodes: Int) extends RDD[Row](input) {
     unsafe.putDouble(dst + 32, src.getDouble(5))
     unsafe.putDouble(dst + 40, src.getDouble(6))
     unsafe.putDouble(dst + 48, src.getDouble(7))
-    unsafe.putByte(dst + 49, src.getByte(8))
-    unsafe.putByte(dst + 50, src.getByte(9))
-    unsafe.putInt(dst + 52, src.getInt(10))
-    unsafe.putInt(dst + 56, src.getInt(11))
-    unsafe.putInt(dst + 60, src.getInt(12))
+    unsafe.putByte(dst + 56, src.getByte(8))
+    unsafe.putByte(dst + 57, src.getByte(9))
+    unsafe.putInt(dst + 60, src.getInt(10))
+    unsafe.putInt(dst + 64, src.getInt(11))
+    unsafe.putInt(dst + 68, src.getInt(12))
     true
   }
 
@@ -167,7 +169,17 @@ class Q1(@transient input: RDD[Row], nNodes: Int) extends RDD[Row](input) {
     System.load("/srv/remote/all-common/tpch/data/libq1rdd.so")
     println("Create Q1 iterator")
     //new Q1Iterator(runQuery(new CombineIterator(firstParent[Row], inputPartitions, split.index, nNodes, context), nNodes))
-    new Q1Iterator(runQuery(new RowIterator(firstParent[Row], inputPartitions, split.index, nNodes, context, serializeLineitem), nNodes))
+    //new Q1Iterator(runQuery(new RowIterator(firstParent[Row], inputPartitions, split.index, nNodes, context, serializeLineitem), nNodes))
+    //val i = new CombineIterator(firstParent[Row], inputPartitions, split.index, nNodes, context)
+    val i = firstParent[Row].compute(split, context)
+    var sum = 0
+    while (i.hasNext) { 
+      val row = i.next
+      for (col <- 0 until row.size) {
+        sum += row(col).hashCode()
+      }
+    }
+    Seq(Row(sum)).iterator
   }      
  
   @native def runQuery(iterator: Object, nNodes: Int): Long
@@ -193,7 +205,23 @@ object Q1
     val nExecutors = 4
     val dataDir = "hdfs://strong:9121/"
     val lineitem = sqlContext.parquetFile(dataDir + "Lineitem.parquet")
-    
+        
     exec(new Q1(lineitem.rdd, nExecutors))
+/*
+    lineitem.registerTempTable("lineitem")
+    import sqlContext.implicits._
+    val q1 = lineitem.filter(lineitem("l_shipdate") <= 19981201).groupBy("l_returnflag", "l_linestatus").agg(
+      $"l_returnflag",
+      $"l_linestatus",
+      sum("l_quantity"),
+      sum("l_extendedprice"),
+      sum($"l_extendedprice" * (lit(1) - $"l_discount")),
+      sum($"l_extendedprice" * (lit(1) - $"l_discount") * (lit(1) + $"l_tax")),
+      avg("l_quantity"),
+      avg("l_extendedprice"),
+      avg("l_discount"),
+      count("*")).orderBy("l_returnflag","l_linestatus")
+    exec(q1.rdd)					
+*/
   }
 }
