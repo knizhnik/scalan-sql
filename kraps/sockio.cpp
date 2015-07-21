@@ -18,6 +18,12 @@
  
 char const* Socket::unixSocketDir = "/tmp/";
 
+static void setGlobalSocketOptions(int sd)
+{
+    int optval = 1;
+    setsockopt(sd, IPPROTO_TCP, TCP_NODELAY, (char const*)&optval, sizeof(int));
+}
+
 const char* SocketError::what() const throw()
 {
     char* error = new char[strlen(msg) + 32];
@@ -53,6 +59,7 @@ Socket* Socket::createGlobal(int port, size_t listenQueueSize)
     if (listen(sd, listenQueueSize) < 0) {
         throw SocketError("Failed to listen socket");
     }            
+    setGlobalSocketOptions(sd);
     return new Socket(sd);
 }
 
@@ -143,6 +150,9 @@ Socket* Socket::connect(char const* address, size_t maxAttempts)
                 } while (rc < 0 && errno == EINTR);
 
                 if (rc >= 0 || errno == EINPROGRESS) { 
+                    if (rc >= 0) {
+                        setGlobalSocketOptions(sd);
+                    }
                     break;
                 }
             }
@@ -200,6 +210,7 @@ Socket* Socket::accept()
     if (ns < 0) { 
         throw SocketError("Failed to accept socket");
     }
+    setGlobalSocketOptions(ns);
     return new Socket(ns);
 }
 
