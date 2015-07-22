@@ -225,7 +225,7 @@ class RDD
 template<class T>
 inline void enqueue(RDD<T>* input, Queue* queue, qid_t qid) 
 {
-    size_t bufferSize = Cluster::instance->bufferSize;
+    size_t bufferSize = Cluster::get()->bufferSize;
     Buffer* buf = Buffer::create(qid, bufferSize);
     size_t size, used = 0;
     T record;
@@ -256,7 +256,7 @@ inline void enqueue(RDD<T>* input, Queue* queue, qid_t qid)
 template<class T>
 inline void sendToCoordinator(RDD<T>* input, Queue* queue) 
 {
-    enqueue(input, Cluster::instance->sendQueues[COORDINATOR], queue->qid);
+    enqueue(input, Cluster::get()->sendQueues[COORDINATOR], queue->qid);
 }
 
 //
@@ -291,7 +291,7 @@ public:
     {
         K key;
         T record;
-        Cluster* cluster = Cluster::instance;
+        Cluster* cluster = Cluster::get();
         size_t nNodes = cluster->nNodes;
         size_t nodeId = cluster->nodeId;
         size_t bufferSize = cluster->bufferSize;
@@ -355,7 +355,7 @@ class GatherRDD : public RDD<T>
 {
 public:
     bool next(T& record) {
-        Cluster* cluster = Cluster::instance;
+        Cluster* cluster = Cluster::get();
         while (used == size) { 
             if (buf != NULL) { 
                 buf->release();
@@ -370,7 +370,7 @@ public:
             case MSG_PING:
                 buf->kind = MSG_PONG;
                 assert(buf->node < cluster->nNodes && buf->node != cluster->nodeId);
-                Cluster::instance->sendQueues[buf->node]->putFirst(buf);
+                Cluster::get()->sendQueues[buf->node]->putFirst(buf);
                 buf = NULL; // will be deleted by sender
                 continue;
             default:
@@ -382,7 +382,7 @@ public:
         return true;
     }
 
-    GatherRDD(Queue* q) : buf(NULL), used(0), size(0), queue(q), nWorkers(Cluster::instance->nNodes) {}
+    GatherRDD(Queue* q) : buf(NULL), used(0), size(0), queue(q), nWorkers(Cluster::get()->nNodes) {}
     ~GatherRDD() { 
         if (buf != NULL) { 
             buf->release(); 
@@ -409,7 +409,7 @@ public:
     void run()
     {
         T record;
-        Cluster* cluster = Cluster::instance;
+        Cluster* cluster = Cluster::get();
         size_t nNodes = cluster->nNodes;
         size_t nodeId = cluster->nodeId;
         size_t bufferSize = cluster->bufferSize;
@@ -499,7 +499,7 @@ template<class T>
 class DirRDD : public RDD<T>
 {
   public:
-    DirRDD(char* path) : dir(path), segno(Cluster::instance->nodeId), step(Cluster::instance->nNodes), f(NULL) {}
+    DirRDD(char* path) : dir(path), segno(Cluster::get()->nodeId), step(Cluster::get()->nNodes), f(NULL) {}
 
     RDD<T>* replicate() { 
         segno = 0;
@@ -556,7 +556,7 @@ public:
             ? (RDD<T>*)new FileRDD<T>(fileName)
 #if USE_PARQUET
             : (strcmp(fileName + len - 8, ".parquet") == 0) 
-              ? Cluster::instance->sharedNothing 
+              ? Cluster::get()->sharedNothing 
                 ? (RDD<T>*)new ParquetLocalRDD<T>(fileName)
                 : (RDD<T>*)new ParquetRoundRobinRDD<T>(fileName)
 #endif
@@ -684,8 +684,9 @@ class MapReduceRDD : public RDD< Pair<K,V> >
         }
         curr = NULL;
         i = 0;
-        Queue* queue = Cluster::instance->getQueue();
-        if (Cluster::instance->isCoordinator()) { 
+        Cluster* cluster = Cluster::get();
+        Queue* queue = cluster->getQueue();
+        if (cluster->isCoordinator()) { 
             GatherRDD< Pair<K,V> > gather(queue);
             queue->putFirst(Buffer::eof(queue->qid)); // do not wait for self node
             Pair<K,V> pair;
@@ -778,8 +779,9 @@ class SortRDD : public RDD<T>
     typedef int(*comparator_t)(void const* p, void const* q);
 
     void loadArray(RDD<T>* input, size_t estimation) { 
-        Queue* queue = Cluster::instance->getQueue();
-        if (Cluster::instance->isCoordinator()) {         
+        Cluster* cluster = Cluster::get();
+        Queue* queue = cluster->getQueue();
+        if (cluster->isCoordinator()) {         
             Thread loader(new FetchJob<T>(input, queue));
             GatherRDD<T> gather(queue);
             buf = new T[estimation];
@@ -815,14 +817,15 @@ class TopRDD : public RDD<T>
         size_t n = loadTop(input, 0, top);
         delete input;
         
-        Queue* queue = Cluster::instance->getQueue();
-        if (Cluster::instance->isCoordinator()) {         
+        Cluster* cluster = Cluster::get();
+        Queue* queue = cluster->getQueue();
+        if (cluster->isCoordinator()) {         
             GatherRDD<T> gather(queue);
             queue->putFirst(Buffer::eof(queue->qid)); // Coordinator already finished it's part of work
             size = loadTop(&gather, n, top);
         } else {
-            assert(n*sizeof(T) < Cluster::instance->bufferSize);
-            Queue* coord = Cluster::instance->sendQueues[COORDINATOR];
+            assert(n*sizeof(T) < cluster->bufferSize);
+            Queue* coord = cluster->sendQueues[COORDINATOR];
             Buffer* msg = Buffer::create(queue->qid, n*sizeof(T));
             size_t used = 0;
             for (size_t j = 0; j < n; j++) {
@@ -888,16 +891,17 @@ public:
     : kind(joinKind), table(new Entry*[estimation]), size(estimation), inner(NULL), outer(outerRDD), scatter(NULL) {
         assert(kind != AntiJoin);
         // First load inner relation in hash...
-        if (estimation <= Cluster::instance->broadcastJoinThreshold) { 
+        Cluster* cluster = Cluster::get();
+        if (estimation <= cluster->broadcastJoinThreshold) { 
             // broadcast inner RDD
             loadHash(innerRDD->replicate());
             shuffle = false;
         } else {     
             // shuffle inner RDD
-            queue = Cluster::instance->getQueue();
+            queue = cluster->getQueue();
             Thread loader(new ScatterJob<I,K,innerKey>(innerRDD, queue));
             loadHash(new GatherRDD<I>(queue));
-            queue = Cluster::instance->getQueue();
+            queue = cluster->getQueue();
             shuffle = true;
         }
     }
@@ -1018,16 +1022,17 @@ public:
     : kind(joinKind), table(new Entry*[estimation]), size(estimation), outer(outerRDD), scatter(NULL) {
         assert(kind != OuterJoin);
         // First load inner relation in hash...
-        if (estimation <= Cluster::instance->broadcastJoinThreshold) { 
+        Cluster* cluster = Cluster::get();
+        if (estimation <= cluster->broadcastJoinThreshold) { 
             // broadcast inner RDD
             loadHash(innerRDD->replicate());
             shuffle = false;
         } else {     
             // shuffle inner RDD
-            queue = Cluster::instance->getQueue();
+            queue = cluster->getQueue();
             Thread loader(new ScatterJob<I,K,innerKey>(innerRDD, queue));
             loadHash(new GatherRDD<I>(queue));
-            queue = Cluster::instance->getQueue();
+            queue = cluster->getQueue();
             shuffle = true;
         }
     }
@@ -1129,16 +1134,17 @@ public:
     ShuffleJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t nShuffleFiles, size_t estimation, JoinKind joinKind) 
     : kind(joinKind), table(new Entry*[estimation]), nFiles(nShuffleFiles), size(estimation), outerFile(NULL), inner(NULL) {
         assert(kind != AntiJoin);
+        Cluster* cluster = Cluster::get();
         {
             // shuffle inner RDD
-            Queue* queue = Cluster::instance->getQueue();
+            Queue* queue = cluster->getQueue();
             Thread loader(new ScatterJob<I,K,innerKey>(innerRDD, queue));
             qid = queue->qid;
             saveInnerFiles(new GatherRDD<I>(queue));
         }
         {
             // shuffle outer RDD
-            Queue* queue = Cluster::instance->getQueue();
+            Queue* queue = cluster->getQueue();
             Thread loader(new ScatterJob<O,K,outerKey>(outerRDD, queue));
             saveOuterFiles(new GatherRDD<O>(queue));
         }
@@ -1155,8 +1161,9 @@ public:
                         return false;
                     }
                     fileNo += 1;
-                    FILE* innerFile = Cluster::instance->openTempFile("inner", qid, fileNo);
-                    outerFile = Cluster::instance->openTempFile("outer", qid, fileNo);
+                    Cluster* cluster = Cluster::get();
+                    FILE* innerFile = cluster->openTempFile("inner", qid, fileNo);
+                    outerFile = cluster->openTempFile("outer", qid, fileNo);
 
                     Entry* entry = new Entry();
                     clearHash();
@@ -1225,11 +1232,12 @@ protected:
     void saveOuterFiles(RDD<O>* input)
     {
         FILE** files = new FILE*[nFiles];
+        Cluster* cluster = Cluster::get();
         for (size_t i = 0; i < nFiles; i++) {
-            files[i] = Cluster::instance->openTempFile("outer", qid, i+1, "w");
+            files[i] = cluster->openTempFile("outer", qid, i+1, "w");
         }
         O record;
-        size_t nNodes = Cluster::instance->nNodes;
+        size_t nNodes = cluster->nNodes;
         while (input->next(record)) { 
             K key;
             outerKey(key, record);
@@ -1246,11 +1254,12 @@ protected:
     void saveInnerFiles(RDD<I>* input)
     {
         FILE** files = new FILE*[nFiles];
+        Cluster* cluster = Cluster::get();
         for (size_t i = 0; i < nFiles; i++) {
-            files[i] = Cluster::instance->openTempFile("inner", qid, i+1, "w");
+            files[i] = cluster->openTempFile("inner", qid, i+1, "w");
         }
         I record;
-        size_t nNodes = Cluster::instance->nNodes;
+        size_t nNodes = cluster->nNodes;
         while (input->next(record)) { 
             K key;
             innerKey(key, record);
@@ -1288,16 +1297,17 @@ public:
     ShuffleSemiJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t nShuffleFiles, size_t estimation, JoinKind joinKind) 
     : kind(joinKind), table(new Entry*[estimation]), nFiles(nShuffleFiles), size(estimation), outerFile(NULL) {
         assert(kind != OuterJoin);
+        Cluster* cluster = Cluster::get();
         {
             // shuffle inner RDD
-            Queue* queue = Cluster::instance->getQueue();
+            Queue* queue = cluster->getQueue();
             Thread loader(new ScatterJob<I,K,innerKey>(innerRDD, queue));
             qid = queue->qid;
             saveInnerFiles(new GatherRDD<I>(queue));
         }
         {
             // shuffle outer RDD
-            Queue* queue = Cluster::instance->getQueue();
+            Queue* queue = cluster->getQueue();
             Thread loader(new ScatterJob<O,K,outerKey>(outerRDD, queue));
             saveOuterFiles(new GatherRDD<O>(queue));
         }
@@ -1307,14 +1317,15 @@ public:
 
     bool next(Join<O,I>& record)
     {
+        Cluster* cluster = Cluster::get();
         while (true) { 
             if (outerFile == NULL) {
                 if (fileNo == nFiles) { 
                     return false;
                 }
                 fileNo += 1;
-                FILE* innerFile = Cluster::instance->openTempFile("inner", qid, fileNo);
-                outerFile = Cluster::instance->openTempFile("outer", qid, fileNo);
+                FILE* innerFile = cluster->openTempFile("inner", qid, fileNo);
+                outerFile = cluster->openTempFile("outer", qid, fileNo);
                 
                 Entry* entry = new Entry();
                 clearHash();
@@ -1369,11 +1380,12 @@ protected:
     void saveOuterFiles(RDD<O>* input)
     {
         FILE** files = new FILE*[nFiles];
+        Cluster* cluster = Cluster::get();
         for (size_t i = 0; i < nFiles; i++) {
-            files[i] = Cluster::instance->openTempFile("outer", qid, i+1, "w");
+            files[i] = cluster->openTempFile("outer", qid, i+1, "w");
         }
         O record;
-        size_t nNodes = Cluster::instance->nNodes;
+        size_t nNodes = cluster->nNodes;
         while (input->next(record)) { 
             K key;
             outerKey(key, record);
@@ -1390,11 +1402,12 @@ protected:
     void saveInnerFiles(RDD<I>* input)
     {
         FILE** files = new FILE*[nFiles];
+        Cluster* cluster = Cluster::get();
         for (size_t i = 0; i < nFiles; i++) {
-            files[i] = Cluster::instance->openTempFile("inner", qid, i+1, "w");
+            files[i] = cluster->openTempFile("inner", qid, i+1, "w");
         }
         I record;
-        size_t nNodes = Cluster::instance->nNodes;
+        size_t nNodes = cluster->nNodes;
         while (input->next(record)) { 
             K key;
             innerKey(key, record);
@@ -1478,7 +1491,7 @@ class CachedRDD : public RDD<T>
 template<class T>
 void RDD<T>::output(FILE* out) 
 {
-    Cluster* cluster = Cluster::instance;
+    Cluster* cluster = Cluster::get();
     Queue* queue = cluster->getQueue();
     if (cluster->isCoordinator()) {         
         Thread fetch(new FetchJob<T>(this, queue));
@@ -1496,7 +1509,7 @@ void RDD<T>::output(FILE* out)
 
 template<class T>
 inline RDD<T>* RDD<T>::replicate() { 
-    Queue* queue = Cluster::instance->getQueue();
+    Queue* queue = Cluster::get()->getQueue();
     return new ReplicateRDD<T>(this, queue);
 }
 
@@ -1539,20 +1552,22 @@ inline RDD<T>* RDD<T>::top(size_t n) {
 template<class T>
 template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner)>
 RDD< Join<T,I> >* RDD<T>::join(RDD<I>* with, size_t estimation, JoinKind kind) {
-    if (estimation <= Cluster::instance->inmemJoinThreshold) { 
+    Cluster* cluster = Cluster::get();
+    if (estimation <= cluster->inmemJoinThreshold) { 
         return new HashJoinRDD<T,I,K,outerKey,innerKey>(this, with, estimation, kind);
     }
-    size_t nFiles = (estimation + Cluster::instance->inmemJoinThreshold - 1) / Cluster::instance->inmemJoinThreshold;
+    size_t nFiles = (estimation + cluster->inmemJoinThreshold - 1) / cluster->inmemJoinThreshold;
     return new ShuffleJoinRDD<T,I,K,outerKey,innerKey>(this, with, nFiles, estimation/nFiles, kind);
 }
 
 template<class T>
 template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner)>
 RDD<T>* RDD<T>::semijoin(RDD<I>* with, size_t estimation, JoinKind kind) {
-    if (estimation <= Cluster::instance->inmemJoinThreshold) { 
+    Cluster* cluster = Cluster::get();
+    if (estimation <= cluster->inmemJoinThreshold) { 
         return new HashSemiJoinRDD<T,I,K,outerKey,innerKey>(this, with, estimation, kind);
     }
-    size_t nFiles = (estimation + Cluster::instance->inmemJoinThreshold - 1) / Cluster::instance->inmemJoinThreshold;
+    size_t nFiles = (estimation + cluster->inmemJoinThreshold - 1) / cluster->inmemJoinThreshold;
     return new ShuffleSemiJoinRDD<T,I,K,outerKey,innerKey>(this, with, nFiles, estimation/nFiles, kind);
 }
 

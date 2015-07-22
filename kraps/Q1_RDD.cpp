@@ -33,6 +33,18 @@ public:
 #endif
     }
 
+    static int executorId = 0;
+
+    static pthread_mutex_t executorMutex = PTHREAD_MUTEX_INITIALIZER;
+
+    static int getExecutorId() 
+    {
+        pthread_mutex_lock(&executorMutex);
+        int id = ++executorId;
+        pthread_mutex_unlock(&executorMutex);
+        return id;
+    }
+
     Q1_RDD(JNIEnv* env, jobject _iterator, jint nNodes) : iterator(_iterator) 
     {
         jclass rowClass = (jclass)env->FindClass("org/apache/spark/sql/Row");
@@ -49,11 +61,14 @@ public:
         getLong = env->GetMethodID(rowClass, "getLong", "(I)J");
         hosts = new char*[nNodes];
         int nodeId = -1;
+        int id = getExecutorId();
         for (int i = 0; i < nNodes; i++) { 
             hosts[i] = new char[16];
-            sprintf(hosts[i], "lite0%d:5001", i+1); 
+            sprintf(hosts[i], "lite0%d:500%d", (i % 4) + 1, (i / 4) + 1); 
             if (Socket::isLocalHost(hosts[i])) {
-                nodeId = i;
+                if (--id == 0) { 
+                    nodeId = i;
+                }
             }
         }
         assert(nodeId >= 0);
@@ -205,7 +220,7 @@ JNIEXPORT jlong Java_Q1_nextRow(JNIEnv *env, jobject self, jlong rdd)
         return (jlong)(size_t)projection;
     } 
     delete projection;
-    Cluster* cluster = Cluster::instance;
+    Cluster* cluster = Cluster::get();
     cluster->barrier();
     delete iter;
     delete cluster;

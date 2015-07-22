@@ -5,7 +5,25 @@
 const unsigned shutdownDelay = 5;
 const size_t MB = 1024*1024;
 
-Cluster* Cluster::instance;
+
+#ifdef SMP_SUPPORT
+pthread_key_t Cluster::_key;
+pthread_once_t Cluster::_once;
+
+static void allocate_key()
+{
+    pthread_key_create(&Cluster::_key, NULL);
+}
+
+void Cluster::set(Cluster* cluster)
+{
+    pthread_once(&_once, allocate_key);
+    pthread_setspecific(_key, cluster); 
+}
+#else
+Cluster* Cluster::_instance;
+#endif
+
 
 void Queue::put(Buffer* buf) 
 { 
@@ -88,7 +106,7 @@ bool Cluster::isLocalNode(char const* host)
 Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nQueues, size_t bufSize, size_t recvQueueSize, size_t sendQueueSize, size_t syncPeriod, size_t broadcastThreshold, size_t inmemThreshold, char const* tmp, bool sharedNothingDFS) 
   : nNodes(nHosts), maxQueues(nQueues), nodeId(selfId), bufferSize(bufSize), syncInterval(syncPeriod), broadcastJoinThreshold(broadcastThreshold), inmemJoinThreshold(inmemThreshold), sharedNothing(sharedNothingDFS), tmpDir(tmp), shutdown(false)
 {
-    instance = this;
+    set(this);
     this->hosts = hosts;
 
     sockets = new Socket*[nHosts];
@@ -190,7 +208,7 @@ void Cluster::barrier()
 
 void ReceiveJob::run()
 {
-    Cluster* cluster = Cluster::instance;
+    Cluster* cluster = Cluster::get();
     Buffer* ioBuf = Buffer::create(0, cluster->bufferSize);
     size_t totalReceived = 0;
     try { 
@@ -239,7 +257,7 @@ void ReceiveJob::run()
 
 void SendJob::run()
 {
-    Cluster* cluster = Cluster::instance;
+    Cluster* cluster = Cluster::get();
     size_t compressBufSize = cluster->bufferSize*2;
     Buffer* ioBuf = Buffer::create(0, compressBufSize);
     try {

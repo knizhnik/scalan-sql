@@ -37,7 +37,7 @@ template<class T>
 class ParquetRoundRobinRDD : public RDD<T>
 {
   public:
-    ParquetRoundRobinRDD(char* path) : dir(path), segno(Cluster::instance->nodeId), step(Cluster::instance->nNodes), nextPart(true) {}
+    ParquetRoundRobinRDD(char* path) : dir(path), segno(Cluster::get()->nodeId), step(Cluster::get()->nNodes), nextPart(true) {}
 
     bool next(T& record) {
         while (true) {

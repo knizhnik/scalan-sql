@@ -144,8 +144,8 @@ class Q1(@transient input: RDD[Row], nNodes: Int) extends RDD[Row](input) {
     }
   }
 
-  //protected def getPartitions: Array[Partition] = Array.tabulate(nNodes){i => CombinePartition(i)}
-  protected def getPartitions: Array[Partition] = inputPartitions
+  protected def getPartitions: Array[Partition] = Array.tabulate(nNodes){i => CombinePartition(i)}
+  //protected def getPartitions: Array[Partition] = inputPartitions
 
   def serializeLineitem(unsafe: Unsafe, dst: Long, src: Row): Boolean = {
     unsafe.putLong(dst + 0, src.getLong(0))
@@ -169,8 +169,10 @@ class Q1(@transient input: RDD[Row], nNodes: Int) extends RDD[Row](input) {
     System.load("/srv/remote/all-common/tpch/data/libq1rdd.so")
     println("Create Q1 iterator")
     //new Q1Iterator(runQuery(new CombineIterator(firstParent[Row], inputPartitions, split.index, nNodes, context), nNodes))
-    //new Q1Iterator(runQuery(new RowIterator(firstParent[Row], inputPartitions, split.index, nNodes, context, serializeLineitem), nNodes))
+    new Q1Iterator(runQuery(new RowIterator(firstParent[Row], inputPartitions, split.index, nNodes, context, serializeLineitem), nNodes))
+    
     //val i = new CombineIterator(firstParent[Row], inputPartitions, split.index, nNodes, context)
+    /*
     val i = firstParent[Row].compute(split, context)
     var sum = 0
     while (i.hasNext) { 
@@ -180,6 +182,7 @@ class Q1(@transient input: RDD[Row], nNodes: Int) extends RDD[Row](input) {
       }
     }
     Seq(Row(sum)).iterator
+    */
   }      
  
   @native def runQuery(iterator: Object, nNodes: Int): Long
