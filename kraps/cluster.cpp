@@ -188,7 +188,7 @@ void Cluster::barrier()
     qid = 0;
 }
 
-Jon::Job()
+Job::Job()
 {
     cluster = Cluster::instance.get();
 }
