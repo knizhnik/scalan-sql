@@ -205,7 +205,7 @@ object Q1
     val conf = new SparkConf().setAppName("Spark intergration with Kraps")
     val sc = new SparkContext(conf)
     val sqlContext = new SQLContext(sc)
-    val nExecutors = 4
+    val nExecutors = 16
     val dataDir = "hdfs://strong:9121/"
     val lineitem = sqlContext.parquetFile(dataDir + "Lineitem.parquet")
         

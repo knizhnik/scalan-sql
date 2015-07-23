@@ -4,6 +4,19 @@
 
 #define USE_UNSAFE 1
 
+static int executorId = 0;
+
+static pthread_mutex_t executorMutex = PTHREAD_MUTEX_INITIALIZER;
+
+static int getExecutorId()
+{
+    pthread_mutex_lock(&executorMutex);
+    int id = ++executorId;
+    pthread_mutex_unlock(&executorMutex);
+    return id;
+}
+
+
 class Q1_RDD : public RDD<Lineitem>
 {
 public:
@@ -31,18 +44,6 @@ public:
         }
         return false;
 #endif
-    }
-
-    static int executorId = 0;
-
-    static pthread_mutex_t executorMutex = PTHREAD_MUTEX_INITIALIZER;
-
-    static int getExecutorId() 
-    {
-        pthread_mutex_lock(&executorMutex);
-        int id = ++executorId;
-        pthread_mutex_unlock(&executorMutex);
-        return id;
     }
 
     Q1_RDD(JNIEnv* env, jobject _iterator, jint nNodes) : iterator(_iterator) 
