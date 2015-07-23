@@ -206,9 +206,22 @@ void Cluster::barrier()
     qid = 0;
 }
 
+Jon::Job()
+{
+    clsuter = Cluster::get();
+}
+
+void* Thread::trampoline(void* arg)
+{
+    Job* job = (Job*)arg;
+    Cluster::set(job->cluster);
+    job->run();
+    delete job;
+    return NULL;
+}
+
 void ReceiveJob::run()
 {
-    Cluster* cluster = Cluster::get();
     Buffer* ioBuf = Buffer::create(0, cluster->bufferSize);
     size_t totalReceived = 0;
     try { 
@@ -257,7 +270,6 @@ void ReceiveJob::run()
 
 void SendJob::run()
 {
-    Cluster* cluster = Cluster::get();
     size_t compressBufSize = cluster->bufferSize*2;
     Buffer* ioBuf = Buffer::create(0, compressBufSize);
     try {

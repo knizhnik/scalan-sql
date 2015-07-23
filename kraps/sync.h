@@ -1,6 +1,8 @@
 #include <pthread.h>
 
 class Event;
+class Thread;
+class Cluster;
 
 class Mutex
 {
@@ -85,7 +87,11 @@ private:
 
 
 class Job {
+protected:
+    friend class Thread;
+    Cluster* cluster;
 public:
+    Job();
     virtual void run() = 0;
     virtual~Job() {}
 };
@@ -103,10 +109,5 @@ public:
 private:
     pthread_t thread;
 
-    static void* trampoline(void* arg) { 
-        Job* job = (Job*)arg;
-        job->run();
-        delete job;
-        return NULL;
-    }
+    static void* trampoline(void* arg); 
 };
