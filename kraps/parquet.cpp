@@ -57,7 +57,7 @@ class ParquetFile {
 	}
 	eof = false;
 	printf("%s -> %s\n", hosts[0][0], url);
-	bool my = Cluster::get()->isLocalNode(hosts[0][0]);
+	bool my = Cluster::instance.get()->isLocalNode(hosts[0][0]);
         hdfsFreeHosts(hosts);
         return my;
     }
@@ -202,7 +202,7 @@ bool ParquetReader::loadLocalFile(char const* dir, size_t partNo, bool& eof)
 {
     char url[MAX_PATH_LEN];
     sprintf(url, "%s/part-r-%05d.parquet", dir, (int)partNo + 1);
-    Cluster* cluster = Cluster::get();
+    Cluster* cluster = Cluster::instance.get();
     size_t nExecutors = cluster->nExecutorsPerHost;
     size_t nHosts = cluster->nNodes / nExecutors;
     if (ParquetFile::isLocal(url, eof) && cluster->nodeId / nHosts == partNo % nExecutors) { 

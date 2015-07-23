@@ -1,8 +1,13 @@
+#ifndef __SYNC_H__
+#define __SYNC_H__
+
 #include <pthread.h>
 
 class Event;
 class Thread;
 class Cluster;
+
+#define SMP_SUPPORT 1
 
 class Mutex
 {
@@ -111,3 +116,46 @@ private:
 
     static void* trampoline(void* arg); 
 };
+
+#if SMP_SUPPORT
+template<class T>
+class ThreadLocal
+{
+    pthread_key_t key;
+  public:
+    T* get() {
+        return (T*)pthread_getspecific(key);
+    }
+    void set(T* val) {
+        pthread_setspecific(key, val);
+    }
+
+    void operator=(T* val) { set(val); }
+    T* operator->() { return get(); }
+    operator T*() { return get(); }
+
+    ThreadLocal() {
+        pthread_key_create(&key, NULL);
+    }
+    ~ThreadLocal() {
+        pthread_key_delete(key);
+    }
+};
+#else
+template<class T>
+class ThreadLocal
+{
+    T* data;
+    T* get() { return data; }
+    void set(T* val) { data = val; }
+
+    void operator=(T* val) { set(val); }
+    T* operator->() { return get(); }
+    operator T*() { return get(); }
+
+    ThreadLocal() : data(NULL) {}
+};
+#endif
+
+#endif
+

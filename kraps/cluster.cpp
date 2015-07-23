@@ -5,25 +5,7 @@
 const unsigned shutdownDelay = 5;
 const size_t MB = 1024*1024;
 
-
-#ifdef SMP_SUPPORT
-pthread_key_t Cluster::_key;
-pthread_once_t Cluster::_once;
-
-static void allocate_key()
-{
-    pthread_key_create(&Cluster::_key, NULL);
-}
-
-void Cluster::set(Cluster* cluster)
-{
-    pthread_once(&_once, allocate_key);
-    pthread_setspecific(_key, cluster); 
-}
-#else
-Cluster* Cluster::_instance;
-#endif
-
+ThreadLocal<Cluster> Cluster::instance;
 
 void Queue::put(Buffer* buf) 
 { 
@@ -106,7 +88,7 @@ bool Cluster::isLocalNode(char const* host)
 Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nQueues, size_t bufSize, size_t recvQueueSize, size_t sendQueueSize, size_t syncPeriod, size_t broadcastThreshold, size_t inmemThreshold, char const* tmp, bool sharedNothingDFS) 
   : nNodes(nHosts), maxQueues(nQueues), nodeId(selfId), bufferSize(bufSize), syncInterval(syncPeriod), broadcastJoinThreshold(broadcastThreshold), inmemJoinThreshold(inmemThreshold), sharedNothing(sharedNothingDFS), tmpDir(tmp), shutdown(false)
 {
-    set(this);
+    instance.set(this);
     this->hosts = hosts;
 
     sockets = new Socket*[nHosts];
@@ -208,13 +190,13 @@ void Cluster::barrier()
 
 Jon::Job()
 {
-    clsuter = Cluster::get();
+    cluster = Cluster::instance.get();
 }
 
 void* Thread::trampoline(void* arg)
 {
     Job* job = (Job*)arg;
-    Cluster::set(job->cluster);
+    Cluster::instance.set(job->cluster);
     job->run();
     delete job;
     return NULL;

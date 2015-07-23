@@ -10,10 +10,14 @@ static pthread_mutex_t executorMutex = PTHREAD_MUTEX_INITIALIZER;
 
 static int getExecutorId()
 {
+#ifdef SMP_SUPPORT    
     pthread_mutex_lock(&executorMutex);
     int id = ++executorId;
     pthread_mutex_unlock(&executorMutex);
     return id;
+#else
+    return 1;
+#endif
 }
 
 
@@ -21,6 +25,7 @@ class Q1_RDD : public RDD<Lineitem>
 {
 public:
     bool next(Lineitem& l) {
+        JNIEnv* env = this->env.get();
 #if USE_UNSAFE
         return env->CallBooleanMethod(iterator, nextRow, (jlong)(size_t)&l);
 #else
@@ -83,7 +88,7 @@ public:
         delete[] hosts;
     }
     
-    static JNIEnv *env;
+    static ThreadLocal<JNIEnv> env;
     jobject iterator; 
     jmethodID getInt;
     jmethodID getLong;
@@ -96,7 +101,7 @@ public:
     char** hosts;
 };
 
-JNIEnv* Q1_RDD::env;
+ThreadLocal<JNIEnv> Q1_RDD::env;
 
 
 namespace Q1
@@ -221,7 +226,7 @@ JNIEXPORT jlong Java_Q1_nextRow(JNIEnv *env, jobject self, jlong rdd)
         return (jlong)(size_t)projection;
     } 
     delete projection;
-    Cluster* cluster = Cluster::get();
+    Cluster* cluster = Cluster::instance.get();
     cluster->barrier();
     delete iter;
     delete cluster;

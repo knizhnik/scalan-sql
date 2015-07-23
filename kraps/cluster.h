@@ -5,8 +5,6 @@
 #include "sync.h"
 #include "sockio.h"
 
-#define SMP_SUPPORT 1
-
 const size_t COORDINATOR = 0;
 const size_t BUF_HDR_SIZE = 16;
 const size_t MAX_PATH_LEN = 1024;
@@ -165,18 +163,7 @@ class Cluster {
     Cluster(size_t nodeId, size_t nHosts, char** hosts, size_t nQueues = 64, size_t bufferSize = 4*64*1024, size_t recvQueueSize = 4*64*1024*1024,  size_t sendQueueSize = 4*4*1024*1024, size_t syncInterval = 64*1024*1024, size_t broadcastJoinThreshold = 10000, size_t inmemJoinThreshold = 10000000, char const* tmp = "/tmp", bool sharedNothing = false);
     ~Cluster();
 
-#ifdef SMP_SUPPORT
-    static pthread_key_t _key;
-    static pthread_once_t _once;
-    static Cluster* get() { 
-        return (Cluster*)pthread_getspecific(_key);
-    }
-    static void set(Cluster* cluster);
-#else
-    static Cluster* _instance;
-    static Cluster* get() { return _instance; }
-    static void set(Cluster* cluster) { _instance = cluster; }
-#endif
+    static ThreadLocal<Cluster> instance;
 };
 
 

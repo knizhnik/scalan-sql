@@ -8,7 +8,7 @@ const size_t SF = 100; // scale factor
 #define STRCMP(s,p) strncmp(s, p, sizeof(s))
 #define STREQ(s,p)  (STRCMP(s, p) == 0)
 #define STRCPY(d,s) strncpy(d,s,sizeof(d))
-#define SCALE(x)    ((x + Cluster::get()->nNodes - 1)*SF/(Cluster::get()->nNodes) + (x / 100)) // take in accoutn data skews
+#define SCALE(x)    ((x + Cluster::instance.get()->nNodes - 1)*SF/(Cluster::instance.get()->nNodes) + (x / 100)) // take in accoutn data skews
 
 #define TABLE(x) (cache ? (RDD<x>*)cache->_##x.get() : (RDD<x>*)FileManager::load<x>(filePath(#x)))
 
@@ -1674,7 +1674,7 @@ void execute(char const* name, RDD<T>* (*query)())
     result->output(stdout);
     delete result;
 
-    if (Cluster::get()->nodeId == 0) {
+    if (Cluster::instance.get()->nodeId == 0) {
         FILE* results = fopen("results.csv", "a");
         fprintf(results, "%s,%d\n", name, (int)(time(NULL) - start));
         fclose(results);
