@@ -202,7 +202,7 @@ namespace Q1
     { 
         return
             lineitem->
-            filter<predicate>()->
+//            filter<predicate>()->
             mapReduce<GroupBy,Aggregate,map,reduce>(10000)->
             project<Projection, projection>()->
             sort<compare>(100);

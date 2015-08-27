@@ -25,5 +25,7 @@ class SparkRDD : RDD<T>
         nextRow = env->GetMethodID(rowIteratorClass, "next", "(J)Z");
     } 
     
+  private:
     jmethodID nextRow;
+    jobject iterator;
 };
