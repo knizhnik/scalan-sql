@@ -9,7 +9,7 @@ import org.apache.spark.util.TaskCompletionListener
 import sun.misc.Unsafe
 import org.apache.spark.sql.functions._
 
-class RowIterator(input: RDD[Row], partitions: Array[Partition], index: Int, nNodes: Int, context: TaskContext, serialize: (Unsafe,Long,Row)=>Boolean)
+class RowIterator(input: RDD[Row], partitions: Array[Partition], index: Int, nNodes: Int, context: TaskContext, serialize: (Unsafe,Long,Row)=>Int)
 {
   var iter : Iterator[Row] = null
   var i = index
@@ -30,7 +30,7 @@ class RowIterator(input: RDD[Row], partitions: Array[Partition], index: Int, nNo
       i = i + nNodes
     }
     if (iter != null && iter.hasNext) {
-      serialize(unsafe, row, iter.next)
+      serialize(unsafe, row, iter.next) != 0
     } else {
       false
     }
@@ -94,7 +94,13 @@ class CombineTaskContext(
   
 case class CombinePartition(index : Int) extends Partition
 
-class KrapsRDD(queryId: Integer, nNodes: Int, @transient input: Array[RDD[Row]], @transient serializers: Array[(Unsafe,Long,Row)=>Int, @transient deserializer: (Unsafe,Long)=>Row)
+object KrapsCluster()
+{
+  @native def start(hosts: Array[String], nCores: Int): Boolean
+  @native def stop(): Unit
+}
+
+class KrapsRDD(queryId: Int, nNodes: Int, @transient input: Array[RDD[Row]], @transient serializers: Array[(Unsafe,Long,Row)=>Int, @transient deserializer: (Unsafe,Long)=>Row)
 extends RDD[Row]
 { 
   protected def getPartitions: Array[Partition] = Array.tabulate(nNodes){i => CombinePartition(i)}
@@ -126,9 +132,9 @@ extends RDD[Row]
   }
 
   def compute(split: Partition, context: TaskContext): Iterator[Row] = {
-    new KrapsIterator(createIterator(queryId, nNodes, Array.tabulate(i => new RowIterator(input(i), input(i).partitions, split.index, nNodes, context, serializers(i)))))
+    new KrapsIterator(createIterator(queryId, Array.tabulate(i => new RowIterator(input(i), input(i).partitions, split.index, nNodes, context, serializers(i)))))
   }
 
-  @native def createIterator(queryId: Int, nNodes: Int, input: Array[RowIterator]) : Long
+  @native def createIterator(queryId: Int, input: Array[RowIterator]) : Long
   @native def nextRow(iterator: Long)
 }  

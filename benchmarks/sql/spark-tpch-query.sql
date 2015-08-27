@@ -9,7 +9,7 @@ create temporary table part using org.apache.spark.sql.parquet options(path "hdf
 
 set spark.sql.codegen=true;
 -- set spark.sql.autoBroadcastJoinThreshold=1073741824;
-
+set spark.sql.parquet.filterPushdown=true;
 
 -- Q1
 select 
