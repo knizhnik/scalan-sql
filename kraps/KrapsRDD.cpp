@@ -25,7 +25,7 @@ JNIEXPORT jlong Java_KrapsRDD_createIterator(JNIEnv* env, jobject self, jint que
     void* dll = dlopen(buf, RTLD_LAZY);
     assert(dll != NULL);
     sprintf(buf, "getQ%dIterator", queryId);
-    iterator_constructor_t constructor = (iterator_constructor_t)dlsym(buf);
+    iterator_constructor_t constructor = (iterator_constructor_t)dlsym(dll, buf);
     assert(constructor != NULL);
     KrapsIterator::env = env;
     return (jlong)(size_t)new KrapsRDD(dll, constructor(env, iterators));

@@ -14,12 +14,12 @@ template<class T>
 class SparkRDD : RDD<T>
 {
   public:
-    bool next(Lineitem& l)
+    bool next(T& row)
     {
         JNIEnv* env = KrapsIterator::env.get();
-        return env->CallBooleanMethod(iterator, nextRow, (jlong)(size_t)&l);
+        return env->CallBooleanMethod(iterator, nextRow, (jlong)(size_t)&row);
     }
-    SparkRDD(JNIEnv* env, jobject _iterator) : iterator(_iterator)
+    SparkRDD(JNIEnv* env, jobject iter) : iterator(iter)
     {
         jclass rowIteratorClass = (jclass)env->FindClass("RowIterator");
         nextRow = env->GetMethodID(rowIteratorClass, "next", "(J)Z");

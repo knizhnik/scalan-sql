@@ -96,7 +96,7 @@ case class CombinePartition(index : Int) extends Partition
 
 object KrapsCluster()
 {
-  @native def start(hosts: Array[String], nCores: Int): Boolean
+  @native def start(hosts: Array[String], nCores: Int): Unit
   @native def stop(): Unit
 }
 
