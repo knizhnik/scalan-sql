@@ -1530,9 +1530,9 @@ inline RDD<T>* RDD<T>::filter() {
 }
 
 template<class T>
-template<class S,void (*accumulate)(S& state, T const& in)>
+template<class S,void (*accumulate)(S& state, T const& in), void(*combine)(S& state, S const& partial)>
 inline RDD<S>* RDD<T>::reduce(S const& initState) {
-    return new ReduceRDD<T,S,accumulate>(this, initState);
+    return new ReduceRDD<T,S,accumulate,combine>(this, initState);
 }
 
 template<class T>
