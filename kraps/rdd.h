@@ -161,7 +161,7 @@ class RDD
     /**
      * Perform aggregation of input RDD 
      */
-    template<class S,void (*accumulate)(S& state,  T const& in)>
+    template<class S,void (*accumulate)(S& state,  T const& in),void (*combine)(S& state, S const& in)>
     RDD<S>* reduce(S const& initState);
 
     /**
@@ -611,6 +611,7 @@ class ReduceRDD : public RDD<S>
         while (input->next(record)) { 
             accumulate(state, record);
         }
+        Cluster* cluster = Cluster::instance.get();
         Queue* queue = cluster->getQueue();
         if (cluster->isCoordinator()) {
             S partialState;

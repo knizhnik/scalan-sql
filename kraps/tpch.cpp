@@ -1556,6 +1556,12 @@ namespace Q14
         acc.revenue += r.l_extendedprice * (1 - r.l_discount);
     }
 
+    void combineRevenue(PromoRevenue& acc, PromoRevenue const& partial)
+    {
+        acc.promo += partial.promo;
+        acc.revenue += partial.revenue;
+    }
+    
     void relation(double& result, PromoRevenue const& pr)
     {
         result = 100*pr.promo/pr.revenue;
@@ -1570,7 +1576,7 @@ namespace Q14
             join<PartProjection,int,lineitemPartKey,partKey>(TABLE(Part)->
                                                              project<PartProjection,projectPart>(),
                                                              SCALE(200000))->
-            reduce<PromoRevenue,promoRevenue,sum>(PromoRevenue(0,0))->
+            reduce<PromoRevenue,promoRevenue,combineRevenue>(PromoRevenue(0,0))->
             project<double,relation>();
     }    
 }
