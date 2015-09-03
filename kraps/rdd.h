@@ -589,7 +589,7 @@ class FilterRDD : public RDD<T>
 //
 // Perform aggregation of input data (a-la Scala fold)
 //
-template<class T, class S,void (*accumulate)(S& state, T const& in)>
+template<class T, class S,void (*accumulate)(S& state, T const& in),void (*combine)(S& state, S const& in)>
 class ReduceRDD : public RDD<S> 
 {    
   public:
@@ -612,14 +612,15 @@ class ReduceRDD : public RDD<S>
             accumulate(state, record);
         }
         Queue* queue = cluster->getQueue();
-        if (cluster->isCoordinator()) { 
-            GatherRDD<T> gather(queue);
+        if (cluster->isCoordinator()) {
+            S partialState;
+            GatherRDD<S> gather(queue);
             queue->putFirst(Buffer::eof(queue->qid)); // do not wait for self node
-            while (gather.next(pair)) {
-                accumulate(state, record);
+            while (gather.next(partialState)) {
+                combine(state, partialState);
             }
         } else {
-            sendToCoordinator<T>(this, queue);            
+            sendToCoordinator<S>(this, queue);            
         }
         delete input;
     }

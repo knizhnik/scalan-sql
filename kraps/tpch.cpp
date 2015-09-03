@@ -592,7 +592,7 @@ namespace Q6
         return
             TABLE(Lineitem)->
             filter<lineitemFilter>()->
-            reduce<double,revenue>(0);
+            reduce<double,revenue,sum>(0);
     }
 }
 namespace Q7
@@ -1570,7 +1570,7 @@ namespace Q14
             join<PartProjection,int,lineitemPartKey,partKey>(TABLE(Part)->
                                                              project<PartProjection,projectPart>(),
                                                              SCALE(200000))->
-            reduce<PromoRevenue,promoRevenue>(PromoRevenue(0,0))->
+            reduce<PromoRevenue,promoRevenue,sum>(PromoRevenue(0,0))->
             project<double,relation>();
     }    
 }
@@ -1660,7 +1660,7 @@ namespace Q19
             join<PartProjection,int,lineitemPartKey,partKey>(TABLE(Part)->
                                                              project<PartProjection,projectPart>(), SCALE(200000))->
             filter<brandFilter>()->
-            reduce<double, revenue>(0);
+            reduce<double,revenue,sum>(0);
     }    
 }
     
