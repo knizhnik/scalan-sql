@@ -611,6 +611,17 @@ class ReduceRDD : public RDD<S>
         while (input->next(record)) { 
             accumulate(state, record);
         }
+        Queue* queue = cluster->getQueue();
+        if (cluster->isCoordinator()) { 
+            GatherRDD<T> gather(queue);
+            queue->putFirst(Buffer::eof(queue->qid)); // do not wait for self node
+            while (gather.next(pair)) {
+                accumulate(state, record);
+            }
+        } else {
+            sendToCoordinator<T>(this, queue);            
+        }
+        delete input;
     }
     
     S state;
