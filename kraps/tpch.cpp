@@ -1821,14 +1821,16 @@ int main(int argc, char* argv[])
     }
     if (argc == i) {
         // multhithreaded cluster
+        Cluster::nodes = new Cluster*[nNodes];
         Thread** clusterThreads = new Thread*[nNodes];
-        for (nodeId = 0; nodeId < nNodes; i++) {
+        for (nodeId = 0; nodeId < nNodes; nodeId++) {
             clusterThreads[nodeId] = new Thread(new TPCHJob(nodeId, nNodes, NULL, nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, useCache));
         }
-        for (nodeId = 0; nodeId < nNodes; i++) {
+        for (nodeId = 0; nodeId < nNodes; nodeId++) {
             delete clusterThreads[nodeId];
         }
         delete[] clusterThreads;
+        delete[] Cluster::nodes;
     } else if (argc == i + nNodes) {
         TPCHJob test(nodeId, nNodes, &argv[i], nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, useCache);
         test.run();

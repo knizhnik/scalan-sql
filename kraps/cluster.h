@@ -161,6 +161,7 @@ class Cluster {
     Thread* receiver;
     bool shutdown;
     size_t nExecutorsPerHost;
+    static Cluster** nodes; 
     
     FILE* openTempFile(char const* prefix, qid_t qid, size_t no, char const* mode = "r");
     

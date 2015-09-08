@@ -5,6 +5,7 @@
 const unsigned shutdownDelay = 5;
 const size_t MB = 1024*1024;
 
+Cluster** Cluster::nodes;
 ThreadLocal<Cluster> Cluster::instance;
 
 void Queue::put(Buffer* buf) 
@@ -112,6 +113,7 @@ Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nQueues, siz
     receiver = NULL;
     
     if (hosts == NULL) {
+        nodes[nodeId] = this;
         return;
     }
     for (size_t i = 0; i < selfId; i++) { 
@@ -263,14 +265,14 @@ void SchedulerJob::run()
         buf->node = (uint32_t)cluster->nodeId;
         switch (buf->kind) {
           case MSG_PONG:
-            cluster->recvQueues[buf->qid]->signal();            
+            cluster->nodes[node]->recvQueues[buf->qid]->signal();            
             buf->release();
             continue;
           case MSG_SHUTDOWN:
             buf->release();
             break;
           default:
-            cluster->recvQueues[buf->qid]->put(buf);
+            cluster->nodes[node]->recvQueues[buf->qid]->put(buf);
             continue;
         }
     }
