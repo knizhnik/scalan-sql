@@ -25,11 +25,16 @@ public:
     static Socket* select(size_t nSockets, Socket** sockets);
     ~Socket();
 
+    bool isLocal() {
+        return localSocket;
+    }
+    
     static bool isLocalHost(char const* address);
     static char const* unixSocketDir;
 private:
-    Socket(int fd) : sd(fd) {}
+    Socket(int fd, bool local) : sd(fd), localSocket(local) {}
     int const sd;
+    bool const localSocket;
 };
 
 

@@ -105,11 +105,15 @@ Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nQueues, siz
     for (size_t i = 0; i < nHosts; i++) { 
         if (i != selfId) { 
             sendQueues[i] = new Queue((qid_t)i, sendQueueSize);
-            senders[i] = new Thread(new SendJob(i));
+            senders[i] = new Thread(hosts == NULL ? (Job*)new SchedulerJob(i) : (Job*)new SendJob(i));
         }
     }
     sendQueues[selfId] = NULL;
-
+    receiver = NULL;
+    
+    if (hosts == NULL) {
+        return;
+    }
     for (size_t i = 0; i < selfId; i++) { 
         sockets[i] = Socket::connect(hosts[i]);
         sockets[i]->write(&nodeId, sizeof nodeId);
@@ -137,7 +141,9 @@ Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nQueues, siz
     delete localGateway;
     delete globalGateway;
     
-    receiver = nHosts != 1 ? new Thread(new ReceiveJob()) : NULL;
+    if (nHosts != 1) {
+        receiver = new Thread(new ReceiveJob());
+    }
         
 }
 
@@ -250,6 +256,26 @@ void ReceiveJob::run()
 }
 
 
+void SchedulerJob::run()
+{
+    while (true) { 
+        Buffer* buf = cluster->sendQueues[node]->get();
+        buf->node = (uint32_t)cluster->nodeId;
+        switch (buf->kind) {
+          case MSG_PONG:
+            cluster->recvQueues[buf->qid]->signal();            
+            buf->release();
+            continue;
+          case MSG_SHUTDOWN:
+            buf->release();
+            break;
+          default:
+            cluster->recvQueues[buf->qid]->put(buf);
+            continue;
+        }
+    }
+}
+        
 void SendJob::run()
 {
     size_t compressBufSize = cluster->bufferSize*2;
@@ -258,7 +284,12 @@ void SendJob::run()
         while (true) { 
             Buffer* buf = cluster->sendQueues[node]->get();
             buf->node = (uint32_t)cluster->nodeId;
-            buf->compressedSize = buf->size ? compress(ioBuf->data, buf->data, buf->size) : 0;
+
+            if (cluster->sockets[node]->isLocal()) {
+                buf->compressedSize = buf->size;
+            } else { 
+                buf->compressedSize = buf->size ? compress(ioBuf->data, buf->data, buf->size) : 0;
+            }
             if (buf->kind == MSG_SHUTDOWN) { 
                 if (node == (cluster->nodeId + 1) % cluster->nNodes) { // shutdown neighbour receiver
                     cluster->sockets[node]->write(buf, BUF_HDR_SIZE);

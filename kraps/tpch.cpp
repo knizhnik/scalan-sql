@@ -49,7 +49,7 @@ class CachedData
 
 };
 
-CachedData* cache;
+ThreadLocal<CachedData> cache;
 
 void sum(double& dst, double const& src)
 {
@@ -1690,6 +1690,61 @@ void execute(char const* name, RDD<T>* (*query)())
     fflush(stdout);
 }
 
+class TPCHJob : public Job
+{
+    size_t const nodeId;
+    size_t const nHosts;
+    char** const hosts;
+    size_t const nQueues;
+    size_t const bufferSize;
+    size_t const recvQueueSize;
+    size_t const sendQueueSize;
+    size_t const syncInterval;
+    size_t const broadcastJoinThreshold;
+    size_t const inmemJoinThreshold;
+    char   const*tmp;
+    bool   const sharedNothing;
+    bool   const useCache;
+  public:
+    TPCHJob(size_t _nodeId, size_t _nHosts, char** _hosts = NULL, size_t _nQueues = 64, size_t _bufferSize = 4*64*1024, size_t _recvQueueSize = 4*64*1024*1024,  size_t _sendQueueSize = 4*4*1024*1024, size_t _syncInterval = 64*1024*1024, size_t _broadcastJoinThreshold = 10000, size_t _inmemJoinThreshold = 10000000, char const* _tmp = "/tmp", bool _sharedNothing = false, bool _useCache = false)
+    : nodeId(_nodeId), nHosts(_nHosts), hosts(_hosts), nQueues(_nQueues), bufferSize(_bufferSize), recvQueueSize(_recvQueueSize),
+      sendQueueSize(_sendQueueSize), syncInterval(_syncInterval), broadcastJoinThreshold(_broadcastJoinThreshold),
+      inmemJoinThreshold(_inmemJoinThreshold), tmp(_tmp), sharedNothing(_sharedNothing), useCache(_useCache) {}
+    
+  public:
+    void run() {
+        Cluster cluster(nodeId, nHosts, hosts, nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing);
+        printf("Node %d started...\n", (int)nodeId);
+
+        time_t start = time(NULL);
+        if (useCache) { 
+            cache.set(new CachedData());
+            printf("Elapsed time for loading all data in memory: %d seconds\n", (int)(time(NULL) - start));
+            cluster.barrier(); 
+        } else {
+            cache.set(NULL);
+        }
+    
+        execute("Q1",  Q1::query);
+        execute("Q3",  Q3::query);
+        execute("Q4",  Q4::query);
+        execute("Q5",  Q5::query);
+        execute("Q6",  Q6::query);
+        execute("Q7",  Q7::query);
+        execute("Q8",  Q8::query);
+        execute("Q9",  Q9::query);
+        execute("Q10", Q10::query);
+        execute("Q12", Q12::query);
+        execute("Q13", Q13::query);
+        execute("Q14", Q14::query);
+        execute("Q19", Q19::query);
+        
+        delete cache.get();
+
+        printf("Node %d finished.\n", (int)nodeId);
+    }
+};
+
 int main(int argc, char* argv[])
 {
     int i;
@@ -1764,36 +1819,22 @@ int main(int argc, char* argv[])
         fprintf(stderr, "Invalid node ID %d\n", nodeId);
         return 1;
     }
-    if (argc != i + nNodes) { 
+    if (argc == i) {
+        // multhithreaded cluster
+        Thread** clusterThreads = new Thread*[nNodes];
+        for (nodeId = 0; nodeId < nNodes; i++) {
+            clusterThreads[nodeId] = new Thread(new TPCHJob(nodeId, nNodes, NULL, nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, useCache));
+        }
+        for (nodeId = 0; nodeId < nNodes; i++) {
+            delete clusterThreads[nodeId];
+        }
+        delete[] clusterThreads;
+    } else if (argc == i + nNodes) {
+        TPCHJob test(nodeId, nNodes, &argv[i], nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, useCache);
+        test.run();
+    } else {      
         fprintf(stderr, "At least one node has to be specified\n");
         goto Usage;
     }
-    printf("Node %d started...\n", nodeId);
-    Cluster cluster(nodeId, nNodes, &argv[i], nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing);
-
-    time_t start = time(NULL);
-    if (useCache) { 
-        cache = new CachedData();
-        printf("Elapsed time for loading all data in memory: %d seconds\n", (int)(time(NULL) - start));
-        cluster.barrier(); 
-    }
-    
-    execute("Q1",  Q1::query);
-    execute("Q3",  Q3::query);
-    execute("Q4",  Q4::query);
-    execute("Q5",  Q5::query);
-    execute("Q6",  Q6::query);
-    execute("Q7",  Q7::query);
-    execute("Q8",  Q8::query);
-    execute("Q9",  Q9::query);
-    execute("Q10", Q10::query);
-    execute("Q12", Q12::query);
-    execute("Q13", Q13::query);
-    execute("Q14", Q14::query);
-    execute("Q19", Q19::query);
-
-    delete cache;
-
-    printf("Node %d finished.\n", nodeId);
     return 0;
 }

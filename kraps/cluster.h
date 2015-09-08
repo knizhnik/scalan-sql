@@ -130,6 +130,16 @@ private:
     size_t sent;
 };
 
+class SchedulerJob : public Job
+{
+public:
+    void run();
+    SchedulerJob(size_t id) : node(id) {}
+
+private:
+    size_t const node;
+};
+
 class Cluster {
   public:
     size_t const nNodes;
@@ -166,7 +176,7 @@ class Cluster {
     static ThreadLocal<Cluster> instance;
 };
 
-
+    
 extern uint32_t murmur_hash3_32(const void* key, const int len);
 
 #endif
