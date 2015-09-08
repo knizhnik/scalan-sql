@@ -225,7 +225,7 @@ class RDD
 template<class T>
 inline void enqueue(RDD<T>* input, Queue* queue, qid_t qid) 
 {
-    size_t bufferSize = Cluster::instance.get()->bufferSize;
+    size_t bufferSize = Cluster::instance->bufferSize;
     Buffer* buf = Buffer::create(qid, bufferSize);
     size_t size, used = 0;
     T record;
@@ -256,7 +256,7 @@ inline void enqueue(RDD<T>* input, Queue* queue, qid_t qid)
 template<class T>
 inline void sendToCoordinator(RDD<T>* input, Queue* queue) 
 {
-    enqueue(input, Cluster::instance.get()->sendQueues[COORDINATOR], queue->qid);
+    enqueue(input, Cluster::instance->sendQueues[COORDINATOR], queue->qid);
 }
 
 //
@@ -369,7 +369,7 @@ public:
             case MSG_PING:
                 buf->kind = MSG_PONG;
                 assert(buf->node < cluster->nNodes && buf->node != cluster->nodeId);
-                Cluster::instance.get()->sendQueues[buf->node]->putFirst(buf);
+                Cluster::instance->sendQueues[buf->node]->putFirst(buf);
                 buf = NULL; // will be deleted by sender
                 continue;
             default:
@@ -381,7 +381,7 @@ public:
         return true;
     }
 
-    GatherRDD(Queue* q) : buf(NULL), used(0), size(0), queue(q), nWorkers(Cluster::instance.get()->nNodes) {}
+    GatherRDD(Queue* q) : buf(NULL), used(0), size(0), queue(q), nWorkers(Cluster::instance->nNodes) {}
     ~GatherRDD() { 
         if (buf != NULL) { 
             buf->release(); 
@@ -497,7 +497,7 @@ template<class T>
 class DirRDD : public RDD<T>
 {
   public:
-    DirRDD(char* path) : dir(path), segno(Cluster::instance.get()->nodeId), step(Cluster::instance.get()->nNodes), f(NULL) {}
+    DirRDD(char* path) : dir(path), segno(Cluster::instance->nodeId), step(Cluster::instance->nNodes), f(NULL) {}
 
     RDD<T>* replicate() { 
         segno = 0;
@@ -554,7 +554,7 @@ public:
             ? (RDD<T>*)new FileRDD<T>(fileName)
 #if USE_PARQUET
             : (strcmp(fileName + len - 8, ".parquet") == 0) 
-              ? Cluster::instance.get()->sharedNothing 
+              ? Cluster::instance->sharedNothing 
                 ? (RDD<T>*)new ParquetLocalRDD<T>(fileName)
                 : (RDD<T>*)new ParquetRoundRobinRDD<T>(fileName)
 #endif
@@ -1520,7 +1520,7 @@ void RDD<T>::output(FILE* out)
 
 template<class T>
 inline RDD<T>* RDD<T>::replicate() { 
-    Queue* queue = Cluster::instance.get()->getQueue();
+    Queue* queue = Cluster::instance->getQueue();
     return new ReplicateRDD<T>(this, queue);
 }
 

@@ -8,9 +8,9 @@ const size_t SF = 100; // scale factor
 #define STRCMP(s,p) strncmp(s, p, sizeof(s))
 #define STREQ(s,p)  (STRCMP(s, p) == 0)
 #define STRCPY(d,s) strncpy(d,s,sizeof(d))
-#define SCALE(x)    ((x + Cluster::instance.get()->nNodes - 1)*SF/(Cluster::instance.get()->nNodes) + (x / 100)) // take in accoutn data skews
+#define SCALE(x)    ((x + Cluster::instance->nNodes - 1)*SF/(Cluster::instance->nNodes) + (x / 100)) // take in accoutn data skews
 
-#define TABLE(x) (cache ? (RDD<x>*)cache->_##x.get() : (RDD<x>*)FileManager::load<x>(filePath(#x)))
+#define TABLE(x) (Cluster::instance->userData ? (RDD<x>*)((CachedData*)Cluster::instance->userData)->_##x.get() : (RDD<x>*)FileManager::load<x>(filePath(#x)))
 
 char const* dataDir;
 char const* dataFormat;
@@ -48,8 +48,6 @@ class CachedData
     _Region(FileManager::load<Region>(filePath("Region")),       5) {}
 
 };
-
-ThreadLocal<CachedData> cache;
 
 void sum(double& dst, double const& src)
 {
@@ -1680,7 +1678,7 @@ void execute(char const* name, RDD<T>* (*query)())
     result->output(stdout);
     delete result;
 
-    if (Cluster::instance.get()->nodeId == 0) {
+    if (Cluster::instance->nodeId == 0) {
         FILE* results = fopen("results.csv", "a");
         fprintf(results, "%s,%d\n", name, (int)(time(NULL) - start));
         fclose(results);
@@ -1718,11 +1716,9 @@ class TPCHJob : public Job
 
         time_t start = time(NULL);
         if (useCache) { 
-            cache.set(new CachedData());
+            cluster.userData = new CachedData();
             printf("Elapsed time for loading all data in memory: %d seconds\n", (int)(time(NULL) - start));
             cluster.barrier(); 
-        } else {
-            cache.set(NULL);
         }
     
         execute("Q1",  Q1::query);
@@ -1739,7 +1735,7 @@ class TPCHJob : public Job
         execute("Q14", Q14::query);
         execute("Q19", Q19::query);
         
-        delete cache.get();
+        delete (CachedData*)cluster.userData;
 
         printf("Node %d finished.\n", (int)nodeId);
     }

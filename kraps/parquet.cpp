@@ -57,7 +57,7 @@ class ParquetFile {
 	}
 	eof = false;
 	printf("%s -> %s\n", hosts[0][0], url);
-	bool my = Cluster::instance.get()->isLocalNode(hosts[0][0]);
+	bool my = Cluster::instance->isLocalNode(hosts[0][0]);
         hdfsFreeHosts(hosts);
         return my;
     }

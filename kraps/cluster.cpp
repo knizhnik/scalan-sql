@@ -87,7 +87,7 @@ bool Cluster::isLocalNode(char const* host)
 
     
 Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nQueues, size_t bufSize, size_t recvQueueSize, size_t sendQueueSize, size_t syncPeriod, size_t broadcastThreshold, size_t inmemThreshold, char const* tmp, bool sharedNothingDFS) 
-  : nNodes(nHosts), maxQueues(nQueues), nodeId(selfId), bufferSize(bufSize), syncInterval(syncPeriod), broadcastJoinThreshold(broadcastThreshold), inmemJoinThreshold(inmemThreshold), sharedNothing(sharedNothingDFS), tmpDir(tmp), shutdown(false)
+: nNodes(nHosts), maxQueues(nQueues), nodeId(selfId), bufferSize(bufSize), syncInterval(syncPeriod), broadcastJoinThreshold(broadcastThreshold), inmemJoinThreshold(inmemThreshold), sharedNothing(sharedNothingDFS), tmpDir(tmp), shutdown(false), userData(NULL)
 {
     instance.set(this);
     this->hosts = hosts;
@@ -269,8 +269,7 @@ void SchedulerJob::run()
             buf->release();
             continue;
           case MSG_SHUTDOWN:
-            buf->release();
-            break;
+            return;
           default:
             cluster->nodes[node]->recvQueues[buf->qid]->put(buf);
             continue;
