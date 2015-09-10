@@ -8,9 +8,9 @@ const size_t SF = 100; // scale factor
 #define STRCMP(s,p) strncmp(s, p, sizeof(s))
 #define STREQ(s,p)  (STRCMP(s, p) == 0)
 #define STRCPY(d,s) strncpy(d,s,sizeof(d))
-#define SCALE(x)    ((x + Cluster::instance.get()->nNodes - 1)*SF/(Cluster::instance.get()->nNodes) + (x / 100)) // take in accoutn data skews
+#define SCALE(x)    ((x + Cluster::instance->nNodes - 1)*SF/(Cluster::instance->nNodes) + (x / 100)) // take in accoutn data skews
 
-#define TABLE(x) (cache ? (RDD<x>*)cache->_##x.get() : (RDD<x>*)FileManager::load<x>(filePath(#x)))
+#define TABLE(x) (Cluster::instance->userData ? (RDD<x>*)((CachedData*)Cluster::instance->userData)->_##x.get() : (RDD<x>*)FileManager::load<x>(filePath(#x)))
 
 char const* dataDir;
 char const* dataFormat;
@@ -48,8 +48,6 @@ class CachedData
     _Region(FileManager::load<Region>(filePath("Region")),       5) {}
 
 };
-
-CachedData* cache;
 
 void sum(double& dst, double const& src)
 {
@@ -592,7 +590,7 @@ namespace Q6
         return
             TABLE(Lineitem)->
             filter<lineitemFilter>()->
-            reduce<double,revenue>(0);
+            reduce<double,revenue,sum>(0);
     }
 }
 namespace Q7
@@ -1556,6 +1554,12 @@ namespace Q14
         acc.revenue += r.l_extendedprice * (1 - r.l_discount);
     }
 
+    void combineRevenue(PromoRevenue& acc, PromoRevenue const& partial)
+    {
+        acc.promo += partial.promo;
+        acc.revenue += partial.revenue;
+    }
+    
     void relation(double& result, PromoRevenue const& pr)
     {
         result = 100*pr.promo/pr.revenue;
@@ -1570,7 +1574,7 @@ namespace Q14
             join<PartProjection,int,lineitemPartKey,partKey>(TABLE(Part)->
                                                              project<PartProjection,projectPart>(),
                                                              SCALE(200000))->
-            reduce<PromoRevenue,promoRevenue>(PromoRevenue(0,0))->
+            reduce<PromoRevenue,promoRevenue,combineRevenue>(PromoRevenue(0,0))->
             project<double,relation>();
     }    
 }
@@ -1660,7 +1664,7 @@ namespace Q19
             join<PartProjection,int,lineitemPartKey,partKey>(TABLE(Part)->
                                                              project<PartProjection,projectPart>(), SCALE(200000))->
             filter<brandFilter>()->
-            reduce<double, revenue>(0);
+            reduce<double,revenue,sum>(0);
     }    
 }
     
@@ -1674,7 +1678,7 @@ void execute(char const* name, RDD<T>* (*query)())
     result->output(stdout);
     delete result;
 
-    if (Cluster::instance.get()->nodeId == 0) {
+    if (Cluster::instance->nodeId == 0) {
         FILE* results = fopen("results.csv", "a");
         fprintf(results, "%s,%d\n", name, (int)(time(NULL) - start));
         fclose(results);
@@ -1683,6 +1687,59 @@ void execute(char const* name, RDD<T>* (*query)())
     printf("Elapsed time for %s: %d seconds\n", name, (int)(time(NULL) - start));
     fflush(stdout);
 }
+
+class TPCHJob : public Job
+{
+    size_t const nodeId;
+    size_t const nHosts;
+    char** const hosts;
+    size_t const nQueues;
+    size_t const bufferSize;
+    size_t const recvQueueSize;
+    size_t const sendQueueSize;
+    size_t const syncInterval;
+    size_t const broadcastJoinThreshold;
+    size_t const inmemJoinThreshold;
+    char   const*tmp;
+    bool   const sharedNothing;
+    bool   const useCache;
+  public:
+    TPCHJob(size_t _nodeId, size_t _nHosts, char** _hosts = NULL, size_t _nQueues = 64, size_t _bufferSize = 4*64*1024, size_t _recvQueueSize = 4*64*1024*1024,  size_t _sendQueueSize = 4*4*1024*1024, size_t _syncInterval = 64*1024*1024, size_t _broadcastJoinThreshold = 10000, size_t _inmemJoinThreshold = 10000000, char const* _tmp = "/tmp", bool _sharedNothing = false, bool _useCache = false)
+    : nodeId(_nodeId), nHosts(_nHosts), hosts(_hosts), nQueues(_nQueues), bufferSize(_bufferSize), recvQueueSize(_recvQueueSize),
+      sendQueueSize(_sendQueueSize), syncInterval(_syncInterval), broadcastJoinThreshold(_broadcastJoinThreshold),
+      inmemJoinThreshold(_inmemJoinThreshold), tmp(_tmp), sharedNothing(_sharedNothing), useCache(_useCache) {}
+    
+  public:
+    void run() {
+        Cluster cluster(nodeId, nHosts, hosts, nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing);
+        printf("Node %d started...\n", (int)nodeId);
+
+        time_t start = time(NULL);
+        if (useCache) { 
+            cluster.userData = new CachedData();
+            printf("Elapsed time for loading all data in memory: %d seconds\n", (int)(time(NULL) - start));
+            cluster.barrier(); 
+        }
+    
+        execute("Q1",  Q1::query);
+        execute("Q3",  Q3::query);
+        execute("Q4",  Q4::query);
+        execute("Q5",  Q5::query);
+        execute("Q6",  Q6::query);
+        execute("Q7",  Q7::query);
+        execute("Q8",  Q8::query);
+        execute("Q9",  Q9::query);
+        execute("Q10", Q10::query);
+        execute("Q12", Q12::query);
+        execute("Q13", Q13::query);
+        execute("Q14", Q14::query);
+        execute("Q19", Q19::query);
+        
+        delete (CachedData*)cluster.userData;
+
+        printf("Node %d finished.\n", (int)nodeId);
+    }
+};
 
 int main(int argc, char* argv[])
 {
@@ -1699,6 +1756,8 @@ int main(int argc, char* argv[])
     char const* option;
     char const* tmp = "/tmp";
     
+    (void)fopen("tpch.cfg", "r"); // needed to innitialize stdio in single threaded environment
+
     for (i = 1; i < argc; i++) { 
         if (*argv[i] == '-') { 
             option = argv[i]+1;
@@ -1758,36 +1817,24 @@ int main(int argc, char* argv[])
         fprintf(stderr, "Invalid node ID %d\n", nodeId);
         return 1;
     }
-    if (argc != i + nNodes) { 
+    if (argc == i) {
+        // multhithreaded cluster
+        Cluster::nodes = new Cluster*[nNodes];
+        Thread** clusterThreads = new Thread*[nNodes];
+        for (nodeId = 0; nodeId < nNodes; nodeId++) {
+            clusterThreads[nodeId] = new Thread(new TPCHJob(nodeId, nNodes, NULL, nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, useCache));
+        }
+        for (nodeId = 0; nodeId < nNodes; nodeId++) {
+            delete clusterThreads[nodeId];
+        }
+        delete[] clusterThreads;
+        delete[] Cluster::nodes;
+    } else if (argc == i + nNodes) {
+        TPCHJob test(nodeId, nNodes, &argv[i], nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, useCache);
+        test.run();
+    } else {      
         fprintf(stderr, "At least one node has to be specified\n");
         goto Usage;
     }
-    printf("Node %d started...\n", nodeId);
-    Cluster cluster(nodeId, nNodes, &argv[i], nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing);
-
-    time_t start = time(NULL);
-    if (useCache) { 
-        cache = new CachedData();
-        printf("Elapsed time for loading all data in memory: %d seconds\n", (int)(time(NULL) - start));
-        cluster.barrier(); 
-    }
-    
-    execute("Q1",  Q1::query);
-    execute("Q3",  Q3::query);
-    execute("Q4",  Q4::query);
-    execute("Q5",  Q5::query);
-    execute("Q6",  Q6::query);
-    execute("Q7",  Q7::query);
-    execute("Q8",  Q8::query);
-    execute("Q9",  Q9::query);
-    execute("Q10", Q10::query);
-    execute("Q12", Q12::query);
-    execute("Q13", Q13::query);
-    execute("Q14", Q14::query);
-    execute("Q19", Q19::query);
-
-    delete cache;
-
-    printf("Node %d finished.\n", nodeId);
     return 0;
 }

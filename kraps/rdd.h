@@ -161,7 +161,7 @@ class RDD
     /**
      * Perform aggregation of input RDD 
      */
-    template<class S,void (*accumulate)(S& state,  T const& in)>
+    template<class S,void (*accumulate)(S& state,  T const& in),void (*combine)(S& state, S const& in)>
     RDD<S>* reduce(S const& initState);
 
     /**
@@ -223,16 +223,18 @@ class RDD
 // Tranfer data from RDD to queue
 //
 template<class T>
-inline void enqueue(RDD<T>* input, Queue* queue, qid_t qid) 
+inline void enqueue(RDD<T>* input, size_t node, Queue* queue) 
 {
-    size_t bufferSize = Cluster::instance.get()->bufferSize;
+    Cluster* cluster = Cluster::instance.get();
+    qid_t qid = queue->qid;
+    size_t bufferSize = cluster->bufferSize;
     Buffer* buf = Buffer::create(qid, bufferSize);
     size_t size, used = 0;
     T record;
     while (input->next(record)) { 
         if (used + sizeof(T) > bufferSize) { 
             buf->size = used;
-            queue->put(buf);
+            cluster->send(node, queue, buf);
             buf = Buffer::create(qid, bufferSize);
             used = 0;
         }
@@ -242,11 +244,11 @@ inline void enqueue(RDD<T>* input, Queue* queue, qid_t qid)
     }
     buf->size = used;
     if (used != 0) { 
-        queue->put(buf);
-        queue->put(Buffer::eof(qid));
+        cluster->send(node, queue, buf);
+        cluster->send(node, queue, Buffer::eof(qid));
     } else { 
         buf->kind = MSG_EOF;
-        queue->put(buf);
+        cluster->send(node, queue, buf);
     }
 }
 
@@ -256,7 +258,7 @@ inline void enqueue(RDD<T>* input, Queue* queue, qid_t qid)
 template<class T>
 inline void sendToCoordinator(RDD<T>* input, Queue* queue) 
 {
-    enqueue(input, Cluster::instance.get()->sendQueues[COORDINATOR], queue->qid);
+    enqueue(input, COORDINATOR, queue);
 }
 
 //
@@ -270,7 +272,7 @@ public:
 
     void run()
     {        
-        enqueue(input, queue, queue->qid);
+        enqueue(input, Cluster::instance->nodeId, queue);
     }
 private:
     RDD<T>* const input;
@@ -306,16 +308,15 @@ public:
             size_t hash = hashCode(key);
             size_t node = hash % nNodes;
             if (buffers[node]->size + sizeof(T) > bufferSize) {
-                Queue* dst = (node == nodeId) ? queue : cluster->sendQueues[node];
                 sent += buffers[node]->size;
-                dst->put(buffers[node]);
+                cluster->send(node, queue, buffers[node]);
                 buffers[node] = Buffer::create(queue->qid, bufferSize);
                 buffers[node]->size = 0;
                 
                 if (sent > cluster->syncInterval) { 
                     for (size_t node = 0; node < nNodes; node++) {
                         if (node != nodeId) { 
-                            cluster->sendQueues[node]->put(Buffer::ping(queue->qid));
+                            cluster->send(node, queue, Buffer::ping(queue->qid));
                         }
                     }
                     queue->wait(nNodes-1);
@@ -328,14 +329,13 @@ public:
         }
             
         for (size_t node = 0; node < nNodes; node++) {
-            Queue* dst = (node == nodeId) ? queue : cluster->sendQueues[node];
             if (buffers[node]->size != 0) { 
                 sent += buffers[node]->size;
-                dst->put(buffers[node]);
-                dst->put(Buffer::eof(queue->qid));
+                cluster->send(node, queue, buffers[node]);
+                cluster->send(node, queue, Buffer::eof(queue->qid));
             } else { 
                 buffers[node]->kind = MSG_EOF;
-                dst->put(buffers[node]);
+                cluster->send(node, queue, buffers[node]);
             }                
         }
         delete[] buffers;
@@ -369,7 +369,7 @@ public:
             case MSG_PING:
                 buf->kind = MSG_PONG;
                 assert(buf->node < cluster->nNodes && buf->node != cluster->nodeId);
-                Cluster::instance.get()->sendQueues[buf->node]->putFirst(buf);
+                Cluster::instance->sendQueues[buf->node]->putFirst(buf);
                 buf = NULL; // will be deleted by sender
                 continue;
             default:
@@ -381,7 +381,7 @@ public:
         return true;
     }
 
-    GatherRDD(Queue* q) : buf(NULL), used(0), size(0), queue(q), nWorkers(Cluster::instance.get()->nNodes) {}
+    GatherRDD(Queue* q) : buf(NULL), used(0), size(0), queue(q), nWorkers(Cluster::instance->nNodes) {}
     ~GatherRDD() { 
         if (buf != NULL) { 
             buf->release(); 
@@ -421,8 +421,7 @@ public:
                 buffer->size = size;
                 buffer->refCount = nNodes;
                 for (size_t node = 0; node < nNodes; node++) { 
-                    Queue* dst = (node == nodeId) ? queue : cluster->sendQueues[node];
-                    dst->put(buffer);
+                    cluster->send(node, queue, buffer);
                     if (sent > cluster->syncInterval && node != nodeId) { 
                         cluster->sendQueues[node]->put(Buffer::ping(queue->qid));
                     }
@@ -445,11 +444,10 @@ public:
             buffer->release();
         }
         for (size_t node = 0; node < nNodes; node++) {
-            Queue* dst = (node == nodeId) ? queue : cluster->sendQueues[node];
             if (size != 0) { 
-                dst->put(buffer);
+                cluster->send(node, queue, buffer);
             }
-            dst->put(Buffer::eof(queue->qid));
+            cluster->send(node, queue, Buffer::eof(queue->qid));
         }
     }
 private:
@@ -497,7 +495,7 @@ template<class T>
 class DirRDD : public RDD<T>
 {
   public:
-    DirRDD(char* path) : dir(path), segno(Cluster::instance.get()->nodeId), step(Cluster::instance.get()->nNodes), f(NULL) {}
+    DirRDD(char* path) : dir(path), segno(Cluster::instance->nodeId), step(Cluster::instance->nNodes), f(NULL) {}
 
     RDD<T>* replicate() { 
         segno = 0;
@@ -554,7 +552,7 @@ public:
             ? (RDD<T>*)new FileRDD<T>(fileName)
 #if USE_PARQUET
             : (strcmp(fileName + len - 8, ".parquet") == 0) 
-              ? Cluster::instance.get()->sharedNothing 
+              ? Cluster::instance->sharedNothing 
                 ? (RDD<T>*)new ParquetLocalRDD<T>(fileName)
                 : (RDD<T>*)new ParquetRoundRobinRDD<T>(fileName)
 #endif
@@ -589,7 +587,7 @@ class FilterRDD : public RDD<T>
 //
 // Perform aggregation of input data (a-la Scala fold)
 //
-template<class T, class S,void (*accumulate)(S& state, T const& in)>
+template<class T, class S,void (*accumulate)(S& state, T const& in),void (*combine)(S& state, S const& in)>
 class ReduceRDD : public RDD<S> 
 {    
   public:
@@ -611,6 +609,19 @@ class ReduceRDD : public RDD<S>
         while (input->next(record)) { 
             accumulate(state, record);
         }
+        Cluster* cluster = Cluster::instance.get();
+        Queue* queue = cluster->getQueue();
+        if (cluster->isCoordinator()) {
+            S partialState;
+            GatherRDD<S> gather(queue);
+            queue->putFirst(Buffer::eof(queue->qid)); // do not wait for self node
+            while (gather.next(partialState)) {
+                combine(state, partialState);
+            }
+        } else {
+            sendToCoordinator<S>(this, queue);            
+        }
+        delete input;
     }
     
     S state;
@@ -847,7 +858,6 @@ class TopRDD : public RDD<T>
             size = loadTop(&gather, n, top);
         } else {
             assert(n*sizeof(T) < cluster->bufferSize);
-            Queue* coord = cluster->sendQueues[COORDINATOR];
             Buffer* msg = Buffer::create(queue->qid, n*sizeof(T));
             size_t used = 0;
             for (size_t j = 0; j < n; j++) {
@@ -855,8 +865,8 @@ class TopRDD : public RDD<T>
             }
             assert(used <= n*sizeof(T));
             msg->size = used;
-            coord->put(msg);
-            coord->put(Buffer::eof(queue->qid));
+            cluster->send(COORDINATOR, queue, msg);
+            cluster->send(COORDINATOR, queue, Buffer::eof(queue->qid));
             size = 0;
         }
     }
@@ -1573,7 +1583,7 @@ void RDD<T>::output(FILE* out)
 
 template<class T>
 inline RDD<T>* RDD<T>::replicate() { 
-    Queue* queue = Cluster::instance.get()->getQueue();
+    Queue* queue = Cluster::instance->getQueue();
     return new ReplicateRDD<T>(this, queue);
 }
 
@@ -1584,9 +1594,9 @@ inline RDD<T>* RDD<T>::filter() {
 }
 
 template<class T>
-template<class S,void (*accumulate)(S& state, T const& in)>
+template<class S,void (*accumulate)(S& state, T const& in), void(*combine)(S& state, S const& partial)>
 inline RDD<S>* RDD<T>::reduce(S const& initState) {
-    return new ReduceRDD<T,S,accumulate>(this, initState);
+    return new ReduceRDD<T,S,accumulate,combine>(this, initState);
 }
 
 template<class T>

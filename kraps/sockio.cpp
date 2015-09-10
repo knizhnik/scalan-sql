@@ -60,7 +60,7 @@ Socket* Socket::createGlobal(int port, size_t listenQueueSize)
         throw SocketError("Failed to listen socket");
     }            
     setGlobalSocketOptions(sd);
-    return new Socket(sd);
+    return new Socket(sd, false);
 }
 
 Socket* Socket::createLocal(int port, size_t listenQueueSize)
@@ -79,7 +79,7 @@ Socket* Socket::createLocal(int port, size_t listenQueueSize)
     if (listen(sd, listenQueueSize) < 0) {
         throw SocketError("Failed to listen socket");
     }            
-    return new Socket(sd);
+    return new Socket(sd, true);
 }
 
 static bool getAddrsByName(const char *hostname, unsigned* addrs, size_t* n_addrs)
@@ -115,9 +115,11 @@ Socket* Socket::connect(char const* address, size_t maxAttempts)
     int port = atoi(sep+1);
     int rc = 0;
     int sd;
-    while (1) { 
+    while (1) {
+        bool isLocal;
         if (isLocalHost(address)) { 
             struct sockaddr sock; 
+            isLocal = true;
             sock.sa_family = AF_UNIX;
             sd = socket(AF_UNIX, SOCK_STREAM, 0); 
             if (sd < 0) { 
@@ -131,6 +133,7 @@ Socket* Socket::connect(char const* address, size_t maxAttempts)
             struct sockaddr_in sock_inet;
             unsigned addrs[128];
             size_t n_addrs = sizeof(addrs) / sizeof(addrs[0]);
+            isLocal = false;
             sock_inet.sin_family = AF_INET;  
             sock_inet.sin_port = htons(port);
             *sep = '\0';
@@ -169,7 +172,7 @@ Socket* Socket::connect(char const* address, size_t maxAttempts)
             }
             throw SocketError("Connection can not be establish");
         } else { 
-            return new Socket(sd);
+            return new Socket(sd, isLocal);
         }
     }
 }
@@ -211,7 +214,7 @@ Socket* Socket::accept()
         throw SocketError("Failed to accept socket");
     }
     setGlobalSocketOptions(ns);
-    return new Socket(ns);
+    return new Socket(ns, localSocket);
 }
 
 

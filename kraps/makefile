@@ -37,6 +37,8 @@ tpch: tpch.o cluster.o sockio.o compress.o parquet.o
 #	$(CPP) -o tpch tpch.o cluster.o sockio.o compress.o -L $(SIMDCOMP_HOME) -lsimdcomp 
 #	$(CPP) -o tpch tpch.o cluster.o sockio.o compress.o  parquet.o $(PARQUET_CPP_HOME)/build/libParquet.a $(PARQUET_CPP_HOME)/build/libParquetCompression.a $(PARQUET_CPP_HOME)/build/libThriftParquet.a $(PARQUET_CPP_HOME)/thirdparty/installed/lib/libsnappy.a  $(PARQUET_CPP_HOME)/thirdparty/installed/lib/liblz4.a /usr/local/lib/libthrift.a $(HADOOP_HOME)/lib/native/libhdfs.a -L/usr/lib/jvm/oracle-jdk-bin-1.8/jre/lib/amd64/server -lz -ljvm
 
+kraps: libkraps.so kraps.jar
+q1: libq1rdd.so q1rdd.jar
 
 libq1rdd.so: Q1_RDD.cpp cluster.o sockio.o compress.o
 	$(CPP) -shared $(JNI_INCLUDES) -o libq1rdd.so Q1_RDD.cpp cluster.o sockio.o compress.o -lz
@@ -45,6 +47,15 @@ q1rdd.jar: Q1_RDD.scala
 	rm -f *.class
 	scalac -classpath $(SPARK_HOME)/lib/spark-assembly-1.3.1-hadoop2.6.0.jar:$(SPARK_HOME)/lib/spark-1.3.1-yarn-shuffle.jar Q1_RDD.scala
 	jar cvf q1rdd.jar *.class
+
+libkraps.so: KrapsRDD.cpp cluster.o sockio.o compress.o
+	$(CPP) -shared $(JNI_INCLUDES) -o libkraps.so KrapsRDD.cpp cluster.o sockio.o compress.o -lz
+
+kraps.jar: KrapsRDD.scala
+	rm -f *.class
+	scalac -classpath $(SPARK_HOME)/lib/spark-assembly-1.3.1-hadoop2.6.0.jar:$(SPARK_HOME)/lib/spark-1.3.1-yarn-shuffle.jar KrapsRDD.scala
+	jar cvf kraps.jar *.class
+
 
 csv2rdd: csv2rdd.cpp tpch.h
 	$(CPP) -o csv2rdd csv2rdd.cpp
