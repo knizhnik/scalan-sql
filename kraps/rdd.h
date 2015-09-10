@@ -223,16 +223,18 @@ class RDD
 // Tranfer data from RDD to queue
 //
 template<class T>
-inline void enqueue(RDD<T>* input, Queue* queue, qid_t qid) 
+inline void enqueue(RDD<T>* input, size_t node, Queue* queue) 
 {
-    size_t bufferSize = Cluster::instance->bufferSize;
+    Cluster* cluster = Cluster::instance.get();
+    qid_t qid = queue->qid;
+    size_t bufferSize = cluster->bufferSize;
     Buffer* buf = Buffer::create(qid, bufferSize);
     size_t size, used = 0;
     T record;
     while (input->next(record)) { 
         if (used + sizeof(T) > bufferSize) { 
             buf->size = used;
-            queue->put(buf);
+            cluster->send(node, queue, buf);
             buf = Buffer::create(qid, bufferSize);
             used = 0;
         }
@@ -242,11 +244,11 @@ inline void enqueue(RDD<T>* input, Queue* queue, qid_t qid)
     }
     buf->size = used;
     if (used != 0) { 
-        queue->put(buf);
-        queue->put(Buffer::eof(qid));
+        cluster->send(node, queue, buf);
+        cluster->send(node, queue, Buffer::eof(qid));
     } else { 
         buf->kind = MSG_EOF;
-        queue->put(buf);
+        cluster->send(node, queue, buf);
     }
 }
 
@@ -256,7 +258,7 @@ inline void enqueue(RDD<T>* input, Queue* queue, qid_t qid)
 template<class T>
 inline void sendToCoordinator(RDD<T>* input, Queue* queue) 
 {
-    enqueue(input, Cluster::instance->sendQueues[COORDINATOR], queue->qid);
+    enqueue(input, COORDINATOR, queue);
 }
 
 //
@@ -270,7 +272,7 @@ public:
 
     void run()
     {        
-        enqueue(input, queue, queue->qid);
+        enqueue(input, Cluster::instance->nodeId, queue);
     }
 private:
     RDD<T>* const input;
@@ -306,16 +308,15 @@ public:
             size_t hash = hashCode(key);
             size_t node = hash % nNodes;
             if (buffers[node]->size + sizeof(T) > bufferSize) {
-                Queue* dst = (node == nodeId) ? queue : cluster->sendQueues[node];
                 sent += buffers[node]->size;
-                dst->put(buffers[node]);
+                cluster->send(node, queue, buffers[node]);
                 buffers[node] = Buffer::create(queue->qid, bufferSize);
                 buffers[node]->size = 0;
                 
                 if (sent > cluster->syncInterval) { 
                     for (size_t node = 0; node < nNodes; node++) {
                         if (node != nodeId) { 
-                            cluster->sendQueues[node]->put(Buffer::ping(queue->qid));
+                            cluster->send(node, queue, Buffer::ping(queue->qid));
                         }
                     }
                     queue->wait(nNodes-1);
@@ -328,14 +329,13 @@ public:
         }
             
         for (size_t node = 0; node < nNodes; node++) {
-            Queue* dst = (node == nodeId) ? queue : cluster->sendQueues[node];
             if (buffers[node]->size != 0) { 
                 sent += buffers[node]->size;
-                dst->put(buffers[node]);
-                dst->put(Buffer::eof(queue->qid));
+                cluster->send(node, queue, buffers[node]);
+                cluster->send(node, queue, Buffer::eof(queue->qid));
             } else { 
                 buffers[node]->kind = MSG_EOF;
-                dst->put(buffers[node]);
+                cluster->send(node, queue, buffers[node]);
             }                
         }
         delete[] buffers;
@@ -421,8 +421,7 @@ public:
                 buffer->size = size;
                 buffer->refCount = nNodes;
                 for (size_t node = 0; node < nNodes; node++) { 
-                    Queue* dst = (node == nodeId) ? queue : cluster->sendQueues[node];
-                    dst->put(buffer);
+                    cluster->send(node, queue, buffer);
                     if (sent > cluster->syncInterval && node != nodeId) { 
                         cluster->sendQueues[node]->put(Buffer::ping(queue->qid));
                     }
@@ -445,11 +444,10 @@ public:
             buffer->release();
         }
         for (size_t node = 0; node < nNodes; node++) {
-            Queue* dst = (node == nodeId) ? queue : cluster->sendQueues[node];
             if (size != 0) { 
-                dst->put(buffer);
+                cluster->send(node, queue, buffer);
             }
-            dst->put(Buffer::eof(queue->qid));
+            cluster->send(node, queue, Buffer::eof(queue->qid));
         }
     }
 private:
@@ -836,7 +834,6 @@ class TopRDD : public RDD<T>
             size = loadTop(&gather, n, top);
         } else {
             assert(n*sizeof(T) < cluster->bufferSize);
-            Queue* coord = cluster->sendQueues[COORDINATOR];
             Buffer* msg = Buffer::create(queue->qid, n*sizeof(T));
             size_t used = 0;
             for (size_t j = 0; j < n; j++) {
@@ -844,8 +841,8 @@ class TopRDD : public RDD<T>
             }
             assert(used <= n*sizeof(T));
             msg->size = used;
-            coord->put(msg);
-            coord->put(Buffer::eof(queue->qid));
+            cluster->send(COORDINATOR, queue, msg);
+            cluster->send(COORDINATOR, queue, Buffer::eof(queue->qid));
             size = 0;
         }
     }

@@ -63,6 +63,19 @@ Buffer* Queue::get()
     return buf;
 }
 
+void Cluster::send(size_t node, Queue* queue, Buffer* buf)
+{
+    if (node == nodeId) {
+        queue->put(buf);
+    } else {
+        if (hosts) { 
+            sendQueues[node]->put(buf);
+        } else {
+            nodes[node]->recvQueues[buf->qid]->put(buf);
+        }
+    }
+}
+
 Queue* Cluster::getQueue()
 {
     assert(qid < maxQueues);
@@ -87,35 +100,34 @@ bool Cluster::isLocalNode(char const* host)
 
     
 Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nQueues, size_t bufSize, size_t recvQueueSize, size_t sendQueueSize, size_t syncPeriod, size_t broadcastThreshold, size_t inmemThreshold, char const* tmp, bool sharedNothingDFS) 
-: nNodes(nHosts), maxQueues(nQueues), nodeId(selfId), bufferSize(bufSize), syncInterval(syncPeriod), broadcastJoinThreshold(broadcastThreshold), inmemJoinThreshold(inmemThreshold), sharedNothing(sharedNothingDFS), tmpDir(tmp), shutdown(false), userData(NULL)
+: nNodes(nHosts), maxQueues(nQueues), nodeId(selfId), bufferSize(bufSize), syncInterval(hosts ? syncPeriod : MAX_SIZE_T), broadcastJoinThreshold(broadcastThreshold), inmemJoinThreshold(inmemThreshold), sharedNothing(sharedNothingDFS), tmpDir(tmp), shutdown(false), userData(NULL)
 {
     instance.set(this);
     this->hosts = hosts;
 
-    sockets = new Socket*[nHosts];
-    memset(sockets, 0, nHosts*sizeof(Socket*));
-
     qid = 0;
-    syncQueue = new Queue(0, sendQueueSize);
     recvQueues = new Queue*[nQueues];
     for (size_t i = 0; i < nQueues; i++) { 
         recvQueues[i] = new Queue((qid_t)i, recvQueueSize);
+    }
+    if (hosts == NULL) {
+        nodes[nodeId] = this;
+        return;
     }
     sendQueues = new Queue*[nHosts];
     senders = new Thread*[nHosts];
     for (size_t i = 0; i < nHosts; i++) { 
         if (i != selfId) { 
             sendQueues[i] = new Queue((qid_t)i, sendQueueSize);
-            senders[i] = new Thread(hosts == NULL ? (Job*)new SchedulerJob(i) : (Job*)new SendJob(i));
+            senders[i] = new Thread(new SendJob(i));
         }
     }
     sendQueues[selfId] = NULL;
     receiver = NULL;
     
-    if (hosts == NULL) {
-        nodes[nodeId] = this;
-        return;
-    }
+    sockets = new Socket*[nHosts];
+    memset(sockets, 0, nHosts*sizeof(Socket*));
+
     for (size_t i = 0; i < selfId; i++) { 
         sockets[i] = Socket::connect(hosts[i]);
         sockets[i]->write(&nodeId, sizeof nodeId);
@@ -151,42 +163,42 @@ Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nQueues, siz
 
 Cluster::~Cluster()
 {
-    Buffer shutdownMsg(MSG_SHUTDOWN, 0);
-    shutdown = true;
-    sleep(shutdownDelay);
-    for (size_t i = 0; i < nNodes; i++) { 
-        if (i != nodeId) { 
-            sendQueues[i]->put(&shutdownMsg);
-            delete senders[i];
-            delete sendQueues[i];
+    if (hosts != NULL) { 
+        Buffer shutdownMsg(MSG_SHUTDOWN, 0);
+        shutdown = true;
+        sleep(shutdownDelay);
+        for (size_t i = 0; i < nNodes; i++) { 
+            if (i != nodeId) { 
+                sendQueues[i]->put(&shutdownMsg);
+                delete senders[i];
+                delete sendQueues[i];
+            }
         }
-    }
-    delete receiver;
-    // at this moment all threads should finish
+        delete receiver;
+        // at this moment all threads should finish
     
-    delete[] senders;
-    delete syncQueue;
-
+        delete[] senders;
+    }
     for (size_t i = 0; i < maxQueues; i++) { 
         delete recvQueues[i];
     }
     delete[] recvQueues;
 
-    for (size_t i = 0; i < nNodes; i++) { 
-        if (i != nodeId) { 
-            delete sockets[i];
+    if (hosts != NULL) { 
+        for (size_t i = 0; i < nNodes; i++) { 
+            if (i != nodeId) { 
+                delete sockets[i];
+            }
         }
+        delete[] sockets;
     }
-    delete[] sockets;
 }
-
      
 void Cluster::barrier()
 {
     Queue* queue = getQueue();
     for (size_t i = 0; i < nNodes; i++) { 
-        Queue* dst = (i == nodeId) ? queue : sendQueues[i];
-        dst->put(Buffer::barrier(queue->qid));
+        send(i, queue, Buffer::barrier(queue->qid));
     }
     for (size_t i = 0; i < nNodes; i++) { 
         Buffer* resp = queue->get();
@@ -257,26 +269,6 @@ void ReceiveJob::run()
     delete ioBuf;
 }
 
-
-void SchedulerJob::run()
-{
-    while (true) { 
-        Buffer* buf = cluster->sendQueues[node]->get();
-        buf->node = (uint32_t)cluster->nodeId;
-        switch (buf->kind) {
-          case MSG_PONG:
-            cluster->nodes[node]->recvQueues[buf->qid]->signal();            
-            buf->release();
-            continue;
-          case MSG_SHUTDOWN:
-            return;
-          default:
-            cluster->nodes[node]->recvQueues[buf->qid]->put(buf);
-            continue;
-        }
-    }
-}
-        
 void SendJob::run()
 {
     size_t compressBufSize = cluster->bufferSize*2;

@@ -8,6 +8,7 @@
 const size_t COORDINATOR = 0;
 const size_t BUF_HDR_SIZE = 16;
 const size_t MAX_PATH_LEN = 1024;
+const size_t MAX_SIZE_T = (size_t)~0;
 
 class Cluster;
 
@@ -130,16 +131,6 @@ private:
     size_t sent;
 };
 
-class SchedulerJob : public Job
-{
-public:
-    void run();
-    SchedulerJob(size_t id) : node(id) {}
-
-private:
-    size_t const node;
-};
-
 class Cluster {
   public:
     size_t const nNodes;
@@ -154,7 +145,6 @@ class Cluster {
     Socket** sockets;
     Queue** recvQueues;
     Queue** sendQueues;
-    Queue*  syncQueue;
     Thread** senders;
     char** hosts;
     qid_t qid;
@@ -170,6 +160,8 @@ class Cluster {
     Queue* getQueue();
     void barrier();
 
+    void send(size_t node, Queue* queue, Buffer* buf);
+    
     bool isLocalNode(char const* host);
 
     Cluster(size_t nodeId, size_t nHosts, char** hosts, size_t nQueues = 64, size_t bufferSize = 4*64*1024, size_t recvQueueSize = 4*64*1024*1024,  size_t sendQueueSize = 4*4*1024*1024, size_t syncInterval = 64*1024*1024, size_t broadcastJoinThreshold = 10000, size_t inmemJoinThreshold = 10000000, char const* tmp = "/tmp", bool sharedNothing = false);
