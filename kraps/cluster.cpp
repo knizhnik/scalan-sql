@@ -190,7 +190,7 @@ void Cluster::barrier()
 
 Job::Job()
 {
-    cluster = Cluster::instance.get();
+    cluster = Cluster::instance.get ();
 }
 
 void* Thread::trampoline(void* arg)

@@ -650,10 +650,30 @@ class MapReduceRDD : public RDD< Pair<K,V> >
         size_t hash;
     };
     
-    Entry** const table;
-    size_t  const size;
+    Entry** table;
+    size_t  size;
     size_t  i;
     Entry*  curr;
+
+    void extendHash() 
+    {
+        Entry *entry, *next;
+        size_t newSize = size << 1;
+        Entry** newTable = new Entry*[newSize];
+        memset(newTable, 0, newSize*sizeof(Entry*));
+        for (size_t i = 0; i < size; i++) { 
+            for (entry = table[i]; entry != NULL; entry = next) { 
+                size_t h = entry->hash % newSize;
+                next = entry->collision;
+                entry->collision = newTable[h];
+                newTable[h] = entry;
+            }
+        }
+        delete[] table;
+        table = newTable;
+        size = newSize;
+    }
+             
 
     void loadHash(RDD<T>* input) 
     {
@@ -675,7 +695,9 @@ class MapReduceRDD : public RDD< Pair<K,V> >
                 entry->hash = hash;
                 table[h] = entry;
                 entry->pair = pair;
-                realSize += 1;
+                if (++realSize > size) { 
+                    extendHash();
+                }
             } else { 
                 reduce(entry->pair.value, pair.value);
             }
@@ -698,7 +720,9 @@ class MapReduceRDD : public RDD< Pair<K,V> >
                     entry->hash = hash;
                     table[h] = entry;
                     entry->pair = pair;
-                    realSize += 1;
+                    if(++realSize > size) { 
+                        extendHash();
+                    }
                 } else { 
                     reduce(entry->pair.value, pair.value);
                 }                
@@ -953,8 +977,8 @@ protected:
     };
     
     JoinKind const kind;
-    Entry** const table;
-    size_t  const size;
+    Entry** table;
+    size_t  size;
     size_t  innerSize;
     O       outerRec;
     I       innerRec;
@@ -966,6 +990,25 @@ protected:
     Thread* scatter;
     bool    shuffle;
 
+    void extendHash() 
+    {
+        Entry *entry, *next;
+        size_t newSize = size << 1;
+        Entry** newTable = new Entry*[newSize];
+        memset(newTable, 0, newSize*sizeof(Entry*));
+        for (size_t i = 0; i < size; i++) { 
+            for (entry = table[i]; entry != NULL; entry = next) { 
+                size_t h = entry->hash % newSize;
+                next = entry->collision;
+                entry->collision = newTable[h];
+                newTable[h] = entry;
+            }
+        }
+        delete[] table;
+        table = newTable;
+        size = newSize;
+    }
+             
     void loadHash(RDD<I>* gather) 
     {
         Entry* entry = new Entry();
@@ -978,7 +1021,9 @@ protected:
             entry->collision = table[h]; 
             table[h] = entry;
             entry = new Entry();
-            realSize += 1;
+            if (++realSize == size) {
+                extendHash();
+            }
         }
         innerSize = realSize;
         size_t totalLen = 0;
@@ -1070,14 +1115,33 @@ protected:
     };
     
     JoinKind const kind;
-    Entry** const table;
-    size_t  const size;
+    Entry** table;
+    size_t  size;
     size_t  innerSize;
     RDD<O>* outer;
     Queue*  queue;
     Thread* scatter;
     bool    shuffle;
 
+    void extendHash() 
+    {
+        Entry *entry, *next;
+        size_t newSize = size << 1;
+        Entry** newTable = new Entry*[newSize];
+        memset(newTable, 0, newSize*sizeof(Entry*));
+        for (size_t i = 0; i < size; i++) { 
+            for (entry = table[i]; entry != NULL; entry = next) { 
+                size_t h = entry->hash % newSize;
+                next = entry->collision;
+                entry->collision = newTable[h];
+                newTable[h] = entry;
+            }
+        }
+        delete[] table;
+        table = newTable;
+        size = newSize;
+    }
+             
     void loadHash(RDD<I>* gather) 
     {
         Entry* entry = new Entry();
@@ -1090,7 +1154,9 @@ protected:
             entry->collision = table[h]; 
             table[h] = entry;
             entry = new Entry();
-            realSize += 1;
+            if (++realSize == size) { 
+                extendHash();
+            }
         }
         innerSize = realSize;
         size_t totalLen = 0;
