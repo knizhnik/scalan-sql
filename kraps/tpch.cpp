@@ -1835,7 +1835,7 @@ int main(int argc, char* argv[])
         delete[] clusterThreads;
         delete[] Cluster::nodes;
     } else if (argc == i + nNodes) {
-        TPCHJob test(nodeId, nNodes, &argv[i], nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, useCache);
+        TPCHJob test(nodeId, nNodes, &argv[i], nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, split, useCache);
         test.run();
     } else {      
         fprintf(stderr, "At least one node has to be specified\n");
