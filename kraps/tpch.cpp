@@ -1758,7 +1758,7 @@ int main(int argc, char* argv[])
     char const* option;
     char const* tmp = "/tmp";
     
-    fclose(fopen("tpch.cfg", "r")); // needed to innitialize stdio in single threaded environment
+    fclose(fopen("tpch.start", "w")); // needed to innitialize stdio in single threaded environment
 
     for (i = 1; i < argc; i++) { 
         if (*argv[i] == '-') { 
