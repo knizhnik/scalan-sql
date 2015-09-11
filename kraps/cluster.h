@@ -140,6 +140,7 @@ class Cluster {
     size_t const syncInterval;
     size_t const broadcastJoinThreshold;
     size_t const inmemJoinThreshold;
+    size_t const split;
     bool   const sharedNothing;
     char const* tmpDir;
     Socket** sockets;
@@ -164,7 +165,7 @@ class Cluster {
     
     bool isLocalNode(char const* host);
 
-    Cluster(size_t nodeId, size_t nHosts, char** hosts, size_t nQueues = 64, size_t bufferSize = 4*64*1024, size_t recvQueueSize = 4*64*1024*1024,  size_t sendQueueSize = 4*4*1024*1024, size_t syncInterval = 64*1024*1024, size_t broadcastJoinThreshold = 10000, size_t inmemJoinThreshold = 10000000, char const* tmp = "/tmp", bool sharedNothing = false);
+    Cluster(size_t nodeId, size_t nHosts, char** hosts, size_t nQueues = 64, size_t bufferSize = 4*64*1024, size_t recvQueueSize = 4*64*1024*1024,  size_t sendQueueSize = 4*4*1024*1024, size_t syncInterval = 64*1024*1024, size_t broadcastJoinThreshold = 10000, size_t inmemJoinThreshold = 10000000, char const* tmp = "/tmp", bool sharedNothing = true, size_t split = 1);
     ~Cluster();
 
     static ThreadLocal<Cluster> instance;

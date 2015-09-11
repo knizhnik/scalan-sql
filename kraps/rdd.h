@@ -472,19 +472,36 @@ template<class T>
 class FileRDD : public RDD<T>
 {
   public:
-    FileRDD(char* path) : f(fopen(path, "rb")) {
+    FileRDD(char* path) : f(fopen(path, "rb")), segno(Cluster::instance->nodeId), split(Cluster::instance->sharedNothing ? 1 : Cluster::instance->nNodes) {
         assert(f != NULL);
         delete[] path;
+        fseek(f, 0, SEEK_END);
+        nRecords = (ftell(f)/sizeof(T)+split-1)/split;
+        recNo = fseek(f, nRecords*segno*sizeof(T), SEEK_SET) == 0 ? 0 : nRecords;
+    }
+
+    RDD<T>* replicate() { 
+        if (split != 1) { 
+            nRecords *= split;
+            recNo = 0;
+            fseek(f, 0, SEEK_SET);
+            return this;
+        }
+        return RDD<T>::replicate();
     }
 
     bool next(T& record) {
-        return fread(&record, sizeof(T), 1, f) == 1;
+        return ++recNo <= nRecords && fread(&record, sizeof(T), 1, f) == 1;
     }
     
     ~FileRDD() { fclose(f); }
 
   private:
     FILE* const f;    
+    size_t segno;
+    size_t split;
+    long recNo;
+    long nRecords;
 };
 
 //
@@ -495,11 +512,14 @@ template<class T>
 class DirRDD : public RDD<T>
 {
   public:
-    DirRDD(char* path) : dir(path), segno(Cluster::instance->nodeId), step(Cluster::instance->nNodes), f(NULL) {}
+    DirRDD(char* path) : dir(path), segno(Cluster::instance->nodeId), step(Cluster::instance->nNodes), split(Cluster::instance->split), f(NULL) {}
 
     RDD<T>* replicate() { 
+        nRecords *= split;
         segno = 0;
-        step = 1;                               
+        step = 1;
+        split = 1;
+        recNo = 0;
         return this;
     }
 
@@ -507,13 +527,18 @@ class DirRDD : public RDD<T>
         while (true) {
             if (f == NULL) { 
                 char path[MAX_PATH_LEN];
-                sprintf(path, "%s/%ld.rdd", dir, segno);
+                sprintf(path, "%s/%ld.rdd", dir, segno/split);
                 f = fopen(path, "rb");
                 if (f == NULL) { 
                     return false;
                 }
+                fseek(f, 0, SEEK_END);
+                nRecords = (ftell(f)/sizeof(T)+split-1)/split;
+                recNo = 0;
+                int rc = fseek(f, nRecords*(segno%split)*sizeof(T), SEEK_SET);
+                assert(rc == 0);
             }
-            if (fread(&record, sizeof(T), 1, f) == 1) { 
+            if (++recNo <= nRecords && fread(&record, sizeof(T), 1, f) == 1) { 
                 return true;
             } else { 
                 fclose(f);
@@ -531,6 +556,9 @@ class DirRDD : public RDD<T>
     char* dir;
     size_t segno;
     size_t step;
+    size_t split;
+    long recNo;
+    long nRecords;
     FILE* f;    
 };
 

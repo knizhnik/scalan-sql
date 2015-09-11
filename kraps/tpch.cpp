@@ -1700,18 +1700,19 @@ class TPCHJob : public Job
     size_t const syncInterval;
     size_t const broadcastJoinThreshold;
     size_t const inmemJoinThreshold;
+    size_t const split;
     char   const*tmp;
     bool   const sharedNothing;
     bool   const useCache;
   public:
-    TPCHJob(size_t _nodeId, size_t _nHosts, char** _hosts = NULL, size_t _nQueues = 64, size_t _bufferSize = 4*64*1024, size_t _recvQueueSize = 4*64*1024*1024,  size_t _sendQueueSize = 4*4*1024*1024, size_t _syncInterval = 64*1024*1024, size_t _broadcastJoinThreshold = 10000, size_t _inmemJoinThreshold = 10000000, char const* _tmp = "/tmp", bool _sharedNothing = false, bool _useCache = false)
+    TPCHJob(size_t _nodeId, size_t _nHosts, char** _hosts = NULL, size_t _nQueues = 64, size_t _bufferSize = 4*64*1024, size_t _recvQueueSize = 4*64*1024*1024,  size_t _sendQueueSize = 4*4*1024*1024, size_t _syncInterval = 64*1024*1024, size_t _broadcastJoinThreshold = 10000, size_t _inmemJoinThreshold = 10000000, char const* _tmp = "/tmp", bool _sharedNothing = false, size_t _split = 1, bool _useCache = false)
     : nodeId(_nodeId), nHosts(_nHosts), hosts(_hosts), nQueues(_nQueues), bufferSize(_bufferSize), recvQueueSize(_recvQueueSize),
       sendQueueSize(_sendQueueSize), syncInterval(_syncInterval), broadcastJoinThreshold(_broadcastJoinThreshold),
-      inmemJoinThreshold(_inmemJoinThreshold), tmp(_tmp), sharedNothing(_sharedNothing), useCache(_useCache) {}
+        inmemJoinThreshold(_inmemJoinThreshold), split(_split), tmp(_tmp), sharedNothing(_sharedNothing), useCache(_useCache) {}
     
   public:
     void run() {
-        Cluster cluster(nodeId, nHosts, hosts, nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing);
+    Cluster cluster(nodeId, nHosts, hosts, nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, split);
         printf("Node %d started...\n", (int)nodeId);
 
         time_t start = time(NULL);
@@ -1752,11 +1753,12 @@ int main(int argc, char* argv[])
     size_t syncInterval = 64*1024*1024;
     size_t broadcastJoinThreshold = 10000;
     size_t inmemJoinThreshold = 10000000;
+    size_t split = 1;
     bool   sharedNothing = false;
     char const* option;
     char const* tmp = "/tmp";
     
-    (void)fopen("tpch.cfg", "r"); // needed to innitialize stdio in single threaded environment
+    fclose(fopen("tpch.cfg", "r")); // needed to innitialize stdio in single threaded environment
 
     for (i = 1; i < argc; i++) { 
         if (*argv[i] == '-') { 
@@ -1785,6 +1787,8 @@ int main(int argc, char* argv[])
                 tmp = argv[++i];
             } else if (strcmp(option, "shared-nothing") == 0) { 
                 sharedNothing = atoi(argv[++i]) != 0;
+             } else if (strcmp(option, "split") == 0) { 
+                split = atoi(argv[++i]);
             } else { 
                 fprintf(stderr, "Unrecognized option %s\n", option);
               Usage:
@@ -1801,7 +1805,8 @@ int main(int argc, char* argv[])
                       "-send-queue SIZE\tsend  queue size (16Mb)\n"
                       "-sync SIZE\tsycnhronization interval (64Mb)\n"
                       "-broadcast-threshold SIZE\tbroadcast join threshold (10000)\n"
-                      "-inmem-threshold SIZE\tinmemory join threshold (10000000)\n", stderr);
+                      "-inmem-threshold SIZE\tinmemory join threshold (10000000)\n"
+                      "-split N\tsplit file into N parts (1)\n", stderr);
                 return 1;                
             }
         } else { 
@@ -1822,7 +1827,7 @@ int main(int argc, char* argv[])
         Cluster::nodes = new Cluster*[nNodes];
         Thread** clusterThreads = new Thread*[nNodes];
         for (nodeId = 0; nodeId < nNodes; nodeId++) {
-            clusterThreads[nodeId] = new Thread(new TPCHJob(nodeId, nNodes, NULL, nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, useCache));
+            clusterThreads[nodeId] = new Thread(new TPCHJob(nodeId, nNodes, NULL, nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, split, useCache));
         }
         for (nodeId = 0; nodeId < nNodes; nodeId++) {
             delete clusterThreads[nodeId];
