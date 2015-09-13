@@ -72,6 +72,13 @@ struct Buffer
     }
 };
 
+class MessageHandler
+{
+  public:
+    virtual void handle(Buffer* buf) = 0;
+    virtual ~MessageHandler() {}
+};
+
 // FIFO blocking queue, multiple consumers/producers
 class Queue
 {
@@ -88,9 +95,13 @@ class Queue
     void signal() { 
         semaphore.signal(mutex);
     }
+    
+    void setHandler(MessageHandler* hnd) { 
+        handler = hnd;
+    }
 
     Queue(qid_t id, size_t maxSize) 
-    : qid(id), head(NULL), tail(&head), size(0), limit(maxSize), nSignals(0), blockedPut(false), blockedGet(false) {}
+    : qid(id), head(NULL), tail(&head), size(0), limit(maxSize), nSignals(0), blockedPut(false), blockedGet(false), handler(NULL) {}
 
   private:
     struct Message { 
@@ -112,6 +123,7 @@ class Queue
     bool blockedPut;
     bool blockedGet;
     Semaphore semaphore;
+    MessageHandler* handler;
 };
         
 class ReceiveJob : public Job
@@ -158,7 +170,7 @@ class Cluster {
     FILE* openTempFile(char const* prefix, qid_t qid, size_t no, char const* mode = "r");
     
     bool isCoordinator() { return nodeId == COORDINATOR; }
-    Queue* getQueue();
+    Queue* getQueue(MessageHandler* hnd = NULL);
     void barrier();
 
     void send(size_t node, Queue* queue, Buffer* buf);

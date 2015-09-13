@@ -10,6 +10,10 @@ ThreadLocal<Cluster> Cluster::instance;
 
 void Queue::put(Buffer* buf) 
 { 
+    if (handler != NULL && buf->kind == MSG_DATA) { 
+        handler->handle(buf);
+        return;
+    }
     CriticalSection cs(mutex);
     while (size >= limit) { 
         blockedPut = true;
@@ -76,10 +80,12 @@ void Cluster::send(size_t node, Queue* queue, Buffer* buf)
     }
 }
 
-Queue* Cluster::getQueue()
+Queue* Cluster::getQueue(MessageHandler* hnd)
 {
     assert(qid < maxQueues);
-    return recvQueues[qid++];
+    Queue* q = recvQueues[qid++];
+    q->setHandler(hnd);
+    return q;
 }
 
 FILE* Cluster::openTempFile(char const* prefix, qid_t qid, size_t fno, char const* mode)

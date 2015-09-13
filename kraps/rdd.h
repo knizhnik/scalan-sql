@@ -396,6 +396,29 @@ private:
 };
 
 //
+// RDD for fetching elements from buffer, used in message handlers
+//
+template<class T>
+class BufferRDD
+{
+  public:
+    bool next(T& record) {
+        if (pos == buf->size) { 
+            return false;
+        }
+        pos += unpack(record, buf->data + pos);
+        return true;
+    }
+    
+    BufferRDD(Buffer* buffer) : buf(buffer), pos(0) {}
+    ~BufferRDD() { buf->release(); }
+
+  private:
+    Buffer* buf;
+    size_t pos;
+};
+
+//
 // Replicate RDD replicates data to all nodes
 //
 template<class T>
@@ -944,21 +967,22 @@ class TopRDD : public RDD<T>
 // Join two RDDs using hash table
 //
 template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner)>
-class HashJoinRDD : public RDD< Join<O,I> >
+class HashJoinRDD : public RDD< Join<O,I> >, MessageHandler
 {
 public:
     HashJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t estimation, JoinKind joinKind) 
-    : kind(joinKind), table(new Entry*[estimation]), size(estimation), inner(NULL), outer(outerRDD), scatter(NULL) {
+    : kind(joinKind), table(new Entry*[estimation]), size(estimation), innerSize(0), inner(NULL), outer(outerRDD), scatter(NULL) {
         assert(kind != AntiJoin);
         // First load inner relation in hash...
         Cluster* cluster = Cluster::instance.get();
+        memset(table, 0, size*sizeof(Entry*));
         if (estimation <= cluster->broadcastJoinThreshold) { 
             // broadcast inner RDD
             loadHash(innerRDD->replicate());
             shuffle = false;
         } else {     
             // shuffle inner RDD
-            queue = cluster->getQueue();
+            queue = cluster->getQueue(this);
             Thread loader(new ScatterJob<I,K,innerKey>(innerRDD, queue));
             loadHash(new GatherRDD<I>(queue));
             queue = cluster->getQueue();
@@ -1027,6 +1051,7 @@ protected:
     Queue*  queue;
     Thread* scatter;
     bool    shuffle;
+    Mutex   mutex;
 
     void extendHash() 
     {
@@ -1047,10 +1072,29 @@ protected:
         size = newSize;
     }
              
+    void handle(Buffer* buf) 
+    {
+        CriticalSection cs(mutex);
+        BufferRDD<I> input(buf);
+        Entry* entry = new Entry();       
+        while (input.next(entry->record)) { 
+            innerKey(entry->key, entry->record);
+            entry->hash = hashCode(entry->key);
+            size_t h = entry->hash % size;  
+            entry->collision = table[h]; 
+            table[h] = entry;
+            entry = new Entry();
+            if (++innerSize == size) {
+                extendHash();
+            }
+        }
+        delete entry;
+    }   
+
+
     void loadHash(RDD<I>* gather) 
     {
         Entry* entry = new Entry();
-        memset(table, 0, size*sizeof(Entry*));
         size_t realSize = 0;
         while (gather->next(entry->record)) {
             innerKey(entry->key, entry->record);
@@ -1063,7 +1107,7 @@ protected:
                 extendHash();
             }
         }
-        innerSize = realSize;
+        innerSize += realSize;
         size_t totalLen = 0;
         size_t nChains = 0;
         size_t maxLen = 0;
