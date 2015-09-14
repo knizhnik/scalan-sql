@@ -982,7 +982,11 @@ public:
             shuffle = false;
         } else {     
             // shuffle inner RDD
+#ifdef USE_MESSAGE_HANDLER
             queue = cluster->getQueue(this);
+#else
+            queue = cluster->getQueue();
+#endif
             Thread loader(new ScatterJob<I,K,innerKey>(innerRDD, queue));
             loadHash(new GatherRDD<I>(queue));
             queue = cluster->getQueue();
