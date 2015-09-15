@@ -1147,7 +1147,7 @@ protected:
 // Semijoin two RDDs using hash table
 //
 template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner)>
-class HashSemiJoinRDD : public RDD<O>
+class HashSemiJoinRDD : public RDD<O>, MessageHandler
 {
 public:
     HashSemiJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t estimation, JoinKind joinKind) 
