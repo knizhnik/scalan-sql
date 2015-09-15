@@ -1055,7 +1055,6 @@ protected:
     Queue*  queue;
     Thread* scatter;
     bool    shuffle;
-    Mutex   mutex;
 
     void extendHash() 
     {
@@ -1078,20 +1077,22 @@ protected:
              
     void handle(Buffer* buf) 
     {
-        CriticalSection cs(mutex);
         BufferRDD<I> input(buf);
         Entry* entry = new Entry();       
+        size_t n = 0;
         while (input.next(entry->record)) { 
             innerKey(entry->key, entry->record);
             entry->hash = hashCode(entry->key);
             size_t h = entry->hash % size;  
-            entry->collision = table[h]; 
-            table[h] = entry;
+            Entry* oldValue;
+            do {
+                oldValue = table[h];
+                entry->collision = oldValue; 
+            } while (__sync_bool_compare_and_swap(&table[h], oldValue, entry));
             entry = new Entry();
-            if (++innerSize == size) {
-                extendHash();
-            }
+            n += 1;
         }
+        __sync_add_and_fetch(&innerSize, n);
         delete entry;
     }   
 
@@ -1112,6 +1113,7 @@ protected:
             }
         }
         innerSize += realSize;
+#ifdef SHOW_HASH_STATISTIC
         size_t totalLen = 0;
         size_t nChains = 0;
         size_t maxLen = 0;
@@ -1125,6 +1127,7 @@ protected:
             nChains += chainLen != 0;                
         }
         printf("HashJoin: estimated size=%ld, real size=%ld, collitions=(%ld max, %f avg)\n", size, realSize, maxLen, nChains != 0 ? (double)totalLen/nChains : 0.0);
+#endif
         delete entry;
         delete gather;
     }
@@ -1158,7 +1161,11 @@ public:
             shuffle = false;
         } else {     
             // shuffle inner RDD
+#ifdef USE_MESSAGE_HANDLER
+            queue = cluster->getQueue(this);
+#else
             queue = cluster->getQueue();
+#endif
             Thread loader(new ScatterJob<I,K,innerKey>(innerRDD, queue));
             loadHash(new GatherRDD<I>(queue));
             queue = cluster->getQueue();
@@ -1228,6 +1235,28 @@ protected:
         size = newSize;
     }
              
+    void handle(Buffer* buf) 
+    {
+        BufferRDD<I> input(buf);
+        Entry* entry = new Entry();       
+        size_t n = 0;
+        while (input.next(entry->record)) { 
+            innerKey(entry->key, entry->record);
+            entry->hash = hashCode(entry->key);
+            size_t h = entry->hash % size;  
+            Entry* oldValue;
+            do {
+                oldValue = table[h];
+                entry->collision = oldValue; 
+            } while (__sync_bool_compare_and_swap(&table[h], oldValue, entry));
+            entry = new Entry();
+            n += 1;
+        }
+        __sync_add_and_fetch(&innerSize, n);
+        delete entry;
+    }   
+
+
     void loadHash(RDD<I>* gather) 
     {
         Entry* entry = new Entry();
@@ -1244,7 +1273,8 @@ protected:
                 extendHash();
             }
         }
-        innerSize = realSize;
+        innerSize += realSize;
+#ifdef SHOW_HASH_STATISTIC
         size_t totalLen = 0;
         size_t nChains = 0;
         size_t maxLen = 0;
@@ -1258,9 +1288,11 @@ protected:
             nChains += chainLen != 0;                
         }
         printf("HashSemiJoin: estimated size=%ld, real size=%ld, collitions=(%ld max, %f avg)\n", size, realSize, maxLen, nChains != 0 ? (double)totalLen/nChains : 0.0);
+#endif
         delete entry;
         delete gather;
     }
+
     void deleteHash() {
         for (size_t i = 0; i < size; i++) { 
             Entry *curr, *next;
