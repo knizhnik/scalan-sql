@@ -82,6 +82,7 @@ class MessageHandler
 // FIFO blocking queue, multiple consumers/producers
 class Queue
 {
+    friend class Cluster;
   public:
     qid_t const qid;
 
@@ -165,6 +166,8 @@ class Cluster {
     bool shutdown;
     size_t nExecutorsPerHost;
     void* userData;
+    Mutex mutex;
+    Event cond;
     static Cluster** nodes; 
     
     FILE* openTempFile(char const* prefix, qid_t qid, size_t no, char const* mode = "r");

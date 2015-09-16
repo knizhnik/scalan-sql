@@ -1248,7 +1248,7 @@ protected:
             do {
                 oldValue = table[h];
                 entry->collision = oldValue; 
-            } while (__sync_bool_compare_and_swap(&table[h], oldValue, entry));
+            } while (!__sync_bool_compare_and_swap(&table[h], oldValue, entry));
             entry = new Entry();
             n += 1;
         }

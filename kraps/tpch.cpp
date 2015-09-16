@@ -1827,7 +1827,7 @@ int main(int argc, char* argv[])
         Cluster::nodes = new Cluster*[nNodes];
         Thread** clusterThreads = new Thread*[nNodes];
         for (nodeId = 0; nodeId < nNodes; nodeId++) {
-            clusterThreads[nodeId] = new Thread(new TPCHJob(nodeId, nNodes, NULL, nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, split, useCache));
+            clusterThreads[nodeId] = new Thread(new TPCHJob(nodeId, nNodes, NULL, nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, split, useCache), nodeId);
         }
         for (nodeId = 0; nodeId < nNodes; nodeId++) {
             delete clusterThreads[nodeId];

@@ -71,6 +71,24 @@ Buffer* Queue::get()
 
 void Cluster::send(size_t node, Queue* queue, Buffer* buf)
 {
+#ifdef USE_MESSAGE_HANDLER
+    if (node == nodeId) {
+        queue->put(buf);
+    } else {
+        if (hosts) { 
+            sendQueues[node]->put(buf);
+        } else {
+            Cluster* dst = nodes[node];
+            if (queue->handler) { 
+                CriticalSection cs(dst->mutex);
+                while (dst->qid <= buf->qid) { 
+                    dst->cond.wait(dst->mutex);
+                }
+            }
+            dst->recvQueues[buf->qid]->put(buf);
+        }
+    }
+#else
     if (node == nodeId) {
         queue->put(buf);
     } else {
@@ -80,12 +98,20 @@ void Cluster::send(size_t node, Queue* queue, Buffer* buf)
             nodes[node]->recvQueues[buf->qid]->put(buf);
         }
     }
+#endif
 }
 
 Queue* Cluster::getQueue(MessageHandler* hnd)
 {
+#ifdef USE_MESSAGE_HANDLER
+    CriticalSection cs(mutex);    
+    cond.broadcast();
+#endif
     assert(qid < maxQueues);
-    return recvQueues[qid++];
+    Queue* q = recvQueues[qid++];
+    q->setHandler(hnd);
+    return q;
+
 }
 
 FILE* Cluster::openTempFile(char const* prefix, qid_t qid, size_t fno, char const* mode)

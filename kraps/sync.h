@@ -101,11 +101,27 @@ public:
     virtual~Job() {}
 };
     
+#define SAME_CORE ((size_t)-1)
+
 class Thread
 {
 public:    
-    Thread(Job* job) { 
-        pthread_create(&thread,  NULL, trampoline, job);
+    Thread(Job* job, size_t core = SAME_CORE) {
+#ifdef SET_THREAD_AFFINITY
+        pthread_attr_t attr;
+        cpu_set_t cpuset;
+        pthread_attr_init(&attr);   
+        if (core == SAME_CORE) { 
+            pthread_getaffinity_np(pthread_self(), sizeof(cpuset), &cpuset);
+        } else { 
+            CPU_ZERO(&cpuset);
+            CPU_SET(core, &cpuset);
+        }
+        pthread_attr_setaffinity_np(&attr, sizeof(cpuset), &cpuset);
+        pthread_create(&thread, &attr, trampoline, job);
+#else
+        pthread_create(&thread, NULL, trampoline, job);
+#endif
     }
     ~Thread() { 
         pthread_join(thread, NULL);
