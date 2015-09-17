@@ -115,7 +115,7 @@ public:
             pthread_getaffinity_np(pthread_self(), sizeof(cpuset), &cpuset);
         } else { 
             CPU_ZERO(&cpuset);
-            CPU_SET(core, &cpuset);
+            CPU_SET(core*2, &cpuset);
         }
         pthread_attr_setaffinity_np(&attr, sizeof(cpuset), &cpuset);
         pthread_create(&thread, &attr, trampoline, job);
