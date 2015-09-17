@@ -716,6 +716,7 @@ class MapReduceRDD : public RDD< Pair<K,V> >
     size_t  size;
     size_t  i;
     Entry*  curr;
+    BlockAllocator<Entry> allocator;
 
     void extendHash() 
     {
@@ -752,7 +753,7 @@ class MapReduceRDD : public RDD< Pair<K,V> >
             size_t h = hash % size;            
             for (entry = table[h]; entry != NULL && !(entry->hash == hash && pair.key == entry->pair.key); entry = entry->collision);
             if (entry == NULL) { 
-                entry = new Entry();
+                entry = allocator.alloc();
                 entry->collision = table[h];
                 entry->hash = hash;
                 table[h] = entry;
@@ -777,7 +778,7 @@ class MapReduceRDD : public RDD< Pair<K,V> >
                 size_t h = hash % size;            
                 for (entry = table[h]; entry != NULL && !(entry->hash == hash && pair.key == entry->pair.key); entry = entry->collision);
                 if (entry == NULL) { 
-                    entry = new Entry();
+                    entry = allocator.alloc();
                     entry->collision = table[h];
                     entry->hash = hash;
                     table[h] = entry;
@@ -797,13 +798,6 @@ class MapReduceRDD : public RDD< Pair<K,V> >
     }
 
     void deleteHash() {
-        for (size_t i = 0; i < size; i++) { 
-            Entry *curr, *next;
-            for (curr = table[i]; curr != NULL; curr = next) { 
-                next = curr->collision;
-                delete curr;
-            }
-        }
         delete[] table;
     }
 };
@@ -1055,6 +1049,7 @@ protected:
     Queue*  queue;
     Thread* scatter;
     bool    shuffle;
+    BlockAllocator<Entry> allocator;
 
     void extendHash() 
     {
@@ -1088,7 +1083,7 @@ protected:
             do {
                 oldValue = table[h];
                 entry->collision = oldValue; 
-            } while (__sync_bool_compare_and_swap(&table[h], oldValue, entry));
+            } while (!__sync_bool_compare_and_swap(&table[h], oldValue, entry));
             entry = new Entry();
             n += 1;
         }
@@ -1099,7 +1094,7 @@ protected:
 
     void loadHash(RDD<I>* gather) 
     {
-        Entry* entry = new Entry();
+        Entry* entry = allocator.alloc();
         size_t realSize = 0;
         while (gather->next(entry->record)) {
             innerKey(entry->key, entry->record);
@@ -1107,7 +1102,7 @@ protected:
             size_t h = entry->hash % size;  
             entry->collision = table[h]; 
             table[h] = entry;
-            entry = new Entry();
+            entry = allocator.alloc();
             if (++realSize == size) {
                 extendHash();
             }
@@ -1128,17 +1123,20 @@ protected:
         }
         printf("HashJoin: estimated size=%ld, real size=%ld, collitions=(%ld max, %f avg)\n", size, realSize, maxLen, nChains != 0 ? (double)totalLen/nChains : 0.0);
 #endif
-        delete entry;
         delete gather;
     }
     void deleteHash() {
-        for (size_t i = 0; i < size; i++) { 
-            Entry *curr, *next;
-            for (curr = table[i]; curr != NULL; curr = next) { 
-                next = curr->collision;
-                delete curr;
+#ifdef USE_MESSAGE_HANDLER
+        if (shuffle) { 
+            for (size_t i = 0; i < size; i++) { 
+                Entry *curr, *next;
+                for (curr = table[i]; curr != NULL; curr = next) { 
+                    next = curr->collision;
+                    delete curr;
+                }
             }
         }
+#endif
         delete[] table;
     }
 };
@@ -1155,6 +1153,7 @@ public:
         assert(kind != OuterJoin);
         // First load inner relation in hash...
         Cluster* cluster = Cluster::instance.get();
+        memset(table, 0, size*sizeof(Entry*));
         if (estimation <= cluster->broadcastJoinThreshold) { 
             // broadcast inner RDD
             loadHash(innerRDD->replicate());
@@ -1215,6 +1214,7 @@ protected:
     Queue*  queue;
     Thread* scatter;
     bool    shuffle;
+    BlockAllocator<Entry> allocator;
 
     void extendHash() 
     {
@@ -1259,8 +1259,7 @@ protected:
 
     void loadHash(RDD<I>* gather) 
     {
-        Entry* entry = new Entry();
-        memset(table, 0, size*sizeof(Entry*));
+        Entry* entry = allocator.alloc();
         size_t realSize = 0;
         while (gather->next(entry->record)) {
             innerKey(entry->key, entry->record);
@@ -1268,7 +1267,7 @@ protected:
             size_t h = entry->hash % size;  
             entry->collision = table[h]; 
             table[h] = entry;
-            entry = new Entry();
+            entry = allocator.alloc();
             if (++realSize == size) { 
                 extendHash();
             }
@@ -1289,18 +1288,21 @@ protected:
         }
         printf("HashSemiJoin: estimated size=%ld, real size=%ld, collitions=(%ld max, %f avg)\n", size, realSize, maxLen, nChains != 0 ? (double)totalLen/nChains : 0.0);
 #endif
-        delete entry;
         delete gather;
     }
 
     void deleteHash() {
-        for (size_t i = 0; i < size; i++) { 
-            Entry *curr, *next;
-            for (curr = table[i]; curr != NULL; curr = next) { 
-                next = curr->collision;
-                delete curr;
+#ifdef USE_MESSAGE_HANDLER
+        if (shuffle) { 
+            for (size_t i = 0; i < size; i++) { 
+                Entry *curr, *next;
+                for (curr = table[i]; curr != NULL; curr = next) { 
+                    next = curr->collision;
+                    delete curr;
+                }
             }
         }
+#endif
         delete[] table;
     }
 };
@@ -1347,17 +1349,18 @@ public:
                     FILE* innerFile = cluster->openTempFile("inner", qid, fileNo);
                     outerFile = cluster->openTempFile("outer", qid, fileNo);
 
-                    Entry* entry = new Entry();
-                    clearHash();
+                    memset(table, 0, size*sizeof(Entry*));
+                    allocator.reset();
+
+                    Entry* entry = allocator.alloc();
                     while (fread(&entry->record, sizeof(I), 1, innerFile) == 1) { 
                         innerKey(entry->key, entry->record);
                         entry->hash = hashCode(entry->key);
                         size_t h = entry->hash % size;  
                         entry->collision = table[h]; 
                         table[h] = entry;
-                        entry = new Entry();
+                        entry = allocator.alloc();
                     }
-                    delete entry;
                     fclose(innerFile);
                 }
                 if (fread(&outerRec, sizeof(O), 1, outerFile) != 1) { 
@@ -1387,7 +1390,6 @@ public:
     }
 
     ~ShuffleJoinRDD() { 
-        clearHash();
         delete[] table;
     }
 protected:
@@ -1410,7 +1412,8 @@ protected:
     Entry*  inner;
     qid_t   qid;
     size_t  fileNo;
-
+    BlockAllocator<Entry> allocator;
+    
     void saveOuterFiles(RDD<O>* input)
     {
         FILE** files = new FILE*[nFiles];
@@ -1453,18 +1456,6 @@ protected:
         }
         delete[] files;
         delete input;
-    }
-            
-
-    void clearHash() {
-        for (size_t i = 0; i < size; i++) { 
-            Entry *curr, *next;
-            for (curr = table[i]; curr != NULL; curr = next) { 
-                next = curr->collision;
-                delete curr;
-            }
-            table[i] = NULL;
-        }
     }
 };
     
@@ -1509,7 +1500,7 @@ public:
                 FILE* innerFile = cluster->openTempFile("inner", qid, fileNo);
                 outerFile = cluster->openTempFile("outer", qid, fileNo);
                 
-                Entry* entry = new Entry();
+                Entry* entry = allocator.alloc();
                 clearHash();
                 while (fread(&entry->record, sizeof(I), 1, innerFile) == 1) { 
                     innerKey(entry->key, entry->record);
@@ -1517,9 +1508,8 @@ public:
                     size_t h = entry->hash % size;  
                     entry->collision = table[h]; 
                     table[h] = entry;
-                    entry = new Entry();
+                    entry = allocator.alloc();
                 }
-                delete entry;
                 fclose(innerFile);
             }
             if (fread(&record, sizeof(O), 1, outerFile) != 1) { 
@@ -1558,7 +1548,8 @@ protected:
     FILE*   outerFile;
     qid_t   qid;
     size_t  fileNo;
-
+    BlockAllocator<Entry> allocator;
+    
     void saveOuterFiles(RDD<O>* input)
     {
         FILE** files = new FILE*[nFiles];

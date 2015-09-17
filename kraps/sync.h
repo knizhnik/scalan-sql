@@ -173,5 +173,52 @@ class ThreadLocal
 };
 #endif
 
+
+template<class T>
+class BlockAllocator
+{
+    enum { BlockSize=1024 };
+    struct Block {
+        Block* next;
+        T data[BlockSize];
+
+        Block(Block* chain) : next(chain) {}
+    };
+    size_t used;
+    Block* chain;
+    Block* free;
+    
+  public:
+    void reset() {
+        free = chain;
+        chain = NULL;
+        used = 0;
+    }
+    T* alloc() {
+        if (used == BlockSize) {
+            if (free != NULL) {
+                chain = free;
+                free = chain->next;
+            } else { 
+                chain = new Block(chain);
+            }
+            used = 0;
+        }
+        return &chain->data[used++];
+    }
+    BlockAllocator() : used(BlockSize), chain(NULL), free(NULL) {}
+    ~BlockAllocator() {
+        Block *curr, *next;
+        for (curr = chain; curr != NULL; curr = next) {
+            next = curr->next;
+            delete curr;
+        }
+        for (curr = free; curr != NULL; curr = next) {
+            next = curr->next;
+            delete curr;
+        }
+    }
+};
+
 #endif
 
