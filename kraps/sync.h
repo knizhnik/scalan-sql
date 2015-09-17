@@ -184,32 +184,34 @@ class BlockAllocator
 
         Block(Block* chain) : next(chain) {}
     };
-    size_t used;
-    Block* chain;
+    size_t size;
+    Block* used;
     Block* free;
     
   public:
     void reset() {
-        free = chain;
-        chain = NULL;
-        used = 0;
+        free = used;
+        used = NULL;
+        size = 0;
     }
     T* alloc() {
-        if (used == BlockSize) {
+        if (size == BlockSize) {
             if (free != NULL) {
-                chain = free;
-                free = chain->next;
+                Block* block = free;
+                free = block->next;
+                block->next = used;
+                used = block;
             } else { 
-                chain = new Block(chain);
+                used = new Block(used);
             }
-            used = 0;
+            size = 0;
         }
-        return &chain->data[used++];
+        return &used->data[size++];
     }
-    BlockAllocator() : used(BlockSize), chain(NULL), free(NULL) {}
+    BlockAllocator() : size(BlockSize), used(NULL), free(NULL) {}
     ~BlockAllocator() {
         Block *curr, *next;
-        for (curr = chain; curr != NULL; curr = next) {
+        for (curr = used; curr != NULL; curr = next) {
             next = curr->next;
             delete curr;
         }
