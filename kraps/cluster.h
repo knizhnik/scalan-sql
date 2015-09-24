@@ -65,8 +65,7 @@ struct Buffer
     }
 
     void release() { 
-        assert(refCount > 0);
-        if (--refCount == 0) { 
+        if (__sync_add_and_fetch(&refCount, -1) == 0) {
             free(this);
         }
     }
