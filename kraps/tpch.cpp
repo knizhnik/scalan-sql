@@ -490,38 +490,38 @@ namespace Q5
         return order.o_orderdate >= 19960101 && order.o_orderdate < 19970101;
     }
 
-    bool sameNation(Join<Join<Join<LineitemProjection,OrdersProjection>,CustomerProjection>,SupplierProjection> const& r)
+    bool sameNation(Join<Join<Join<LineitemProjection,OrdersProjection>,SupplierProjection>,CustomerProjection> const& r)
     {
         return r.c_nationkey == r.s_nationkey;
     }
 
-    void customerNationKey(int& key, Join<Join<Join<LineitemProjection,OrdersProjection>,CustomerProjection>,SupplierProjection> const& r)
+    void customerNationKey(int& key, Join<Join<Join<LineitemProjection,OrdersProjection>,SupplierProjection>,CustomerProjection> const& r)
     {
         key = r.c_nationkey;
     }
     
-    void lineitemSupplierKey(int& key, Join<Join<LineitemProjection,OrdersProjection>,CustomerProjection> const& r)
+    void lineitemSupplierKey(int& key, Join<LineitemProjection,OrdersProjection> const& r)
     {
         key = r.l_suppkey;
     }
     
-    void orderCustomerKey(int& key, Join<LineitemProjection,OrdersProjection> const& r)
+    void orderCustomerKey(int& key, Join<Join<LineitemProjection,OrdersProjection>,SupplierProjection> const& r)
     {
         key = r.o_custkey;
     }
 
-    void nationRegionKey(int& key, Join<Join<Join<Join<LineitemProjection,OrdersProjection>,CustomerProjection>,SupplierProjection>,Nation> const& r)
+    void nationRegionKey(int& key, Join<Join<Join<Join<LineitemProjection,OrdersProjection>,SupplierProjection>,CustomerProjection>,Nation> const& r)
     {
         key = r.n_regionkey;
     }
     
-    bool asiaRegion(Join<Join<Join<Join<Join<LineitemProjection,OrdersProjection>,CustomerProjection>,SupplierProjection>,Nation>,Region> const& r) 
+    bool asiaRegion(Join<Join<Join<Join<Join<LineitemProjection,OrdersProjection>,SupplierProjection>,CustomerProjection>,Nation>,Region> const& r) 
     { 
         return STREQ(r.r_name, "ASIA");
 
     }
 
-    void map(Pair<Key<name_t>,double>& pair, Join<Join<Join<Join<Join<LineitemProjection,OrdersProjection>,CustomerProjection>,SupplierProjection>,Nation>,Region> const& r)
+    void map(Pair<Key<name_t>,double>& pair, Join<Join<Join<Join<Join<LineitemProjection,OrdersProjection>,SupplierProjection>,CustomerProjection>,Nation>,Region> const& r)
     {
         STRCPY(pair.key.val, r.n_name);
         pair.value = r.l_extendedprice * (1 - r.l_discount);
@@ -557,12 +557,12 @@ namespace Q5
                                                                   filter<orderRange>()->
                                                                   project<OrdersProjection,projectOrders>(),
                                                                   SCALE(1500000))->
-            join<CustomerProjection,int,orderCustomerKey,customerKey>(TABLE(Customer)->
-                                                                      project<CustomerProjection,projectCustomer>(),
-                                                                      SCALE(150000))->
             join<SupplierProjection,int,lineitemSupplierKey,supplierKey>(TABLE(Supplier)->
                                                                          project<SupplierProjection,projectSupplier>(),
                                                                          SCALE(10000))->
+            join<CustomerProjection,int,orderCustomerKey,customerKey>(TABLE(Customer)->
+                                                                      project<CustomerProjection,projectCustomer>(),
+                                                                      SCALE(150000))->
             filter<sameNation>()->
             join<Nation,int,customerNationKey,nationKey>(TABLE(Nation),25)->
             join<Region,int,nationRegionKey,regionKey>(TABLE(Region),5)->

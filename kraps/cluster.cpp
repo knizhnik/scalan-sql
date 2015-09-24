@@ -312,11 +312,11 @@ void SendJob::run()
         while (true) { 
             Buffer* buf = cluster->sendQueues[node]->get();
             buf->node = (uint32_t)cluster->nodeId;
-
+            memcpy(ioBuf, buf, BUF_HDR_SIZE);
             if (cluster->sockets[node]->isLocal()) {
-                buf->compressedSize = buf->size;
+                ioBuf->compressedSize = buf->size;
             } else { 
-                buf->compressedSize = buf->size ? compress(ioBuf->data, buf->data, buf->size) : 0;
+                ioBuf->compressedSize = buf->size ? compress(ioBuf->data, buf->data, buf->size) : 0;
             }
             if (buf->kind == MSG_SHUTDOWN) { 
                 if (node == (cluster->nodeId + 1) % cluster->nNodes) { // shutdown neighbour receiver
@@ -325,12 +325,11 @@ void SendJob::run()
                 delete ioBuf;
                 return;
             }
-            if (buf->compressedSize < buf->size) {
-                memcpy(ioBuf, buf, BUF_HDR_SIZE);
+            if (ioBuf->compressedSize < ioBuf->size) {
                 cluster->sockets[node]->write(ioBuf, BUF_HDR_SIZE + ioBuf->compressedSize);
                 sent += BUF_HDR_SIZE + ioBuf->compressedSize;
             } else {
-                assert(buf->compressedSize <= compressBufSize);
+                assert(ioBuf->compressedSize <= compressBufSize);
                 cluster->sockets[node]->write(buf, BUF_HDR_SIZE + buf->size);
                 sent += BUF_HDR_SIZE + buf->size;
             }

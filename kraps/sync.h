@@ -192,7 +192,7 @@ class BlockAllocator
     void reset() {
         free = used;
         used = NULL;
-        size = 0;
+        size = BlockSize;
     }
     T* alloc() {
         if (size == BlockSize) {
