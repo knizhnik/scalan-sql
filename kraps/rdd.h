@@ -186,7 +186,7 @@ class RDD
      * Left join two RDDs
      */
     template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner)>
-    RDD< Join<T,I> >* join(RDD<I>* with, size_t estimation, JoinKind kind = InnerJoin);
+    RDD< Join<T,I> >* join(RDD<I>* with, size_t estimation, JoinKind kind = InnerJoin, bool usingPrimaryKey = true);
 
     /**
      * Left simijoin two RDDs
@@ -214,6 +214,17 @@ class RDD
      * Print RDD records to the stream
      */
     void output(FILE* out);
+
+    virtual bool isSharded() {
+        return false;
+    }
+
+    template<class K, void (*key)(K&, T const&)>
+    RDD<T>* scatter();
+
+    virtual RDD<T>* clone() { 
+        return NULL;
+    }
 
     virtual~RDD() {}
 
@@ -964,13 +975,15 @@ template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), vo
 class HashJoinRDD : public RDD< Join<O,I> >, MessageHandler
 {
 public:
-    HashJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t estimation, JoinKind joinKind) 
+    HashJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t estimation, JoinKind joinKind, bool usingPrimaryKey) 
     : kind(joinKind), table(new Entry*[estimation]), size(estimation), innerSize(0), inner(NULL), outer(outerRDD), scatter(NULL) {
         assert(kind != AntiJoin);
         // First load inner relation in hash...
         Cluster* cluster = Cluster::instance.get();
         memset(table, 0, size*sizeof(Entry*));
-        if (estimation <= cluster->broadcastJoinThreshold) { 
+        if (usingPrimaryKey && innerRDD->isSharded()) { 
+            loadHash(innerRDD);
+        } else if (estimation <= cluster->broadcastJoinThreshold) { 
             // broadcast inner RDD
             loadHash(innerRDD->replicate());
             shuffle = false;
@@ -1631,7 +1644,7 @@ class CachedRDD : public RDD<T>
         }
     }
 
-    CachedRDD* get() { 
+    virtual RDD<T>* clone() { 
         return new CachedRDD(buf, size);
     }
 
@@ -1660,6 +1673,79 @@ class CachedRDD : public RDD<T>
     size_t size;
     bool copy;
 };
+
+template<class T>
+class MaterializedRDD : public RDD<T>
+{
+    struct ListNode {
+        Buffer* buf;
+        ListNode* next;
+        
+        ListNode(Buffer* data) : buf(data) {}
+        ~ListNode() { buf->release(); }
+    };
+    ListNode* list;
+    size_t    curr;
+    bool      copy;
+
+  public:
+    MaterializedRDD(Queue* queue) : curr(0), copy(false) { 
+        Buffer* buf;
+        ListNode** tail = &list;
+        while ((buf = queue->get()) != NULL) { 
+            ListNode* node = new ListNode(buf);
+            *tail = node;
+            tail = &node->next;
+        }
+        *tail = NULL;
+    }
+
+    bool next(T& record) { 
+        while (list != NULL) {
+            if (curr < list->buf->size) { 
+                curr += unpack(record, list->buf->data + curr);
+                return true;
+            }
+            list = list->next;
+            curr = 0;
+        }
+        return false;
+    }
+
+    virtual RDD<T>* clone() { 
+        return new MaterializedRDD(list);
+    }
+    
+    ~MaterializedRDD() { 
+        if (!copy) { 
+            ListNode *curr, *next;
+            for (curr = list; curr != NULL; curr = next) { 
+                next = curr->next;
+                delete curr;
+            }
+        }
+    }
+    
+  private:
+    MaterializedRDD(ListNode* head) : list(head), curr(0), copy(true) {}
+};
+
+template<class T>
+class ShardedRDD : public MaterializedRDD<T>
+{
+  public:
+    ShardedRDD(Queue* queue) : MaterializedRDD<T>(queue) {}  
+    bool isSharded() { return true; }
+};
+
+template<class T>
+template<class K, void (*key)(K&, T const&)>
+RDD<T>* RDD<T>::scatter()
+{
+    Queue* queue = Cluster::instance->getQueue();
+    Thread load(new ScatterJob<T,K,key>(this, queue));
+    return new ShardedRDD<T>(queue);
+}
 
 template<class T>
 void RDD<T>::output(FILE* out) 
@@ -1724,10 +1810,10 @@ inline RDD<T>* RDD<T>::top(size_t n) {
 
 template<class T>
 template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner)>
-RDD< Join<T,I> >* RDD<T>::join(RDD<I>* with, size_t estimation, JoinKind kind) {
+RDD< Join<T,I> >* RDD<T>::join(RDD<I>* with, size_t estimation, JoinKind kind, bool usingPrimaryKey) {
     Cluster* cluster = Cluster::instance.get();
     if (estimation <= cluster->inmemJoinThreshold) { 
-        return new HashJoinRDD<T,I,K,outerKey,innerKey>(this, with, estimation, kind);
+        return new HashJoinRDD<T,I,K,outerKey,innerKey>(this, with, estimation, kind, usingPrimaryKey);
     }
     size_t nFiles = (estimation + cluster->inmemJoinThreshold - 1) / cluster->inmemJoinThreshold;
     return new ShuffleJoinRDD<T,I,K,outerKey,innerKey>(this, with, nFiles, estimation/nFiles, kind);
