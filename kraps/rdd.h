@@ -631,6 +631,10 @@ class FilterRDD : public RDD<T>
   public:
     FilterRDD(RDD<T>* input) : in(input) {}
 
+    virtual bool isSharded() {
+        return in->isSharded();
+    }
+    
     bool next(T& record) {
         while (in->next(record)) { 
             if (predicate(record)) {
@@ -822,6 +826,10 @@ class ProjectRDD : public RDD<P>
   public:
     ProjectRDD(RDD<T>* input) : in(input) {}
 
+    virtual bool isSharded() {
+        return in->isSharded();
+    }
+    
     bool next(P& projection) { 
         T record;
         if (in->next(record)) { 
@@ -983,6 +991,7 @@ public:
         memset(table, 0, size*sizeof(Entry*));
         if (usingPrimaryKey && innerRDD->isSharded()) { 
             loadHash(innerRDD);
+            shuffle = false;
         } else if (estimation <= cluster->broadcastJoinThreshold) { 
             // broadcast inner RDD
             loadHash(innerRDD->replicate());
@@ -1677,27 +1686,33 @@ class CachedRDD : public RDD<T>
 template<class T>
 class MaterializedRDD : public RDD<T>
 {
-    struct ListNode {
-        Buffer* buf;
-        ListNode* next;
-        
-        ListNode(Buffer* data) : buf(data) {}
-        ~ListNode() { buf->release(); }
-    };
-    ListNode* list;
-    size_t    curr;
-    bool      copy;
-
   public:
-    MaterializedRDD(Queue* queue) : curr(0), copy(false) { 
-        Buffer* buf;
+    MaterializedRDD(Queue* queue, bool isSharded) : curr(0), copy(false), sharded(isSharded) { 
         ListNode** tail = &list;
-        while ((buf = queue->get()) != NULL) { 
-            ListNode* node = new ListNode(buf);
-            *tail = node;
-            tail = &node->next;
+        Cluster* cluster = Cluster::instance.get();
+        size_t nNodes = cluster->nNodes;
+        while (true) {
+            Buffer* buf = queue->get();
+            assert(buf != NULL);
+            switch (buf->kind) { 
+              case MSG_EOF:
+                buf->release();
+                if (--nNodes == 0) { 
+                    *tail = NULL;
+                    return;
+                }                
+                continue;
+              case MSG_PING:
+                buf->kind = MSG_PONG;
+                assert(buf->node < cluster->nNodes && buf->node != cluster->nodeId);
+                Cluster::instance->sendQueues[buf->node]->putFirst(buf);
+                continue;
+              default:
+                ListNode* node = new ListNode(buf);
+                *tail = node;
+                tail = &node->next;
+            }
         }
-        *tail = NULL;
     }
 
     bool next(T& record) { 
@@ -1713,7 +1728,7 @@ class MaterializedRDD : public RDD<T>
     }
 
     virtual RDD<T>* clone() { 
-        return new MaterializedRDD(list);
+        return new MaterializedRDD(*this);
     }
     
     ~MaterializedRDD() { 
@@ -1726,16 +1741,22 @@ class MaterializedRDD : public RDD<T>
         }
     }
     
-  private:
-    MaterializedRDD(ListNode* head) : list(head), curr(0), copy(true) {}
-};
+    bool isSharded() { return sharded; }
 
-template<class T>
-class ShardedRDD : public MaterializedRDD<T>
-{
-  public:
-    ShardedRDD(Queue* queue) : MaterializedRDD<T>(queue) {}  
-    bool isSharded() { return true; }
+  private:
+    struct ListNode {
+        Buffer* buf;
+        ListNode* next;
+        
+        ListNode(Buffer* data) : buf(data) {}
+        ~ListNode() { buf->release(); }
+    };
+    ListNode* list;
+    size_t    curr;
+    bool      copy;
+    bool      sharded;
+
+    MaterializedRDD(MaterializedRDD const& origin) : list(origin.list), curr(0), copy(true), sharded(origin.sharded) {}
 };
 
 template<class T>
@@ -1744,7 +1765,7 @@ RDD<T>* RDD<T>::scatter()
 {
     Queue* queue = Cluster::instance->getQueue();
     Thread load(new ScatterJob<T,K,key>(this, queue));
-    return new ShardedRDD<T>(queue);
+    return new MaterializedRDD<T>(queue, true);
 }
 
 template<class T>
