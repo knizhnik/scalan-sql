@@ -10,7 +10,7 @@ const size_t SF = 100; // scale factor
 #define STRCPY(d,s) strncpy(d,s,sizeof(d))
 #define SCALE(x)    ((x + Cluster::instance->nNodes - 1)*SF/(Cluster::instance->nNodes) + (x / 100)) // take in accoutn data skews
 
-#define TABLE(x) (Cluster::instance->userData ? (RDD<x>*)((CachedData*)Cluster::instance->userData)->_##x.get() : (RDD<x>*)FileManager::load<x>(filePath(#x)))
+#define TABLE(x) (Cluster::instance->userData ? (RDD<x>*)((CachedData*)Cluster::instance->userData)->_##x->clone() : (RDD<x>*)FileManager::load<x>(filePath(#x)))
 
 char const* dataDir;
 char const* dataFormat;
@@ -24,30 +24,6 @@ static char* filePath(char const* fileName)
     }
     return strdup(path);
 }
-
-class CachedData
-{
-  public:
-    CachedRDD<Lineitem> _Lineitem;
-    CachedRDD<Orders> _Orders;
-    CachedRDD<Supplier> _Supplier;
-    CachedRDD<Customer> _Customer;
-    CachedRDD<Part> _Part;
-    CachedRDD<Partsupp> _Partsupp;
-    CachedRDD<Nation> _Nation;
-    CachedRDD<Region> _Region;
-
-    CachedData() : 
-    _Lineitem(FileManager::load<Lineitem>(filePath("Lineitem")), SCALE(6000000)),
-    _Orders(FileManager::load<Orders>(filePath("Orders")),       SCALE(1500000)),
-    _Supplier(FileManager::load<Supplier>(filePath("Supplier")), SCALE(10000)),
-    _Customer(FileManager::load<Customer>(filePath("Customer")), SCALE(150000)),
-    _Part(FileManager::load<Part>(filePath("Part")),             SCALE(200000)),
-    _Partsupp(FileManager::load<Partsupp>(filePath("Partsupp")), SCALE(800000)),
-    _Nation(FileManager::load<Nation>(filePath("Nation")),       25),
-    _Region(FileManager::load<Region>(filePath("Region")),       5) {}
-
-};
 
 void sum(double& dst, double const& src)
 {
@@ -69,9 +45,24 @@ void regionKey(int& key, Region const& region)
     key = region.r_regionkey;
 }
 
-void customerKey(int& key, Customer const& customer)
+void ordersKey(long& key, Orders const& record)
 {
-    key = customer.c_custkey;
+    key = record.o_orderkey;
+}
+
+void supplierKey(int& key, Supplier const& record)
+{
+    key = record.s_suppkey;
+}
+
+void customerKey(int& key, Customer const& record)
+{
+    key = record.c_custkey;
+}
+
+void partKey(int& key, Part const& record)
+{
+    key = record.p_partkey;
 }
 
 struct PartsuppKey
@@ -93,6 +84,51 @@ void partsuppKey(PartsuppKey& key, Partsupp const& ps)
 }
 
     
+class CachedData
+{
+  public:
+    RDD<Lineitem>* _Lineitem;
+    RDD<Orders>* _Orders;
+    RDD<Supplier>* _Supplier;
+    RDD<Customer>* _Customer;
+    RDD<Part>* _Part;
+    RDD<Partsupp>* _Partsupp;
+    RDD<Nation>* _Nation;
+    RDD<Region>* _Region;
+
+    CachedData(bool sharded) 
+    { 
+        _Lineitem = new CachedRDD<Lineitem>(FileManager::load<Lineitem>(filePath("Lineitem")), SCALE(6000000));
+        _Nation = new CachedRDD<Nation>(FileManager::load<Nation>(filePath("Nation")),       25);
+        _Region = new CachedRDD<Region>(FileManager::load<Region>(filePath("Region")),       5);
+        if (sharded) { 
+            _Orders = FileManager::load<Orders>(filePath("Orders"))->scatter<long,ordersKey>();
+            _Supplier = FileManager::load<Supplier>(filePath("Supplier"))->scatter<int,supplierKey>();
+            _Customer = FileManager::load<Customer>(filePath("Customer"))->scatter<int,customerKey>();
+            _Part = FileManager::load<Part>(filePath("Part"))->scatter<int,partKey>();
+            _Partsupp = FileManager::load<Partsupp>(filePath("Partsupp"))->scatter<PartsuppKey,partsuppKey>();
+        } else {
+            _Orders = new CachedRDD<Orders>(FileManager::load<Orders>(filePath("Orders")),         SCALE(1500000));
+            _Supplier = new CachedRDD<Supplier>(FileManager::load<Supplier>(filePath("Supplier")), SCALE(10000));
+            _Customer = new CachedRDD<Customer>(FileManager::load<Customer>(filePath("Customer")), SCALE(150000));
+            _Part = new CachedRDD<Part>(FileManager::load<Part>(filePath("Part")),                 SCALE(200000));
+            _Partsupp = new CachedRDD<Partsupp>(FileManager::load<Partsupp>(filePath("Partsupp")), SCALE(800000));
+        }
+    }
+
+    ~CachedData()
+    {
+        delete _Lineitem;
+        delete _Orders;
+        delete _Supplier;
+        delete _Customer;
+        delete _Part;
+        delete _Partsupp;
+        delete _Nation;
+        delete _Region;
+    }
+};
+
 namespace Q1
 {
     struct Projection
@@ -1704,11 +1740,12 @@ class TPCHJob : public Job
     char   const*tmp;
     bool   const sharedNothing;
     bool   const useCache;
+    bool   const doSharding;
   public:
-    TPCHJob(size_t _nodeId, size_t _nHosts, char** _hosts = NULL, size_t _nQueues = 64, size_t _bufferSize = 4*64*1024, size_t _recvQueueSize = 4*64*1024*1024,  size_t _sendQueueSize = 4*4*1024*1024, size_t _syncInterval = 64*1024*1024, size_t _broadcastJoinThreshold = 10000, size_t _inmemJoinThreshold = 10000000, char const* _tmp = "/tmp", bool _sharedNothing = false, size_t _split = 1, bool _useCache = false)
+    TPCHJob(size_t _nodeId, size_t _nHosts, char** _hosts = NULL, size_t _nQueues = 64, size_t _bufferSize = 4*64*1024, size_t _recvQueueSize = 4*64*1024*1024,  size_t _sendQueueSize = 4*4*1024*1024, size_t _syncInterval = 64*1024*1024, size_t _broadcastJoinThreshold = 10000, size_t _inmemJoinThreshold = 10000000, char const* _tmp = "/tmp", bool _sharedNothing = false, size_t _split = 1, bool _useCache = false, bool _doSharding = false)
     : nodeId(_nodeId), nHosts(_nHosts), hosts(_hosts), nQueues(_nQueues), bufferSize(_bufferSize), recvQueueSize(_recvQueueSize),
       sendQueueSize(_sendQueueSize), syncInterval(_syncInterval), broadcastJoinThreshold(_broadcastJoinThreshold),
-        inmemJoinThreshold(_inmemJoinThreshold), split(_split), tmp(_tmp), sharedNothing(_sharedNothing), useCache(_useCache) {}
+      inmemJoinThreshold(_inmemJoinThreshold), split(_split), tmp(_tmp), sharedNothing(_sharedNothing), useCache(_useCache), doSharding(_doSharding) {}
     
   public:
     void run() {
@@ -1717,7 +1754,7 @@ class TPCHJob : public Job
 
         time_t start = time(NULL);
         if (useCache) { 
-            cluster.userData = new CachedData();
+            cluster.userData = new CachedData(doSharding);
             printf("Elapsed time for loading all data in memory: %d seconds\n", (int)(time(NULL) - start));
             cluster.barrier(); 
         }
@@ -1746,6 +1783,7 @@ int main(int argc, char* argv[])
 {
     int i;
     bool useCache = false;
+    bool doSharding = false;
     size_t nQueues = 64;
     size_t bufferSize = 4*64*1024;
     size_t recvQueueSize = 4*64*1024*1024;
@@ -1765,6 +1803,8 @@ int main(int argc, char* argv[])
             option = argv[i]+1;
             if (strcmp(option, "cache") == 0) { 
                 useCache = true;
+            } else if (strcmp(option, "sharding") == 0) { 
+                doSharding = true;
             } else if (strcmp(option, "dir") == 0) { 
                 dataDir = argv[++i];
             } else if (strcmp(option, "format") == 0) { 
@@ -1827,7 +1867,7 @@ int main(int argc, char* argv[])
         Cluster::nodes = new Cluster*[nNodes];
         Thread** clusterThreads = new Thread*[nNodes];
         for (nodeId = 0; nodeId < nNodes; nodeId++) {
-            clusterThreads[nodeId] = new Thread(new TPCHJob(nodeId, nNodes, NULL, nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, split, useCache), nodeId);
+            clusterThreads[nodeId] = new Thread(new TPCHJob(nodeId, nNodes, NULL, nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, split, useCache, doSharding), nodeId);
         }
         for (nodeId = 0; nodeId < nNodes; nodeId++) {
             delete clusterThreads[nodeId];
@@ -1835,7 +1875,7 @@ int main(int argc, char* argv[])
         delete[] clusterThreads;
         delete[] Cluster::nodes;
     } else if (argc == i + nNodes) {
-        TPCHJob test(nodeId, nNodes, &argv[i], nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, split, useCache);
+        TPCHJob test(nodeId, nNodes, &argv[i], nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, split, useCache, doSharding);
         test.run();
     } else {      
         fprintf(stderr, "At least one node has to be specified\n");

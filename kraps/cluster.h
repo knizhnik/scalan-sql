@@ -50,7 +50,7 @@ struct Buffer
         return create(qid, 0, MSG_PING);
     }
 
-    Buffer(MessageKind type, qid_t id, size_t len = 0) : size((uint32_t)len), qid((uint16_t)id), kind((uint16_t)type), refCount(1) {}
+    Buffer(MessageKind type, qid_t id, size_t len = 0) : compressedSize((uint32_t)len), size((uint32_t)len), qid((uint16_t)id), kind((uint16_t)type), refCount(1) {}
 
     void* operator new(size_t hdrSize, size_t bufSize) {
         return malloc(BUF_HDR_SIZE + bufSize);
@@ -65,8 +65,7 @@ struct Buffer
     }
 
     void release() { 
-        assert(refCount > 0);
-        if (--refCount == 0) { 
+        if (__sync_add_and_fetch(&refCount, -1) == 0) {
             free(this);
         }
     }

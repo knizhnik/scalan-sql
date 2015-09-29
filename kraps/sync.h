@@ -115,7 +115,7 @@ public:
             pthread_getaffinity_np(pthread_self(), sizeof(cpuset), &cpuset);
         } else { 
             CPU_ZERO(&cpuset);
-            CPU_SET(core, &cpuset);
+            CPU_SET(core*2, &cpuset);
         }
         pthread_attr_setaffinity_np(&attr, sizeof(cpuset), &cpuset);
         pthread_create(&thread, &attr, trampoline, job);
@@ -172,6 +172,55 @@ class ThreadLocal
     ThreadLocal() : data(NULL) {}
 };
 #endif
+
+
+template<class T>
+class BlockAllocator
+{
+    enum { BlockSize=1024 };
+    struct Block {
+        Block* next;
+        T data[BlockSize];
+
+        Block(Block* chain) : next(chain) {}
+    };
+    size_t size;
+    Block* used;
+    Block* free;
+    
+  public:
+    void reset() {
+        free = used;
+        used = NULL;
+        size = BlockSize;
+    }
+    T* alloc() {
+        if (size == BlockSize) {
+            if (free != NULL) {
+                Block* block = free;
+                free = block->next;
+                block->next = used;
+                used = block;
+            } else { 
+                used = new Block(used);
+            }
+            size = 0;
+        }
+        return &used->data[size++];
+    }
+    BlockAllocator() : size(BlockSize), used(NULL), free(NULL) {}
+    ~BlockAllocator() {
+        Block *curr, *next;
+        for (curr = used; curr != NULL; curr = next) {
+            next = curr->next;
+            delete curr;
+        }
+        for (curr = free; curr != NULL; curr = next) {
+            next = curr->next;
+            delete curr;
+        }
+    }
+};
 
 #endif
 

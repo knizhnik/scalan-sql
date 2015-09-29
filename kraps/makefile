@@ -7,7 +7,7 @@ HADOOP_HOME=~/hadoop-2.7.0
 SPARK_HOME=/srv/remote/all-common/spark-1.3.1-bin-hadoop2.6
 SPARK_HOME=~/spark
 
-CPP=g++ -pthread -fPIC -O3 -g -Wall -DUSE_MESSAGE_HANDLER -DSET_THREAD_AFFINITY
+CPP=g++ -pthread -fPIC -O3 -g -Wall -DSHOW_HASH_STATISTIC #-DUSE_MESSAGE_HANDLER -DSHOW_HASH_STATISTIC
 #CPP=g++ -pthread -fPIC -O3 -g -Wall
 #CPP=g++ -pthread -fPIC -O3 -g -Wall -DUSE_ZLIB
 #CPP=g++ -pthread -fPIC -O3 -g -Wall -DUSE_LZH

@@ -186,7 +186,7 @@ class RDD
      * Left join two RDDs
      */
     template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner)>
-    RDD< Join<T,I> >* join(RDD<I>* with, size_t estimation, JoinKind kind = InnerJoin);
+    RDD< Join<T,I> >* join(RDD<I>* with, size_t estimation, JoinKind kind = InnerJoin, bool usingPrimaryKey = true);
 
     /**
      * Left simijoin two RDDs
@@ -214,6 +214,17 @@ class RDD
      * Print RDD records to the stream
      */
     void output(FILE* out);
+
+    virtual bool isSharded() {
+        return false;
+    }
+
+    template<class K, void (*key)(K&, T const&)>
+    RDD<T>* scatter();
+
+    virtual RDD<T>* clone() { 
+        return NULL;
+    }
 
     virtual~RDD() {}
 
@@ -620,6 +631,10 @@ class FilterRDD : public RDD<T>
   public:
     FilterRDD(RDD<T>* input) : in(input) {}
 
+    virtual bool isSharded() {
+        return in->isSharded();
+    }
+    
     bool next(T& record) {
         while (in->next(record)) { 
             if (predicate(record)) {
@@ -716,6 +731,7 @@ class MapReduceRDD : public RDD< Pair<K,V> >
     size_t  size;
     size_t  i;
     Entry*  curr;
+    BlockAllocator<Entry> allocator;
 
     void extendHash() 
     {
@@ -752,7 +768,7 @@ class MapReduceRDD : public RDD< Pair<K,V> >
             size_t h = hash % size;            
             for (entry = table[h]; entry != NULL && !(entry->hash == hash && pair.key == entry->pair.key); entry = entry->collision);
             if (entry == NULL) { 
-                entry = new Entry();
+                entry = allocator.alloc();
                 entry->collision = table[h];
                 entry->hash = hash;
                 table[h] = entry;
@@ -777,7 +793,7 @@ class MapReduceRDD : public RDD< Pair<K,V> >
                 size_t h = hash % size;            
                 for (entry = table[h]; entry != NULL && !(entry->hash == hash && pair.key == entry->pair.key); entry = entry->collision);
                 if (entry == NULL) { 
-                    entry = new Entry();
+                    entry = allocator.alloc();
                     entry->collision = table[h];
                     entry->hash = hash;
                     table[h] = entry;
@@ -797,13 +813,6 @@ class MapReduceRDD : public RDD< Pair<K,V> >
     }
 
     void deleteHash() {
-        for (size_t i = 0; i < size; i++) { 
-            Entry *curr, *next;
-            for (curr = table[i]; curr != NULL; curr = next) { 
-                next = curr->collision;
-                delete curr;
-            }
-        }
         delete[] table;
     }
 };
@@ -817,6 +826,10 @@ class ProjectRDD : public RDD<P>
   public:
     ProjectRDD(RDD<T>* input) : in(input) {}
 
+    virtual bool isSharded() {
+        return in->isSharded();
+    }
+    
     bool next(P& projection) { 
         T record;
         if (in->next(record)) { 
@@ -970,13 +983,16 @@ template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), vo
 class HashJoinRDD : public RDD< Join<O,I> >, MessageHandler
 {
 public:
-    HashJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t estimation, JoinKind joinKind) 
+    HashJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t estimation, JoinKind joinKind, bool usingPrimaryKey) 
     : kind(joinKind), table(new Entry*[estimation]), size(estimation), innerSize(0), inner(NULL), outer(outerRDD), scatter(NULL) {
         assert(kind != AntiJoin);
         // First load inner relation in hash...
         Cluster* cluster = Cluster::instance.get();
         memset(table, 0, size*sizeof(Entry*));
-        if (estimation <= cluster->broadcastJoinThreshold) { 
+        if (usingPrimaryKey && innerRDD->isSharded()) { 
+            loadHash(innerRDD);
+            shuffle = false;
+        } else if (estimation <= cluster->broadcastJoinThreshold) { 
             // broadcast inner RDD
             loadHash(innerRDD->replicate());
             shuffle = false;
@@ -1055,6 +1071,7 @@ protected:
     Queue*  queue;
     Thread* scatter;
     bool    shuffle;
+    BlockAllocator<Entry> allocator;
 
     void extendHash() 
     {
@@ -1088,7 +1105,7 @@ protected:
             do {
                 oldValue = table[h];
                 entry->collision = oldValue; 
-            } while (__sync_bool_compare_and_swap(&table[h], oldValue, entry));
+            } while (!__sync_bool_compare_and_swap(&table[h], oldValue, entry));
             entry = new Entry();
             n += 1;
         }
@@ -1099,7 +1116,7 @@ protected:
 
     void loadHash(RDD<I>* gather) 
     {
-        Entry* entry = new Entry();
+        Entry* entry = allocator.alloc();
         size_t realSize = 0;
         while (gather->next(entry->record)) {
             innerKey(entry->key, entry->record);
@@ -1107,7 +1124,7 @@ protected:
             size_t h = entry->hash % size;  
             entry->collision = table[h]; 
             table[h] = entry;
-            entry = new Entry();
+            entry = allocator.alloc();
             if (++realSize == size) {
                 extendHash();
             }
@@ -1128,17 +1145,20 @@ protected:
         }
         printf("HashJoin: estimated size=%ld, real size=%ld, collitions=(%ld max, %f avg)\n", size, realSize, maxLen, nChains != 0 ? (double)totalLen/nChains : 0.0);
 #endif
-        delete entry;
         delete gather;
     }
     void deleteHash() {
-        for (size_t i = 0; i < size; i++) { 
-            Entry *curr, *next;
-            for (curr = table[i]; curr != NULL; curr = next) { 
-                next = curr->collision;
-                delete curr;
+#ifdef USE_MESSAGE_HANDLER
+        if (shuffle) { 
+            for (size_t i = 0; i < size; i++) { 
+                Entry *curr, *next;
+                for (curr = table[i]; curr != NULL; curr = next) { 
+                    next = curr->collision;
+                    delete curr;
+                }
             }
         }
+#endif
         delete[] table;
     }
 };
@@ -1155,6 +1175,7 @@ public:
         assert(kind != OuterJoin);
         // First load inner relation in hash...
         Cluster* cluster = Cluster::instance.get();
+        memset(table, 0, size*sizeof(Entry*));
         if (estimation <= cluster->broadcastJoinThreshold) { 
             // broadcast inner RDD
             loadHash(innerRDD->replicate());
@@ -1215,6 +1236,7 @@ protected:
     Queue*  queue;
     Thread* scatter;
     bool    shuffle;
+    BlockAllocator<Entry> allocator;
 
     void extendHash() 
     {
@@ -1259,8 +1281,7 @@ protected:
 
     void loadHash(RDD<I>* gather) 
     {
-        Entry* entry = new Entry();
-        memset(table, 0, size*sizeof(Entry*));
+        Entry* entry = allocator.alloc();
         size_t realSize = 0;
         while (gather->next(entry->record)) {
             innerKey(entry->key, entry->record);
@@ -1268,7 +1289,7 @@ protected:
             size_t h = entry->hash % size;  
             entry->collision = table[h]; 
             table[h] = entry;
-            entry = new Entry();
+            entry = allocator.alloc();
             if (++realSize == size) { 
                 extendHash();
             }
@@ -1289,18 +1310,21 @@ protected:
         }
         printf("HashSemiJoin: estimated size=%ld, real size=%ld, collitions=(%ld max, %f avg)\n", size, realSize, maxLen, nChains != 0 ? (double)totalLen/nChains : 0.0);
 #endif
-        delete entry;
         delete gather;
     }
 
     void deleteHash() {
-        for (size_t i = 0; i < size; i++) { 
-            Entry *curr, *next;
-            for (curr = table[i]; curr != NULL; curr = next) { 
-                next = curr->collision;
-                delete curr;
+#ifdef USE_MESSAGE_HANDLER
+        if (shuffle) { 
+            for (size_t i = 0; i < size; i++) { 
+                Entry *curr, *next;
+                for (curr = table[i]; curr != NULL; curr = next) { 
+                    next = curr->collision;
+                    delete curr;
+                }
             }
         }
+#endif
         delete[] table;
     }
 };
@@ -1347,17 +1371,18 @@ public:
                     FILE* innerFile = cluster->openTempFile("inner", qid, fileNo);
                     outerFile = cluster->openTempFile("outer", qid, fileNo);
 
-                    Entry* entry = new Entry();
-                    clearHash();
+                    memset(table, 0, size*sizeof(Entry*));
+                    allocator.reset();
+
+                    Entry* entry = allocator.alloc();
                     while (fread(&entry->record, sizeof(I), 1, innerFile) == 1) { 
                         innerKey(entry->key, entry->record);
                         entry->hash = hashCode(entry->key);
                         size_t h = entry->hash % size;  
                         entry->collision = table[h]; 
                         table[h] = entry;
-                        entry = new Entry();
+                        entry = allocator.alloc();
                     }
-                    delete entry;
                     fclose(innerFile);
                 }
                 if (fread(&outerRec, sizeof(O), 1, outerFile) != 1) { 
@@ -1387,7 +1412,6 @@ public:
     }
 
     ~ShuffleJoinRDD() { 
-        clearHash();
         delete[] table;
     }
 protected:
@@ -1410,7 +1434,8 @@ protected:
     Entry*  inner;
     qid_t   qid;
     size_t  fileNo;
-
+    BlockAllocator<Entry> allocator;
+    
     void saveOuterFiles(RDD<O>* input)
     {
         FILE** files = new FILE*[nFiles];
@@ -1453,18 +1478,6 @@ protected:
         }
         delete[] files;
         delete input;
-    }
-            
-
-    void clearHash() {
-        for (size_t i = 0; i < size; i++) { 
-            Entry *curr, *next;
-            for (curr = table[i]; curr != NULL; curr = next) { 
-                next = curr->collision;
-                delete curr;
-            }
-            table[i] = NULL;
-        }
     }
 };
     
@@ -1509,7 +1522,7 @@ public:
                 FILE* innerFile = cluster->openTempFile("inner", qid, fileNo);
                 outerFile = cluster->openTempFile("outer", qid, fileNo);
                 
-                Entry* entry = new Entry();
+                Entry* entry = allocator.alloc();
                 clearHash();
                 while (fread(&entry->record, sizeof(I), 1, innerFile) == 1) { 
                     innerKey(entry->key, entry->record);
@@ -1517,9 +1530,8 @@ public:
                     size_t h = entry->hash % size;  
                     entry->collision = table[h]; 
                     table[h] = entry;
-                    entry = new Entry();
+                    entry = allocator.alloc();
                 }
-                delete entry;
                 fclose(innerFile);
             }
             if (fread(&record, sizeof(O), 1, outerFile) != 1) { 
@@ -1558,7 +1570,8 @@ protected:
     FILE*   outerFile;
     qid_t   qid;
     size_t  fileNo;
-
+    BlockAllocator<Entry> allocator;
+    
     void saveOuterFiles(RDD<O>* input)
     {
         FILE** files = new FILE*[nFiles];
@@ -1640,7 +1653,7 @@ class CachedRDD : public RDD<T>
         }
     }
 
-    CachedRDD* get() { 
+    virtual RDD<T>* clone() { 
         return new CachedRDD(buf, size);
     }
 
@@ -1669,6 +1682,91 @@ class CachedRDD : public RDD<T>
     size_t size;
     bool copy;
 };
+
+template<class T>
+class MaterializedRDD : public RDD<T>
+{
+  public:
+    MaterializedRDD(Queue* queue, bool isSharded) : curr(0), copy(false), sharded(isSharded) { 
+        ListNode** tail = &list;
+        Cluster* cluster = Cluster::instance.get();
+        size_t nNodes = cluster->nNodes;
+        while (true) {
+            Buffer* buf = queue->get();
+            assert(buf != NULL);
+            switch (buf->kind) { 
+              case MSG_EOF:
+                buf->release();
+                if (--nNodes == 0) { 
+                    *tail = NULL;
+                    return;
+                }                
+                continue;
+              case MSG_PING:
+                buf->kind = MSG_PONG;
+                assert(buf->node < cluster->nNodes && buf->node != cluster->nodeId);
+                Cluster::instance->sendQueues[buf->node]->putFirst(buf);
+                continue;
+              default:
+                ListNode* node = new ListNode(buf);
+                *tail = node;
+                tail = &node->next;
+            }
+        }
+    }
+
+    bool next(T& record) { 
+        while (list != NULL) {
+            if (curr < list->buf->size) { 
+                curr += unpack(record, list->buf->data + curr);
+                return true;
+            }
+            list = list->next;
+            curr = 0;
+        }
+        return false;
+    }
+
+    virtual RDD<T>* clone() { 
+        return new MaterializedRDD(*this);
+    }
+    
+    ~MaterializedRDD() { 
+        if (!copy) { 
+            ListNode *curr, *next;
+            for (curr = list; curr != NULL; curr = next) { 
+                next = curr->next;
+                delete curr;
+            }
+        }
+    }
+    
+    bool isSharded() { return sharded; }
+
+  private:
+    struct ListNode {
+        Buffer* buf;
+        ListNode* next;
+        
+        ListNode(Buffer* data) : buf(data) {}
+        ~ListNode() { buf->release(); }
+    };
+    ListNode* list;
+    size_t    curr;
+    bool      copy;
+    bool      sharded;
+
+    MaterializedRDD(MaterializedRDD const& origin) : list(origin.list), curr(0), copy(true), sharded(origin.sharded) {}
+};
+
+template<class T>
+template<class K, void (*key)(K&, T const&)>
+RDD<T>* RDD<T>::scatter()
+{
+    Queue* queue = Cluster::instance->getQueue();
+    Thread load(new ScatterJob<T,K,key>(this, queue));
+    return new MaterializedRDD<T>(queue, true);
+}
 
 template<class T>
 void RDD<T>::output(FILE* out) 
@@ -1733,10 +1831,10 @@ inline RDD<T>* RDD<T>::top(size_t n) {
 
 template<class T>
 template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner)>
-RDD< Join<T,I> >* RDD<T>::join(RDD<I>* with, size_t estimation, JoinKind kind) {
+RDD< Join<T,I> >* RDD<T>::join(RDD<I>* with, size_t estimation, JoinKind kind, bool usingPrimaryKey) {
     Cluster* cluster = Cluster::instance.get();
     if (estimation <= cluster->inmemJoinThreshold) { 
-        return new HashJoinRDD<T,I,K,outerKey,innerKey>(this, with, estimation, kind);
+        return new HashJoinRDD<T,I,K,outerKey,innerKey>(this, with, estimation, kind, usingPrimaryKey);
     }
     size_t nFiles = (estimation + cluster->inmemJoinThreshold - 1) / cluster->inmemJoinThreshold;
     return new ShuffleJoinRDD<T,I,K,outerKey,innerKey>(this, with, nFiles, estimation/nFiles, kind);
