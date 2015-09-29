@@ -1,0 +1,42 @@
+cluster  m17/m18(10.71.146.32)/m19/m20
+root/russia123
+
+1、start hdfs
+m17 is the master of HDFS
+[root@m17:/home/panther/sparksql/hadoop-2.5.2/sbin]./start-dfs.sh
+
+2、start mesos
+m17 is the mesos master
+
+[root@m17:/home/panther/sparksql/mesos/sbin]./mesos-master --work_dir=../work_dir --ip=4.1.1.117
+[root@m17:/home/panther/sparksql/mesos/sbin]./mesos-slave --master=4.1.1.117:5050 --work_dir=../work_dir --ip=4.1.1.117 --hostname=4.1.1.117 --launcher_dir=/home/panther/sparksql/mesos/libexec/mesos
+[root@m18:/home/panther/sparksql/mesos/sbin]./mesos-slave --master=4.1.1.117:5050 --work_dir=../work_dir --ip=4.1.1.118 --hostname=4.1.1.118 --launcher_dir=/home/panther/sparksql/mesos/libexec/mesos
+[root@m19:/home/panther/sparksql/mesos/sbin]./mesos-slave --master=4.1.1.117:5050 --work_dir=../work_dir --ip=4.1.1.119 --hostname=4.1.1.119 --launcher_dir=/home/panther/sparksql/mesos/libexec/mesos
+[root@m20:/home/panther/sparksql/mesos/sbin]./mesos-slave --master=4.1.1.117:5050 --work_dir=../work_dir --ip=4.1.1.120 --hostname=4.1.1.120 --launcher_dir=/home/panther/sparksql/mesos/libexec/mesos
+
+when restart mesos, clear the work_dir first
+[root@m17:/home/panther/sparksql/mesos/sbin]rm -rf ../work_dir/*
+[root@m18:/home/panther/sparksql/mesos/sbin]rm -rf ../work_dir/*
+[root@m19:/home/panther/sparksql/mesos/sbin]rm -rf ../work_dir/*
+[root@m20:/home/panther/sparksql/mesos/sbin]rm -rf ../work_dir/*
+
+
+3、start frog(storage and network mode)
+on m17/m18/m19/m20, 
+[root@m17:/home/nuwa/NVMe]./NVMeControl.sh -o start 4.1.1.117
+[root@m18:/home/nuwa/NVMe]./NVMeControl.sh -o start 4.1.1.118
+[root@m19:/home/nuwa/NVMe]./NVMeControl.sh -o start 4.1.1.119
+[root@m20:/home/nuwa/NVMe]./NVMeControl.sh -o start 4.1.1.120
+
+if you want to stop it,
+
+[root@m17:/home/nuwa/NVMe]./NVMeControl.sh -o stop
+[root@m18:/home/nuwa/NVMe]./NVMeControl.sh -o stop
+[root@m19:/home/nuwa/NVMe]./NVMeControl.sh -o stop
+[root@m20:/home/nuwa/NVMe]./NVMeControl.sh -o stop
+
+4、start spark
+
+only need at m18:
+[root@m18:/home/panther/sparksql/spark-1.2.0-cbo/bin]./spark-shell --master mesos://m17:5050
+and put the scala code in tpch_query_sql.sh to it one query at a time;
