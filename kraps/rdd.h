@@ -991,7 +991,7 @@ public:
         memset(table, 0, size*sizeof(Entry*));
         if (usingPrimaryKey && innerRDD->isSharded()) { 
             loadHash(innerRDD);
-            shuffle = false;
+            shuffle = true;
         } else if (estimation <= cluster->broadcastJoinThreshold) { 
             // broadcast inner RDD
             loadHash(innerRDD->replicate());
