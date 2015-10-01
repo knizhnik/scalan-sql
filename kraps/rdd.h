@@ -186,7 +186,7 @@ class RDD
      * Left join two RDDs
      */
     template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner)>
-    RDD< Join<T,I> >* join(RDD<I>* with, size_t estimation, JoinKind kind = InnerJoin, bool usingPrimaryKey = true);
+    RDD< Join<T,I> >* join(RDD<I>* with, size_t estimation, char const* outerKeyName, char const* innerKeyName, JoinKind kind = InnerJoin);
 
     /**
      * Left simijoin two RDDs
@@ -215,12 +215,12 @@ class RDD
      */
     void output(FILE* out);
 
-    virtual bool isSharded() {
-        return false;
+    virtual char const* shardingKey() {
+        return NULL;
     }
 
     template<class K, void (*key)(K&, T const&)>
-    RDD<T>* scatter();
+    RDD<T>* scatter(char const* shardingKey);
 
     virtual RDD<T>* clone() { 
         return NULL;
@@ -631,8 +631,8 @@ class FilterRDD : public RDD<T>
   public:
     FilterRDD(RDD<T>* input) : in(input) {}
 
-    virtual bool isSharded() {
-        return in->isSharded();
+    virtual char const* sharingKey() {
+        return in->shardingKey();
     }
     
     bool next(T& record) {
@@ -826,10 +826,10 @@ class ProjectRDD : public RDD<P>
   public:
     ProjectRDD(RDD<T>* input) : in(input) {}
 
-    virtual bool isSharded() {
-        return in->isSharded();
+    virtual char const* sharingKey() {
+        return in->shardingKey();
     }
-    
+
     bool next(P& projection) { 
         T record;
         if (in->next(record)) { 
@@ -983,16 +983,20 @@ template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), vo
 class HashJoinRDD : public RDD< Join<O,I> >, MessageHandler
 {
 public:
-    HashJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t estimation, JoinKind joinKind, bool usingPrimaryKey) 
+    HashJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t estimation, JoinKind joinKind, char const* outerKeyName, char const* innerKeyName) 
     : kind(joinKind), table(new Entry*[estimation]), size(estimation), innerSize(0), inner(NULL), outer(outerRDD), scatter(NULL) {
         assert(kind != AntiJoin);
         // First load inner relation in hash...
         Cluster* cluster = Cluster::instance.get();
         memset(table, 0, size*sizeof(Entry*));
-        if (usingPrimaryKey && innerRDD->isSharded()) { 
+        if (innerKeyName == innerRDD->shardingKey()) { 
             loadHash(innerRDD);
-            queue = cluster->getQueue();
-            shuffle = true;
+            if (outerKeyName != outerRDD->shardingKey()) {
+                queue = cluster->getQueue();
+                shuffle = true;
+            } else { 
+                shuffle = false;
+            }
         } else if (estimation <= cluster->broadcastJoinThreshold) { 
             // broadcast inner RDD
             loadHash(innerRDD->replicate());
@@ -1688,7 +1692,7 @@ template<class T>
 class MaterializedRDD : public RDD<T>
 {
   public:
-    MaterializedRDD(Queue* queue, bool isSharded) : curr(0), copy(false), sharded(isSharded) { 
+    MaterializedRDD(Queue* queue, char const* shardingKey) : curr(0), copy(false), key(shardingKey) { 
         ListNode** tail = &list;
         Cluster* cluster = Cluster::instance.get();
         size_t nNodes = cluster->nNodes;
@@ -1742,7 +1746,7 @@ class MaterializedRDD : public RDD<T>
         }
     }
     
-    bool isSharded() { return sharded; }
+    char const* shardinKey() { return key; }
 
   private:
     struct ListNode {
@@ -1752,21 +1756,21 @@ class MaterializedRDD : public RDD<T>
         ListNode(Buffer* data) : buf(data) {}
         ~ListNode() { buf->release(); }
     };
-    ListNode* list;
-    size_t    curr;
-    bool      copy;
-    bool      sharded;
+    ListNode*   list;
+    size_t      curr;
+    bool        copy;
+    char const* key;
 
-    MaterializedRDD(MaterializedRDD const& origin) : list(origin.list), curr(0), copy(true), sharded(origin.sharded) {}
+    MaterializedRDD(MaterializedRDD const& origin) : list(origin.list), curr(0), copy(true), key(origin.key) {}
 };
 
 template<class T>
 template<class K, void (*key)(K&, T const&)>
-RDD<T>* RDD<T>::scatter()
+RDD<T>* RDD<T>::scatter(char const* shardingKey)
 {
     Queue* queue = Cluster::instance->getQueue();
     Thread load(new ScatterJob<T,K,key>(this, queue));
-    return new MaterializedRDD<T>(queue, true);
+    return new MaterializedRDD<T>(queue, shardingKey);
 }
 
 template<class T>
@@ -1832,10 +1836,10 @@ inline RDD<T>* RDD<T>::top(size_t n) {
 
 template<class T>
 template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner)>
-RDD< Join<T,I> >* RDD<T>::join(RDD<I>* with, size_t estimation, JoinKind kind, bool usingPrimaryKey) {
+RDD< Join<T,I> >* RDD<T>::join(RDD<I>* with, size_t estimation, char const* outerKeyName, char const* innerKeyName, JoinKind kind) {
     Cluster* cluster = Cluster::instance.get();
     if (estimation <= cluster->inmemJoinThreshold) { 
-        return new HashJoinRDD<T,I,K,outerKey,innerKey>(this, with, estimation, kind, usingPrimaryKey);
+        return new HashJoinRDD<T,I,K,outerKey,innerKey>(this, with, estimation, kind, outerKeyName, innerKeyName);
     }
     size_t nFiles = (estimation + cluster->inmemJoinThreshold - 1) / cluster->inmemJoinThreshold;
     return new ShuffleJoinRDD<T,I,K,outerKey,innerKey>(this, with, nFiles, estimation/nFiles, kind);
