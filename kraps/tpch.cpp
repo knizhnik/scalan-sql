@@ -1726,31 +1726,21 @@ void execute(char const* name, RDD<T>* (*query)())
 
 class TPCHJob : public Job
 {
-    size_t const nodeId;
-    size_t const nHosts;
-    char** const hosts;
-    size_t const nQueues;
-    size_t const bufferSize;
-    size_t const recvQueueSize;
-    size_t const sendQueueSize;
-    size_t const syncInterval;
-    size_t const broadcastJoinThreshold;
-    size_t const inmemJoinThreshold;
-    size_t const split;
-    char   const*tmp;
-    bool   const sharedNothing;
-    bool   const useCache;
-    bool   const doSharding;
+    Cluster cluster;
+    bool useCache;
+    bool doSharding;
+    
   public:
-    TPCHJob(size_t _nodeId, size_t _nHosts, char** _hosts = NULL, size_t _nQueues = 64, size_t _bufferSize = 4*64*1024, size_t _recvQueueSize = 4*64*1024*1024,  size_t _sendQueueSize = 4*4*1024*1024, size_t _syncInterval = 64*1024*1024, size_t _broadcastJoinThreshold = 10000, size_t _inmemJoinThreshold = 10000000, char const* _tmp = "/tmp", bool _sharedNothing = false, size_t _split = 1, bool _useCache = false, bool _doSharding = false)
-    : nodeId(_nodeId), nHosts(_nHosts), hosts(_hosts), nQueues(_nQueues), bufferSize(_bufferSize), recvQueueSize(_recvQueueSize),
-      sendQueueSize(_sendQueueSize), syncInterval(_syncInterval), broadcastJoinThreshold(_broadcastJoinThreshold),
-      inmemJoinThreshold(_inmemJoinThreshold), split(_split), tmp(_tmp), sharedNothing(_sharedNothing), useCache(_useCache), doSharding(_doSharding) {}
+    TPCHJob(size_t nodeId, size_t nHosts, char** hosts = NULL, size_t nQueues = 64, size_t bufferSize = 4*64*1024, size_t recvQueueSize = 4*64*1024*1024,  size_t sendQueueSize = 4*4*1024*1024, size_t syncInterval = 64*1024*1024, size_t broadcastJoinThreshold = 10000, size_t inmemJoinThreshold = 10000000, char const* tmp = "/tmp", bool sharedNothing = false, size_t split = 1, bool _useCache = false, bool _doSharding = false)
+    : cluster(nodeId, nHosts, hosts, nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, split),
+      useCache(_useCache),
+      doSharding(_doSharding)
+    {}
     
   public:
     void run() {
-    Cluster cluster(nodeId, nHosts, hosts, nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, split);
-        printf("Node %d started...\n", (int)nodeId);
+        Cluster::instance.set(&cluster);
+        printf("Node %d started...\n", (int)cluster.nodeId);
 
         time_t start = time(NULL);
         if (useCache) { 
@@ -1775,7 +1765,7 @@ class TPCHJob : public Job
         
         delete (CachedData*)cluster.userData;
 
-        printf("Node %d finished.\n", (int)nodeId);
+        printf("Node %d finished.\n", (int)cluster.nodeId);
     }
 };
 
