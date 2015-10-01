@@ -30,9 +30,9 @@ void sum(double& dst, double const& src)
     dst += src;
 }
 
-void count(int& dst, int const&)
+void count(int& dst, int const& src)
 {
-    dst += 1;
+    dst += src;
 }
 
 void nationKey(int& key, Nation const& nation)
