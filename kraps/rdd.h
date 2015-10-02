@@ -215,13 +215,36 @@ class RDD
      */
     void output(FILE* out);
 
+    /**
+     * Get name of sharding key (NULL if table is not sharded).
+     */
     virtual char const* shardingKey() {
         return NULL;
     }
 
+    /**
+     * Check if RDD is replaicated (same data is present at all nodes)
+     */
+    virtual bool isReplicated() { 
+        return false;
+    }
+
+    /**
+     * Distribute table by sharding key
+     */
     template<class K, void (*key)(K&, T const&)>
     RDD<T>* scatter(char const* shardingKey);
 
+    /**
+     * Cache RDD in memory
+     * @param esimation number of elements in RDD
+     * @param replicated whether cached relation should be first replicated
+     */
+    virtual RDD<T>* cache(size_t esimation, bool replicated = false);
+
+    /**
+     * Make clone of RDD: allows to iterate through RDD from scratch
+     */
     virtual RDD<T>* clone() { 
         return NULL;
     }
@@ -494,10 +517,67 @@ class ReplicateRDD : public GatherRDD<T>
 {
 public:
     ReplicateRDD(RDD<T>* input, Queue* queue) : GatherRDD<T>(queue), thread(new BroadcastJob<T>(input, queue)) {}
+    virtual bool isReplicated() { return true; }
 private:
     Thread thread;
 };
     
+  
+//
+// RDD cached in memory
+//
+template<class T>
+class CachedRDD : public RDD<T>
+{
+  public:
+    CachedRDD(RDD<T>* input, size_t estimation, bool isReplicated = false) : copy(false), replicated(isReplicated) { 
+        cacheData(input, estimation);
+    }
+    bool next(T& record) { 
+        if (curr == size) { 
+            return false;
+        }
+        record = buf[curr++];
+        return true;
+    }
+    ~CachedRDD() { 
+        if (!copy) { 
+            delete[] buf;
+        }
+    }
+
+    virtual RDD<T>* clone() { 
+        return new CachedRDD(*this);
+    }
+
+    virtual bool isReplicated() { return replicated; }
+
+  private:
+    CachedRDD(CachedRDD const& orig) : buf(orig.buf), curr(0), size(orig.size), copy(true), replicated(orig.replicated) {}
+
+    void cacheData(RDD<T>* input, size_t estimation) { 
+        buf = new T[estimation];
+        size_t i = 0;
+        while (input->next(buf[i])) { 
+            if (++i == estimation) {
+                T* newBuf = new T[estimation *= 2];
+                printf("Extend cache to %ld\n", estimation);
+                memcpy(newBuf, buf, i*sizeof(T));
+                delete[] buf;
+                buf = newBuf;
+            }
+        }
+        size = i;
+        curr = 0;
+        delete input;
+    }
+
+    T* buf;
+    size_t curr;
+    size_t size;
+    bool copy;
+    bool replicated;
+};
 
 //
 // Read data from OS plain file
@@ -506,7 +586,7 @@ template<class T>
 class FileRDD : public RDD<T>
 {
   public:
-    FileRDD(char* path) : f(fopen(path, "rb")), segno(Cluster::instance->nodeId), split(Cluster::instance->sharedNothing ? 1 : Cluster::instance->nNodes) {
+    FileRDD(char* path) : f(fopen(path, "rb")), segno(Cluster::instance->nodeId), split(Cluster::instance->sharedNothing ? 1 : Cluster::instance->nNodes), replicated(false) {
         assert(f != NULL);
         delete[] path;
         fseek(f, 0, SEEK_END);
@@ -514,11 +594,21 @@ class FileRDD : public RDD<T>
         recNo = fseek(f, nRecords*segno*sizeof(T), SEEK_SET) == 0 ? 0 : nRecords;
     }
 
+    bool isReplicated() { 
+        return replicated;
+    }
+
+    RDD<T>* cache(size_t estimation, bool replicated)
+    {
+        return new CachedRDD<T>(replicated ? replicate() : this, estimation, replicated);
+    }
+
     RDD<T>* replicate() { 
         if (split != 1) { 
             nRecords *= split;
             recNo = 0;
             fseek(f, 0, SEEK_SET);
+            replicated = true;
             return this;
         }
         return RDD<T>::replicate();
@@ -536,6 +626,7 @@ class FileRDD : public RDD<T>
     size_t split;
     long recNo;
     long nRecords;
+    bool replicated;
 };
 
 //
@@ -555,6 +646,15 @@ class DirRDD : public RDD<T>
         split = 1;
         recNo = 0;
         return this;
+    }
+
+    bool isReplicated() { 
+        return step == 1;
+    }
+
+    RDD<T>* cache(size_t estimation, bool replicated)
+    {
+        return new CachedRDD<T>(replicated ? replicate() : this, estimation, replicated);
     }
 
     bool next(T& record) {
@@ -635,6 +735,10 @@ class FilterRDD : public RDD<T>
         return in->shardingKey();
     }
     
+    virtual bool isReplicated() { 
+        return in->isReplicated();
+    }
+
     bool next(T& record) {
         while (in->next(record)) { 
             if (predicate(record)) {
@@ -830,6 +934,10 @@ class ProjectRDD : public RDD<P>
         return in->shardingKey();
     }
 
+    virtual bool isReplicated() { 
+        return in->isReplicated();
+    }
+
     bool next(P& projection) { 
         T record;
         if (in->next(record)) { 
@@ -989,9 +1097,9 @@ public:
         // First load inner relation in hash...
         Cluster* cluster = Cluster::instance.get();
         memset(table, 0, size*sizeof(Entry*));
-        if (innerKeyName == innerRDD->shardingKey()) { 
+        if (innerKeyName == innerRDD->shardingKey() || innerRDD->isReplicated()) { 
             loadHash(innerRDD);
-            if (outerKeyName != outerRDD->shardingKey()) {
+            if (outerKeyName != outerRDD->shardingKey() && !innerRDD->isReplicated()) {
                 queue = cluster->getQueue();
                 shuffle = true;
             } else { 
@@ -1634,65 +1742,13 @@ protected:
     }
 };
     
-  
-//
-// Cache RDD in memory
-//
-template<class T>
-class CachedRDD : public RDD<T>
-{
-  public:
-    CachedRDD(RDD<T>* input, size_t estimation) : copy(false) { 
-        cacheData(input, estimation);
-    }
-    bool next(T& record) { 
-        if (curr == size) { 
-            return false;
-        }
-        record = buf[curr++];
-        return true;
-    }
-    ~CachedRDD() { 
-        if (!copy) { 
-            delete[] buf;
-        }
-    }
-
-    virtual RDD<T>* clone() { 
-        return new CachedRDD(buf, size);
-    }
-
-  private:
-    CachedRDD(T* buffer, size_t bufSize) : buf(buffer), curr(0), size(bufSize), copy(true) {}
-
-    void cacheData(RDD<T>* input, size_t estimation) { 
-        buf = new T[estimation];
-        size_t i = 0;
-        while (input->next(buf[i])) { 
-            if (++i == estimation) {
-                T* newBuf = new T[estimation *= 2];
-                printf("Extend cache to %ld\n", estimation);
-                memcpy(newBuf, buf, i*sizeof(T));
-                delete[] buf;
-                buf = newBuf;
-            }
-        }
-        size = i;
-        curr = 0;
-        delete input;
-    }
-
-    T* buf;
-    size_t curr;
-    size_t size;
-    bool copy;
-};
-
 template<class T>
 class MaterializedRDD : public RDD<T>
 {
   public:
-    MaterializedRDD(Queue* queue, char const* shardingKey) : curr(0), copy(false), key(shardingKey) { 
+    MaterializedRDD(Queue* queue, char const* shardingKey, bool isReplicated) 
+  : curr(0), copy(false), replicated(isReplicated), key(shardingKey)
+    { 
         ListNode** tail = &list;
         Cluster* cluster = Cluster::instance.get();
         size_t nNodes = cluster->nNodes;
@@ -1746,7 +1802,9 @@ class MaterializedRDD : public RDD<T>
         }
     }
     
-    char const* shardinKey() { return key; }
+    virtual char const* shardingKey() { return key; }
+
+    virtual bool isReplicated() { return replicated; }
 
   private:
     struct ListNode {
@@ -1759,9 +1817,11 @@ class MaterializedRDD : public RDD<T>
     ListNode*   list;
     size_t      curr;
     bool        copy;
+    bool        replicated;
     char const* key;
 
-    MaterializedRDD(MaterializedRDD const& origin) : list(origin.list), curr(0), copy(true), key(origin.key) {}
+    MaterializedRDD(MaterializedRDD const& origin) 
+    : list(origin.list), curr(0), copy(true), replicated(origin.replicated), key(origin.key) {}
 };
 
 template<class T>
@@ -1770,9 +1830,21 @@ RDD<T>* RDD<T>::scatter(char const* shardingKey)
 {
     Queue* queue = Cluster::instance->getQueue();
     Thread load(new ScatterJob<T,K,key>(this, queue));
-    return new MaterializedRDD<T>(queue, shardingKey);
+    return new MaterializedRDD<T>(queue, shardingKey, false);
 }
 
+template<class T>
+RDD<T>* RDD<T>::cache(size_t estimation, bool replicate)
+{
+    if (replicate) { 
+        Queue* queue = Cluster::instance->getQueue();
+        Thread load(new BroadcastJob<T>(this, queue));
+        return new MaterializedRDD<T>(queue, NULL, true);
+    } else { 
+        return new CachedRDD<T>(this, estimation);
+    }
+}
+    
 template<class T>
 void RDD<T>::output(FILE* out) 
 {

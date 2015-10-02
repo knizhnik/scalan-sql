@@ -39,6 +39,21 @@ class ParquetRoundRobinRDD : public RDD<T>
   public:
     ParquetRoundRobinRDD(char* path) : dir(path), segno(Cluster::instance->nodeId), step(Cluster::instance->nNodes), nextPart(true) {}
 
+    RDD<T>* replicate() { 
+        step = 1;
+        segno = 0;
+    }
+
+    bool isReplicated() { 
+        return step == 1;
+    }
+
+
+    RDD<T>* cache(size_t esimation, bool replicated)
+    {
+        return new CachedRDD<T>(replicated ? replicate() : this, estimation, replicated);
+    }
+
     bool next(T& record) {
         while (true) {
             if (nextPart) { 

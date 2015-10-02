@@ -103,22 +103,22 @@ class CachedData
 
     CachedData(bool sharded) 
     { 
-        _Nation = new CachedRDD<Nation>(FileManager::load<Nation>(filePath("Nation")),       25);
-        _Region = new CachedRDD<Region>(FileManager::load<Region>(filePath("Region")),       5);
+        _Nation = FileManager::load<Nation>(filePath("Nation"))->cache(25, true);
+        _Region = FileManager::load<Region>(filePath("Region"))->cache(5, true);
+        _Supplier = FileManager::load<Supplier>(filePath("Supplier"))->cache(SCALE(10000), sharded);
+        _Customer = FileManager::load<Customer>(filePath("Customer"))->cache(SCALE(150000), sharded);
         if (sharded) { 
             _Lineitem = FileManager::load<Lineitem>(filePath("Lineitem"))->scatter<long,lineitemOrderKey>("l_orderkey");
-            _Orders = FileManager::load<Orders>(filePath("Orders"))->scatter<long,ordersKey>("o_orderkey");
-            _Supplier = FileManager::load<Supplier>(filePath("Supplier"))->scatter<int,supplierKey>("s_suppkey");
-            _Customer = FileManager::load<Customer>(filePath("Customer"))->scatter<int,customerKey>("c_custkey");
-            _Part = FileManager::load<Part>(filePath("Part"))->scatter<int,partKey>("p_partkey");
+            _Orders =   FileManager::load<Orders>(filePath("Orders"))->scatter<long,ordersKey>("o_orderkey");
+            //_Supplier = FileManager::load<Supplier>(filePath("Supplier"))->scatter<int,supplierKey>("s_suppkey");
+            //_Customer = FileManager::load<Customer>(filePath("Customer"))->scatter<int,customerKey>("c_custkey");
+             _Part =     FileManager::load<Part>(filePath("Part"))->scatter<int,partKey>("p_partkey");
             _Partsupp = FileManager::load<Partsupp>(filePath("Partsupp"))->scatter<PartsuppKey,partsuppKey>("ps_partkey,ps_suppkey");
         } else {
-            _Lineitem = new CachedRDD<Lineitem>(FileManager::load<Lineitem>(filePath("Lineitem")), SCALE(6000000));
-            _Orders = new CachedRDD<Orders>(FileManager::load<Orders>(filePath("Orders")),         SCALE(1500000));
-            _Supplier = new CachedRDD<Supplier>(FileManager::load<Supplier>(filePath("Supplier")), SCALE(10000));
-            _Customer = new CachedRDD<Customer>(FileManager::load<Customer>(filePath("Customer")), SCALE(150000));
-            _Part = new CachedRDD<Part>(FileManager::load<Part>(filePath("Part")),                 SCALE(200000));
-            _Partsupp = new CachedRDD<Partsupp>(FileManager::load<Partsupp>(filePath("Partsupp")), SCALE(800000));
+            _Lineitem = FileManager::load<Lineitem>(filePath("Lineitem"))->cache(SCALE(6000000));
+            _Orders =   FileManager::load<Orders>(filePath("Orders"))    ->cache(SCALE(1500000));
+            _Part =     FileManager::load<Part>(filePath("Part"))        ->cache(SCALE(200000));
+            _Partsupp = FileManager::load<Partsupp>(filePath("Partsupp"))->cache(SCALE(800000));
         }
     }
 
