@@ -161,6 +161,7 @@ Socket* Socket::connect(char const* address, size_t maxAttempts)
             }
         }
         if (rc < 0) { 
+            ::close(sd);
             if (errno == EINPROGRESS) {
                 throw SocketError("Failed to connect socket");
             }
