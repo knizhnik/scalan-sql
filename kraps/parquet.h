@@ -43,6 +43,7 @@ class ParquetRoundRobinRDD : public RDD<T>
     RDD<T>* replicate() { 
         step = 1;
         segno = 0;
+        return this;
     }
 
     bool isReplicated() { 
