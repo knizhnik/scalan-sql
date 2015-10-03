@@ -37,7 +37,8 @@ template<class T>
 class ParquetRoundRobinRDD : public RDD<T>
 {
   public:
-    ParquetRoundRobinRDD(char* path) : dir(path), segno(Cluster::instance->nodeId), step(Cluster::instance->nNodes), nextPart(true) {}
+    ParquetRoundRobinRDD(char* path) 
+  : dir(path), segno(Cluster::instance->nodeId), nNodes(Cluster::instance->nNodes), step(nNodes), nextPart(true) {}
 
     RDD<T>* replicate() { 
         step = 1;
@@ -45,13 +46,11 @@ class ParquetRoundRobinRDD : public RDD<T>
     }
 
     bool isReplicated() { 
-        return step == 1;
+        return true;
     }
 
-
-    RDD<T>* cache(size_t esimation, bool replicated)
-    {
-        return new CachedRDD<T>(replicated ? replicate() : this, estimation, replicated);
+    virtual size_t sourceNode() { 
+        return segno % nNodes;
     }
 
     bool next(T& record) {

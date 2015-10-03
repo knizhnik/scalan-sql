@@ -71,6 +71,7 @@ Buffer* Queue::get()
 
 void Cluster::send(size_t node, Queue* queue, Buffer* buf)
 {
+    buf->node = (uint32_t)node;
 #ifdef USE_MESSAGE_HANDLER
     if (node == nodeId) {
         queue->put(buf);

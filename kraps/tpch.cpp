@@ -103,10 +103,10 @@ class CachedData
 
     CachedData(bool sharded) 
     { 
-        _Nation = FileManager::load<Nation>(filePath("Nation"))->cache(25, true);
-        _Region = FileManager::load<Region>(filePath("Region"))->cache(5, true);
-        _Supplier = FileManager::load<Supplier>(filePath("Supplier"))->cache(SCALE(10000), sharded);
-        _Customer = FileManager::load<Customer>(filePath("Customer"))->cache(SCALE(150000), sharded);
+        _Nation = FileManager::load<Nation>(filePath("Nation"))->cache(true);
+        _Region = FileManager::load<Region>(filePath("Region"))->cache(true);
+        _Supplier = FileManager::load<Supplier>(filePath("Supplier"))->cache(sharded);
+        _Customer = FileManager::load<Customer>(filePath("Customer"))->cache(sharded);
         if (sharded) { 
             _Lineitem = FileManager::load<Lineitem>(filePath("Lineitem"))->scatter<long,lineitemOrderKey>("l_orderkey");
             _Orders =   FileManager::load<Orders>(filePath("Orders"))->scatter<long,ordersKey>("o_orderkey");
@@ -115,10 +115,10 @@ class CachedData
              _Part =     FileManager::load<Part>(filePath("Part"))->scatter<int,partKey>("p_partkey");
             _Partsupp = FileManager::load<Partsupp>(filePath("Partsupp"))->scatter<PartsuppKey,partsuppKey>("ps_partkey,ps_suppkey");
         } else {
-            _Lineitem = FileManager::load<Lineitem>(filePath("Lineitem"))->cache(SCALE(6000000));
-            _Orders =   FileManager::load<Orders>(filePath("Orders"))    ->cache(SCALE(1500000));
-            _Part =     FileManager::load<Part>(filePath("Part"))        ->cache(SCALE(200000));
-            _Partsupp = FileManager::load<Partsupp>(filePath("Partsupp"))->cache(SCALE(800000));
+            _Lineitem = FileManager::load<Lineitem>(filePath("Lineitem"))->cache();
+            _Orders =   FileManager::load<Orders>(filePath("Orders"))    ->cache();
+            _Part =     FileManager::load<Part>(filePath("Part"))        ->cache();
+            _Partsupp = FileManager::load<Partsupp>(filePath("Partsupp"))->cache();
         }
     }
 
