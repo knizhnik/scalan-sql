@@ -1091,6 +1091,7 @@ public:
                 outer = outerRDD->replicate();
                 shuffle = false;
             } else {
+                printf("HashJoin: shuffle outer table by %s\n", outerKeyName);
                 queue = cluster->getQueue();
             }
         }
@@ -1286,6 +1287,7 @@ public:
                 outer = outerRDD->replicate();
                 shuffle = false;
             } else {
+                printf("HashSemiJoin: shuffle outer table by %s\n", outerKeyName);
                 queue = cluster->getQueue();
             }
         }
@@ -1864,6 +1866,7 @@ RDD<T>* RDD<T>::cache(bool replicated)
         if (isReplicated()) { 
             return new CachedRDD<T>(replicate(), true);
         } else { 
+            printf("RDD::cache: replicate RDD\n");
             Queue* queue = Cluster::instance->getQueue();
             Thread load(new BroadcastJob<T>(this, queue));
             return new CachedRDD<T>(queue, NULL, true);
@@ -1894,6 +1897,7 @@ void RDD<T>::output(FILE* out)
 
 template<class T>
 inline RDD<T>* RDD<T>::replicate() { 
+    printf("RDD::replicate: replicate input RDD\n");
     Queue* queue = Cluster::instance->getQueue();
     return new ReplicateRDD<T>(this, queue);
 }
