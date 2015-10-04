@@ -531,7 +531,15 @@ class ReplicateRDD : public GatherRDD<T>
 {
 public:
     ReplicateRDD(RDD<T>* input, Queue* queue) : GatherRDD<T>(queue), thread(new BroadcastJob<T>(input, queue)) {}
-    virtual bool isReplicated() { return true; }
+
+    virtual bool isReplicated() { 
+        return true; 
+    }
+
+    virtual RDD<T>* replicate() { 
+        return this;
+    }
+        
 private:
     Thread thread;
 };
@@ -692,6 +700,11 @@ class FilterRDD : public RDD<T>
         return in->isReplicated();
     }
 
+    virtual RDD<T>* replicate() { 
+        in = in->replicate();
+        return this;
+    }
+        
     bool next(T& record) {
         while (in->next(record)) { 
             if (predicate(record)) {
@@ -704,7 +717,7 @@ class FilterRDD : public RDD<T>
     ~FilterRDD() { delete in; }
 
   private:
-    RDD<T>* const in;
+    RDD<T>* in;
 };
     
 //
@@ -891,6 +904,11 @@ class ProjectRDD : public RDD<P>
         return in->isReplicated();
     }
 
+    virtual RDD<P>* replicate() { 
+        in = in->replicate();
+        return this;
+    }
+        
     bool next(P& projection) { 
         T record;
         if (in->next(record)) { 
@@ -903,7 +921,7 @@ class ProjectRDD : public RDD<P>
     ~ProjectRDD() { delete in; }
 
   private:
-    RDD<T>* const in;
+    RDD<T>* in;
 };
 
 //
