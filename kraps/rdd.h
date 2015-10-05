@@ -1855,7 +1855,7 @@ class CachedRDD : public RDD<T>
     char const* key;
 
     CachedRDD(CachedRDD const& origin) 
-    : list(origin.list), curr(0), copy(true), replicated(origin.replicated), key(origin.key) {}
+    : list(origin.list), curr(0), nodeId(origin.nodeId), copy(true), replicated(origin.replicated), key(origin.key) {}
 };
 
 template<class T>
