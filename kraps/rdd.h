@@ -692,7 +692,7 @@ class FilterRDD : public RDD<T>
   public:
     FilterRDD(RDD<T>* input) : in(input) {}
 
-    virtual char const* sharingKey() {
+    virtual char const* shardingKey() {
         return in->shardingKey();
     }
     
@@ -896,7 +896,7 @@ class ProjectRDD : public RDD<P>
   public:
     ProjectRDD(RDD<T>* input) : in(input) {}
 
-    virtual char const* sharingKey() {
+    virtual char const* shardingKey() {
         return in->shardingKey();
     }
 
@@ -1071,7 +1071,7 @@ public:
         Cluster* cluster = Cluster::instance.get();
         memset(table, 0, size*sizeof(Entry*));
 
-        printf("HashJoin: outerJoinKey=%s(%p), innerJoinKey=%s(%p), outerSharingKey=%s(%p), innerShardingKey=%s(%p), outerReplicated=%d, innerReplicated=%d\n",
+        printf("HashJoin: outerJoinKey=%s(%p), innerJoinKey=%s(%p), outerShardingKey=%s(%p), innerShardingKey=%s(%p), outerReplicated=%d, innerReplicated=%d\n",
                DUP(outerKeyName), DUP(innerKeyName), DUP(outerRDD->shardingKey()), DUP(innerRDD->shardingKey()), outerRDD->isReplicated(), innerRDD->isReplicated());
         
         if (estimation <= cluster->broadcastJoinThreshold || innerRDD->isReplicated()) { 
