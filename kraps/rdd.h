@@ -1055,6 +1055,8 @@ class TopRDD : public RDD<T>
     }
 };
 
+#define DUP(x) x,x
+
 //
 // Join two RDDs using hash table
 //
@@ -1068,6 +1070,10 @@ public:
         // First load inner relation in hash...
         Cluster* cluster = Cluster::instance.get();
         memset(table, 0, size*sizeof(Entry*));
+
+        printf("HashJoin: outerJoinKey=%s(%p), innerJoinKey=%s(%p), outerSharingKey=%s(%p), innerShardingKey=%s(%p), outerReplicated=%d, innerReplicated=%d\n",
+               DUP(outerKeyName), DUP(innerKeyName), DUP(outerRDD->shardingKey()), DUP(innerRDD->shardingKey()), outerRDD->isReplicated(), innerRDD->isReplicated());
+        
         if (estimation <= cluster->broadcastJoinThreshold || innerRDD->isReplicated()) { 
             // broadcast inner RDD
             loadHash(innerRDD->replicate());
@@ -1760,6 +1766,8 @@ class CachedRDD : public RDD<T>
                 if (isReplicated) {
                     node = input->sourceNode();
                 }
+            } else if (isReplicated && node == ANY_NODE) { 
+                node = input->sourceNode();
             }
             used += pack(record, buf->data + used);
         }
