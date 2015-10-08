@@ -311,7 +311,7 @@ void SendJob::run()
     try {
         while (true) { 
             Buffer* buf = cluster->sendQueues[node]->get();
-            buf->node = (uint32_t)cluster->nodeId;
+            buf->node = (uint16_t)cluster->nodeId;
             memcpy(ioBuf, buf, BUF_HDR_SIZE);
             if (cluster->sockets[node]->isLocal()) {
                 ioBuf->compressedSize = buf->size;
