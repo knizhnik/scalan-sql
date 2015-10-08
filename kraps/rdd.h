@@ -192,7 +192,7 @@ class RDD
      * Left simijoin two RDDs
      */
     template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner)>
-    RDD<T>* semijoin(RDD<I>* with, size_t estimation, JoinKind kind = InnerJoin);
+    RDD<T>* semijoin(RDD<I>* with, size_t estimation, char const* outerKeyName, char const* innerKeyName, JoinKind kind = InnerJoin);
 
     /**
      * Replicate data between all nodes.
@@ -215,13 +215,47 @@ class RDD
      */
     void output(FILE* out);
 
+    /**
+     * Get name of sharding key (NULL if table is not sharded).
+     */
     virtual char const* shardingKey() {
         return NULL;
     }
 
+    /**
+     * Check if RDD is replicated (same data is present at all nodes).
+     * To make all operators correctly work, even if data is replicated, RDD still returns subset of data 
+     * corresponding to this node. To get all this data replicsate() method should be called.
+     */
+    virtual bool isReplicated() { 
+        return false;
+    }
+
+    /**
+     * Return source node of the current record.
+     * Should be called after next(). This method is now implemented by input RDDs (FileRDD, DirRDD, ParquetRoundRobinRDD) 
+     * and used by CachedRDD to correctly deal with replicated data.
+     */
+    virtual size_t sourceNode() { 
+        return ANY_NODE;
+    } 
+
+    /**
+     * Distribute table by sharding key
+     */
     template<class K, void (*key)(K&, T const&)>
     RDD<T>* scatter(char const* shardingKey);
 
+    /**
+     * Cache RDD in memory
+     * @param esimation number of elements in RDD
+     * @param replicated whether cached relation should be first replicated
+     */
+    RDD<T>* cache(bool replicated = false);
+
+    /**
+     * Make clone of RDD: allows to iterate through RDD from scratch
+     */
     virtual RDD<T>* clone() { 
         return NULL;
     }
@@ -231,7 +265,7 @@ class RDD
 };
 
 //
-// Tranfer data from RDD to queue
+// Transfer data from RDD to queue
 //
 template<class T>
 inline void enqueue(RDD<T>* input, size_t node, Queue* queue) 
@@ -430,7 +464,7 @@ class BufferRDD
 };
 
 //
-// Replicate RDD replicates data to all nodes
+// Replicate data to all nodes
 //
 template<class T>
 class BroadcastJob : public Job
@@ -489,16 +523,27 @@ private:
     Queue* const queue;
 };
 
+//
+// RDD representing result of replication
+//
 template<class T>
 class ReplicateRDD : public GatherRDD<T>
 {
 public:
     ReplicateRDD(RDD<T>* input, Queue* queue) : GatherRDD<T>(queue), thread(new BroadcastJob<T>(input, queue)) {}
+
+    virtual bool isReplicated() { 
+        return true; 
+    }
+
+    virtual RDD<T>* replicate() { 
+        return this;
+    }
+        
 private:
     Thread thread;
 };
     
-
 //
 // Read data from OS plain file
 //
@@ -512,6 +557,14 @@ class FileRDD : public RDD<T>
         fseek(f, 0, SEEK_END);
         nRecords = (ftell(f)/sizeof(T)+split-1)/split;
         recNo = fseek(f, nRecords*segno*sizeof(T), SEEK_SET) == 0 ? 0 : nRecords;
+    }
+
+    bool isReplicated() { 
+        return split != 1;
+    }
+
+    virtual size_t sourceNode() { 
+        return (recNo-1)*split / nRecords;
     }
 
     RDD<T>* replicate() { 
@@ -536,6 +589,7 @@ class FileRDD : public RDD<T>
     size_t split;
     long recNo;
     long nRecords;
+    bool replicated;
 };
 
 //
@@ -546,15 +600,21 @@ template<class T>
 class DirRDD : public RDD<T>
 {
   public:
-    DirRDD(char* path) : dir(path), segno(Cluster::instance->nodeId), step(Cluster::instance->nNodes), split(Cluster::instance->split), f(NULL) {}
+    DirRDD(char* path) : dir(path), segno(Cluster::instance->nodeId), nNodes(Cluster::instance->nNodes), step(nNodes), 
+                         split(Cluster::instance->split), f(NULL) {}
 
     RDD<T>* replicate() { 
-        nRecords *= split;
         segno = 0;
         step = 1;
-        split = 1;
-        recNo = 0;
         return this;
+    }
+
+    virtual size_t sourceNode() { 
+        return segno % nNodes;
+    }
+
+    bool isReplicated() { 
+        return true;
     }
 
     bool next(T& record) {
@@ -589,6 +649,7 @@ class DirRDD : public RDD<T>
   private:
     char* dir;
     size_t segno;
+    size_t nNodes;
     size_t step;
     size_t split;
     long recNo;
@@ -631,10 +692,19 @@ class FilterRDD : public RDD<T>
   public:
     FilterRDD(RDD<T>* input) : in(input) {}
 
-    virtual char const* sharingKey() {
+    virtual char const* shardingKey() {
         return in->shardingKey();
     }
     
+    virtual bool isReplicated() { 
+        return in->isReplicated();
+    }
+
+    virtual RDD<T>* replicate() { 
+        in = in->replicate();
+        return this;
+    }
+        
     bool next(T& record) {
         while (in->next(record)) { 
             if (predicate(record)) {
@@ -647,7 +717,7 @@ class FilterRDD : public RDD<T>
     ~FilterRDD() { delete in; }
 
   private:
-    RDD<T>* const in;
+    RDD<T>* in;
 };
     
 //
@@ -826,10 +896,19 @@ class ProjectRDD : public RDD<P>
   public:
     ProjectRDD(RDD<T>* input) : in(input) {}
 
-    virtual char const* sharingKey() {
+    virtual char const* shardingKey() {
         return in->shardingKey();
     }
 
+    virtual bool isReplicated() { 
+        return in->isReplicated();
+    }
+
+    virtual RDD<P>* replicate() { 
+        in = in->replicate();
+        return this;
+    }
+        
     bool next(P& projection) { 
         T record;
         if (in->next(record)) { 
@@ -842,7 +921,7 @@ class ProjectRDD : public RDD<P>
     ~ProjectRDD() { delete in; }
 
   private:
-    RDD<T>* const in;
+    RDD<T>* in;
 };
 
 //
@@ -976,6 +1055,8 @@ class TopRDD : public RDD<T>
     }
 };
 
+#define DUP(x) x,x
+
 //
 // Join two RDDs using hash table
 //
@@ -989,18 +1070,17 @@ public:
         // First load inner relation in hash...
         Cluster* cluster = Cluster::instance.get();
         memset(table, 0, size*sizeof(Entry*));
-        if (innerKeyName == innerRDD->shardingKey()) { 
-            loadHash(innerRDD);
-            if (outerKeyName != outerRDD->shardingKey()) {
-                queue = cluster->getQueue();
-                shuffle = true;
-            } else { 
-                shuffle = false;
-            }
-        } else if (estimation <= cluster->broadcastJoinThreshold) { 
+
+        printf("HashJoin: outerJoinKey=%s(%p), innerJoinKey=%s(%p), outerShardingKey=%s(%p), innerShardingKey=%s(%p), outerReplicated=%d, innerReplicated=%d\n",
+               DUP(outerKeyName), DUP(innerKeyName), DUP(outerRDD->shardingKey()), DUP(innerRDD->shardingKey()), outerRDD->isReplicated(), innerRDD->isReplicated());
+        
+        if (estimation <= cluster->broadcastJoinThreshold || innerRDD->isReplicated()) { 
             // broadcast inner RDD
             loadHash(innerRDD->replicate());
             shuffle = false;
+        } else if (innerKeyName == innerRDD->shardingKey()) { 
+            loadHash(innerRDD);
+            shuffle = outerKeyName != outerRDD->shardingKey();
         } else {     
             // shuffle inner RDD
 #ifdef USE_MESSAGE_HANDLER
@@ -1010,19 +1090,28 @@ public:
 #endif
             Thread loader(new ScatterJob<I,K,innerKey>(innerRDD, queue));
             loadHash(new GatherRDD<I>(queue));
-            queue = cluster->getQueue();
             shuffle = true;
+        }
+        if (shuffle) { 
+            if (outerRDD->isReplicated()) { 
+                outer = outerRDD->replicate();
+                shuffle = false;
+            } else {
+                printf("HashJoin: shuffle outer table by %s\n", outerKeyName);
+                queue = cluster->getQueue();
+            }
         }
     }
 
     bool next(Join<O,I>& record)
     {
         if (shuffle && scatter == NULL) { 
-            // .. and then start fetching of outer relation and perform hash lookup
+            // Start fetching of outer relation. It is moved from constructor to separate load of
+            // inner and outer relation. Doing it in parallel may increase performance but may also cause
+            // queues overflow and so deadlock
             scatter = new Thread(new ScatterJob<O,K,outerKey>(outer, queue));
             outer = new GatherRDD<O>(queue);
         }
-
         if (inner == NULL) { 
             do { 
                 if (!outer->next(outerRec)) { 
@@ -1175,16 +1264,19 @@ template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), vo
 class HashSemiJoinRDD : public RDD<O>, MessageHandler
 {
 public:
-    HashSemiJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t estimation, JoinKind joinKind) 
+    HashSemiJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t estimation, JoinKind joinKind, char const* outerKeyName, char const* innerKeyName) 
     : kind(joinKind), table(new Entry*[estimation]), size(estimation), outer(outerRDD), scatter(NULL) {
         assert(kind != OuterJoin);
         // First load inner relation in hash...
         Cluster* cluster = Cluster::instance.get();
         memset(table, 0, size*sizeof(Entry*));
-        if (estimation <= cluster->broadcastJoinThreshold) { 
+        if (estimation <= cluster->broadcastJoinThreshold || innerRDD->isReplicated()) { 
             // broadcast inner RDD
             loadHash(innerRDD->replicate());
             shuffle = false;
+        } else if (innerKeyName == innerRDD->shardingKey()) { 
+            loadHash(innerRDD);
+            shuffle = outerKeyName != outerRDD->shardingKey();
         } else {     
             // shuffle inner RDD
 #ifdef USE_MESSAGE_HANDLER
@@ -1194,15 +1286,25 @@ public:
 #endif
             Thread loader(new ScatterJob<I,K,innerKey>(innerRDD, queue));
             loadHash(new GatherRDD<I>(queue));
-            queue = cluster->getQueue();
             shuffle = true;
+        }
+        if (shuffle) { 
+            if (outerRDD->isReplicated()) { 
+                outer = outerRDD->replicate();
+                shuffle = false;
+            } else {
+                printf("HashSemiJoin: shuffle outer table by %s\n", outerKeyName);
+                queue = cluster->getQueue();
+            }
         }
     }
 
     bool next(O& record)
     {
         if (shuffle && scatter == NULL) { 
-            // .. and then start fetching of outer relation and perform hash lookup
+            // Start fetching of outer relation. It is moved from constructor to separate load of
+            // inner and outer relation. Doing it in parallel may increase performance but may also cause
+            // queues overflow and so deadlock
             scatter = new Thread(new ScatterJob<O,K,outerKey>(outer, queue));
             outer = new GatherRDD<O>(queue);
         }
@@ -1634,68 +1736,53 @@ protected:
     }
 };
     
-  
-//
-// Cache RDD in memory
-//
+/**
+ * RDD for caching data in memory
+ */
 template<class T>
 class CachedRDD : public RDD<T>
 {
   public:
-    CachedRDD(RDD<T>* input, size_t estimation) : copy(false) { 
-        cacheData(input, estimation);
-    }
-    bool next(T& record) { 
-        if (curr == size) { 
-            return false;
-        }
-        record = buf[curr++];
-        return true;
-    }
-    ~CachedRDD() { 
-        if (!copy) { 
-            delete[] buf;
-        }
-    }
+    CachedRDD(RDD<T>* input, bool isReplicated) : curr(0), copy(false), replicated(isReplicated), key(NULL)
+    {
+        Cluster* cluster = Cluster::instance.get();
+        size_t bufferSize = cluster->bufferSize;
+        Buffer* buf = Buffer::create(0, bufferSize);
+        Message* msg = new Message(buf);
+        size_t node = ANY_NODE;
+        size_t used = 0;
+        T record;
 
-    virtual RDD<T>* clone() { 
-        return new CachedRDD(buf, size);
-    }
+        list = msg;
+        nodeId = isReplicated ? cluster->nodeId : ANY_NODE;
 
-  private:
-    CachedRDD(T* buffer, size_t bufSize) : buf(buffer), curr(0), size(bufSize), copy(true) {}
-
-    void cacheData(RDD<T>* input, size_t estimation) { 
-        buf = new T[estimation];
-        size_t i = 0;
-        while (input->next(buf[i])) { 
-            if (++i == estimation) {
-                T* newBuf = new T[estimation *= 2];
-                printf("Extend cache to %ld\n", estimation);
-                memcpy(newBuf, buf, i*sizeof(T));
-                delete[] buf;
-                buf = newBuf;
+        while (input->next(record)) { 
+            if (used + sizeof(T) >= bufferSize || (node != ANY_NODE && node != input->sourceNode())) { 
+                buf->size = used;
+                buf->node = node;
+                buf = Buffer::create(0, bufferSize);
+                msg = msg->next = new Message(buf);
+                used = 0;
+                if (isReplicated) {
+                    node = input->sourceNode();
+                }
+            } else if (isReplicated && node == ANY_NODE) { 
+                node = input->sourceNode();
             }
+            used += pack(record, buf->data + used);
         }
-        size = i;
-        curr = 0;
-        delete input;
+        msg->next = NULL;
+        buf->node = node;
+        buf->size = used;
     }
 
-    T* buf;
-    size_t curr;
-    size_t size;
-    bool copy;
-};
-
-template<class T>
-class MaterializedRDD : public RDD<T>
-{
-  public:
-    MaterializedRDD(Queue* queue, char const* shardingKey) : curr(0), copy(false), key(shardingKey) { 
-        ListNode** tail = &list;
+    CachedRDD(Queue* queue, char const* shardingKey, bool isReplicated) 
+    : curr(0), copy(false), replicated(isReplicated), key(shardingKey)
+    { 
+        Message** tail = &list;
         Cluster* cluster = Cluster::instance.get();
         size_t nNodes = cluster->nNodes;
+        nodeId = isReplicated ? cluster->nodeId : ANY_NODE;
         while (true) {
             Buffer* buf = queue->get();
             assert(buf != NULL);
@@ -1713,16 +1800,24 @@ class MaterializedRDD : public RDD<T>
                 Cluster::instance->sendQueues[buf->node]->putFirst(buf);
                 continue;
               default:
-                ListNode* node = new ListNode(buf);
+                Message* node = new Message(buf);
                 *tail = node;
                 tail = &node->next;
             }
         }
     }
 
+    virtual RDD<T>* replicate() { 
+        if (replicated) { 
+            nodeId = ANY_NODE;
+            return this;
+        }
+        return RDD<T>::replicate();
+    }
+
     bool next(T& record) { 
         while (list != NULL) {
-            if (curr < list->buf->size) { 
+            if ((nodeId == ANY_NODE || list->buf->node == nodeId) && curr < list->buf->size) { 
                 curr += unpack(record, list->buf->data + curr);
                 return true;
             }
@@ -1733,35 +1828,34 @@ class MaterializedRDD : public RDD<T>
     }
 
     virtual RDD<T>* clone() { 
-        return new MaterializedRDD(*this);
+        return new CachedRDD(*this);
     }
     
-    ~MaterializedRDD() { 
+    ~CachedRDD() { 
         if (!copy) { 
-            ListNode *curr, *next;
+            Message *curr, *next;
             for (curr = list; curr != NULL; curr = next) { 
+                curr->buf->release();
                 next = curr->next;
                 delete curr;
             }
         }
     }
     
-    char const* shardinKey() { return key; }
+    virtual char const* shardingKey() { return key; }
+
+    virtual bool isReplicated() { return replicated; }
 
   private:
-    struct ListNode {
-        Buffer* buf;
-        ListNode* next;
-        
-        ListNode(Buffer* data) : buf(data) {}
-        ~ListNode() { buf->release(); }
-    };
-    ListNode*   list;
+    Message*    list;
     size_t      curr;
+    size_t      nodeId;
     bool        copy;
+    bool        replicated;
     char const* key;
 
-    MaterializedRDD(MaterializedRDD const& origin) : list(origin.list), curr(0), copy(true), key(origin.key) {}
+    CachedRDD(CachedRDD const& origin) 
+    : list(origin.list), curr(0), nodeId(origin.nodeId), copy(true), replicated(origin.replicated), key(origin.key) {}
 };
 
 template<class T>
@@ -1770,9 +1864,26 @@ RDD<T>* RDD<T>::scatter(char const* shardingKey)
 {
     Queue* queue = Cluster::instance->getQueue();
     Thread load(new ScatterJob<T,K,key>(this, queue));
-    return new MaterializedRDD<T>(queue, shardingKey);
+    return new CachedRDD<T>(queue, shardingKey, false);
 }
 
+template<class T>
+RDD<T>* RDD<T>::cache(bool replicated)
+{
+    if (replicated) { 
+        if (isReplicated()) { 
+            return new CachedRDD<T>(replicate(), true);
+        } else { 
+            printf("RDD::cache: replicate RDD\n");
+            Queue* queue = Cluster::instance->getQueue();
+            Thread load(new BroadcastJob<T>(this, queue));
+            return new CachedRDD<T>(queue, NULL, true);
+        }
+    } else { 
+        return new CachedRDD<T>(this, false);
+    }
+}
+    
 template<class T>
 void RDD<T>::output(FILE* out) 
 {
@@ -1794,6 +1905,7 @@ void RDD<T>::output(FILE* out)
 
 template<class T>
 inline RDD<T>* RDD<T>::replicate() { 
+    printf("RDD::replicate: replicate input RDD\n");
     Queue* queue = Cluster::instance->getQueue();
     return new ReplicateRDD<T>(this, queue);
 }
@@ -1847,10 +1959,10 @@ RDD< Join<T,I> >* RDD<T>::join(RDD<I>* with, size_t estimation, char const* oute
 
 template<class T>
 template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner)>
-RDD<T>* RDD<T>::semijoin(RDD<I>* with, size_t estimation, JoinKind kind) {
+RDD<T>* RDD<T>::semijoin(RDD<I>* with, size_t estimation, char const* outerKeyName, char const* innerKeyName, JoinKind kind) {
     Cluster* cluster = Cluster::instance.get();
     if (estimation <= cluster->inmemJoinThreshold) { 
-        return new HashSemiJoinRDD<T,I,K,outerKey,innerKey>(this, with, estimation, kind);
+        return new HashSemiJoinRDD<T,I,K,outerKey,innerKey>(this, with, estimation, kind, outerKeyName, innerKeyName);
     }
     size_t nFiles = (estimation + cluster->inmemJoinThreshold - 1) / cluster->inmemJoinThreshold;
     return new ShuffleSemiJoinRDD<T,I,K,outerKey,innerKey>(this, with, nFiles, estimation/nFiles, kind);

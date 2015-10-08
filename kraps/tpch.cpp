@@ -103,22 +103,22 @@ class CachedData
 
     CachedData(bool sharded) 
     { 
-        _Nation = new CachedRDD<Nation>(FileManager::load<Nation>(filePath("Nation")),       25);
-        _Region = new CachedRDD<Region>(FileManager::load<Region>(filePath("Region")),       5);
+        _Nation = FileManager::load<Nation>(filePath("Nation"))->cache(true);
+        _Region = FileManager::load<Region>(filePath("Region"))->cache(true);
+        _Supplier = FileManager::load<Supplier>(filePath("Supplier"))->cache(sharded);
+        _Customer = FileManager::load<Customer>(filePath("Customer"))->cache(sharded);
         if (sharded) { 
             _Lineitem = FileManager::load<Lineitem>(filePath("Lineitem"))->scatter<long,lineitemOrderKey>("l_orderkey");
-            _Orders = FileManager::load<Orders>(filePath("Orders"))->scatter<long,ordersKey>("o_orderkey");
-            _Supplier = FileManager::load<Supplier>(filePath("Supplier"))->scatter<int,supplierKey>("s_suppkey");
-            _Customer = FileManager::load<Customer>(filePath("Customer"))->scatter<int,customerKey>("c_custkey");
-            _Part = FileManager::load<Part>(filePath("Part"))->scatter<int,partKey>("p_partkey");
+            _Orders =   FileManager::load<Orders>(filePath("Orders"))->scatter<long,ordersKey>("o_orderkey");
+            //_Supplier = FileManager::load<Supplier>(filePath("Supplier"))->scatter<int,supplierKey>("s_suppkey");
+            //_Customer = FileManager::load<Customer>(filePath("Customer"))->scatter<int,customerKey>("c_custkey");
+             _Part =     FileManager::load<Part>(filePath("Part"))->scatter<int,partKey>("p_partkey");
             _Partsupp = FileManager::load<Partsupp>(filePath("Partsupp"))->scatter<PartsuppKey,partsuppKey>("ps_partkey,ps_suppkey");
         } else {
-            _Lineitem = new CachedRDD<Lineitem>(FileManager::load<Lineitem>(filePath("Lineitem")), SCALE(6000000));
-            _Orders = new CachedRDD<Orders>(FileManager::load<Orders>(filePath("Orders")),         SCALE(1500000));
-            _Supplier = new CachedRDD<Supplier>(FileManager::load<Supplier>(filePath("Supplier")), SCALE(10000));
-            _Customer = new CachedRDD<Customer>(FileManager::load<Customer>(filePath("Customer")), SCALE(150000));
-            _Part = new CachedRDD<Part>(FileManager::load<Part>(filePath("Part")),                 SCALE(200000));
-            _Partsupp = new CachedRDD<Partsupp>(FileManager::load<Partsupp>(filePath("Partsupp")), SCALE(800000));
+            _Lineitem = FileManager::load<Lineitem>(filePath("Lineitem"))->cache();
+            _Orders =   FileManager::load<Orders>(filePath("Orders"))    ->cache();
+            _Part =     FileManager::load<Part>(filePath("Part"))        ->cache();
+            _Partsupp = FileManager::load<Partsupp>(filePath("Partsupp"))->cache();
         }
     }
 
@@ -1833,6 +1833,7 @@ int main(int argc, char* argv[])
                       "-dir\tdata directory (.)\n"
                       "-format\tdata format: parquet, plain-file,... ()\n"
                       "-cache\tCache all data in memory\n"
+                      "-sharding\nPerform sharding of cached data\n"
                       "-tmp DIR\ttemporary files location (/tmp)\n"
                       "-shared-nothing 0/1\tdata is located at executor nodes (1)\n"
                       "-queues N\tnumber of queues (64)\n"

@@ -6,6 +6,7 @@
 #include "sockio.h"
 
 const size_t COORDINATOR = 0;
+const size_t ANY_NODE = (size_t)~0;
 const size_t BUF_HDR_SIZE = 16;
 const size_t MAX_PATH_LEN = 1024;
 const size_t MAX_SIZE_T = (size_t)~0;
@@ -71,6 +72,15 @@ struct Buffer
     }
 };
 
+struct Message 
+{ 
+    Message* next;
+    Buffer* buf;
+    
+    Message(Buffer* msgBuf) : next(NULL), buf(msgBuf) {}
+};
+
+
 class MessageHandler
 {
   public:
@@ -104,13 +114,6 @@ class Queue
     : qid(id), head(NULL), tail(&head), size(0), limit(maxSize), nSignals(0), blockedPut(false), blockedGet(false), handler(NULL) {}
 
   private:
-    struct Message { 
-        Message* next;
-        Buffer* buf;
-        
-        Message(Buffer* msgBuf) : next(NULL), buf(msgBuf) {}
-    };
-
     Message* head;
     Message** tail;
     Mutex mutex;
