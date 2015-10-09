@@ -8,6 +8,10 @@
 #include "cluster.h"
 #include "pack.h"
 
+#ifndef PARALLEL_INNER_OUTER_TABLES_LOAD
+#define PARALLEL_INNER_OUTER_TABLES_LOAD 1
+#endif
+
 //
 // Hash function for scalar fields
 //
@@ -1064,77 +1068,70 @@ template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), vo
 class HashJoinRDD : public RDD< Join<O,I> >, MessageHandler
 {
 public:
-    HashJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t estimation, JoinKind joinKind, char const* outerKeyName, char const* innerKeyName) 
-    : kind(joinKind), table(new Entry*[estimation]), size(estimation), innerSize(0), inner(NULL), outer(outerRDD), scatter(NULL) {
+    HashJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t estimation, JoinKind joinKind, char const* outerJoinKeyName, char const* innerJoinKeyName) 
+    : kind(joinKind), table(NULL), size(estimation), innerSize(0), inner(innerRDD), outer(outerRDD), scatter(NULL),
+      outerKeyName(outerJoinKeyName), innerKeyName(innerJoinKeyName), innerIsShuffled(false)
+    {
         assert(kind != AntiJoin);
-        // First load inner relation in hash...
         Cluster* cluster = Cluster::instance.get();
-        memset(table, 0, size*sizeof(Entry*));
-
-        printf("HashJoin: outerJoinKey=%s(%p), innerJoinKey=%s(%p), outerShardingKey=%s(%p), innerShardingKey=%s(%p), outerReplicated=%d, innerReplicated=%d\n",
-               DUP(outerKeyName), DUP(innerKeyName), DUP(outerRDD->shardingKey()), DUP(innerRDD->shardingKey()), outerRDD->isReplicated(), innerRDD->isReplicated());
-        
-        if (estimation <= cluster->broadcastJoinThreshold || innerRDD->isReplicated()) { 
-            // broadcast inner RDD
-            loadHash(innerRDD->replicate());
-            shuffle = false;
-        } else if (innerKeyName == innerRDD->shardingKey()) { 
-            loadHash(innerRDD);
-            shuffle = outerKeyName != outerRDD->shardingKey();
-        } else {     
-            // shuffle inner RDD
 #ifdef USE_MESSAGE_HANDLER
-            queue = cluster->getQueue(this);
+        innerQueue = cluster->getQueue(this);
 #else
-            queue = cluster->getQueue();
+        innerQueue = cluster->getQueue();
 #endif
-            Thread loader(new ScatterJob<I,K,innerKey>(innerRDD, queue));
-            loadHash(new GatherRDD<I>(queue));
-            shuffle = true;
-        }
-        if (shuffle) { 
-            if (outerRDD->isReplicated()) { 
-                outer = outerRDD->replicate();
-                shuffle = false;
-            } else {
-                printf("HashJoin: shuffle outer table by %s\n", outerKeyName);
-                queue = cluster->getQueue();
-            }
-        }
+        outerQueue = Cluster::instance->getQueue();
     }
 
     bool next(Join<O,I>& record)
     {
-        if (shuffle && scatter == NULL) { 
-            // Start fetching of outer relation. It is moved from constructor to separate load of
-            // inner and outer relation. Doing it in parallel may increase performance but may also cause
-            // queues overflow and so deadlock
-            scatter = new Thread(new ScatterJob<O,K,outerKey>(outer, queue));
-            outer = new GatherRDD<O>(queue);
+        Cluster* cluster = Cluster::instance.get();
+        if (table == NULL) { 
+            bool replicateInner = size <= cluster->broadcastJoinThreshold || inner->isReplicated();
+            if (replicateInner) {             
+                size *= cluster->nNodes; // adjust hash table size 
+            }
+            table = new Entry*[size];
+            memset(table, 0, size*sizeof(Entry*));
+            
+#if PARALLEL_INNER_OUTER_TABLES_LOAD
+            loadOuterTable(replicateInner);
+#endif
+            if (replicateInner) {             
+                loadHash(inner->replicate());
+            } else if (innerKeyName == inner->shardingKey()) { 
+                loadHash(inner);
+            } else { 
+                Thread loader(new ScatterJob<I,K,innerKey>(inner, innerQueue));
+                loadHash(new GatherRDD<I>(innerQueue));
+                innerIsShuffled = true;
+            }                
+#if !PARALLEL_INNER_OUTER_TABLES_LOAD
+            loadOuterTable(replicateInner);
+#endif
         }
-        if (inner == NULL) { 
+        if (entry == NULL) { 
             do { 
                 if (!outer->next(outerRec)) { 
-                    inner = NULL;
+                    entry = NULL;
                     return false;
                 }
                 outerKey(key, outerRec);
                 hash = hashCode(key);
                 size_t h = hash % size;
-                for (inner = table[h]; inner != NULL && !(inner->hash == hash && key == inner->key); inner = inner->collision);
-            } while (inner == NULL && kind == InnerJoin);
+                for (entry = table[h]; entry != NULL && !(entry->hash == hash && key == entry->key); entry = entry->collision);
+            } while (entry == NULL && kind == InnerJoin);
             
-            if (inner == NULL) { 
+            if (entry == NULL) { 
                 (O&)record = outerRec;
                 (I&)record = innerRec;
                 return true;
             }
         }
         (O&)record = outerRec;
-        (I&)record = inner->record;
+        (I&)record = entry->record;
         do {
-            inner = inner->collision;
-        } while (inner != NULL && !(inner->hash == hash && key == inner->key));
+            entry = entry->collision;
+        } while (entry != NULL && !(entry->hash == hash && key == entry->key));
 
         return true;
     }
@@ -1160,12 +1157,28 @@ protected:
     I       innerRec;
     K       key;
     size_t  hash;
-    Entry*  inner;
+    Entry*  entry;
+    RDD<I>* inner;
     RDD<O>* outer;
-    Queue*  queue;
+    Queue*  innerQueue;
+    Queue*  outerQueue;
     Thread* scatter;
-    bool    shuffle;
+    char const* outerKeyName;
+    char const* innerKeyName;
+    bool    innerIsShuffled;
     BlockAllocator<Entry> allocator;
+
+    void loadOuterTable(bool replicateInner)
+    {
+        if (!replicateInner && outerKeyName != outer->shardingKey()) {
+            if (outer->isReplicated()) { 
+                outer = outer->replicate();
+            } else { 
+                scatter = new Thread(new ScatterJob<O,K,outerKey>(outer, outerQueue));
+                outer = new GatherRDD<O>(outerQueue);
+            }
+        }
+    }
 
     void extendHash() 
     {
@@ -1241,9 +1254,10 @@ protected:
 #endif
         delete gather;
     }
+
     void deleteHash() {
 #ifdef USE_MESSAGE_HANDLER
-        if (shuffle) { 
+        if (innerIsShuffled) { 
             for (size_t i = 0; i < size; i++) { 
                 Entry *curr, *next;
                 for (curr = table[i]; curr != NULL; curr = next) { 
@@ -1264,58 +1278,54 @@ template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), vo
 class HashSemiJoinRDD : public RDD<O>, MessageHandler
 {
 public:
-    HashSemiJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t estimation, JoinKind joinKind, char const* outerKeyName, char const* innerKeyName) 
-    : kind(joinKind), table(new Entry*[estimation]), size(estimation), outer(outerRDD), scatter(NULL) {
+    HashSemiJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t estimation, JoinKind joinKind, char const* outerJoinKeyName, char const* innerJoinKeyName) 
+    : kind(joinKind), table(NULL), size(estimation), inner(innerRDD), outer(outerRDD), scatter(NULL),
+      outerKeyName(outerJoinKeyName), innerKeyName(innerJoinKeyName), innerIsShuffled(false)
+    {
         assert(kind != OuterJoin);
-        // First load inner relation in hash...
         Cluster* cluster = Cluster::instance.get();
-        memset(table, 0, size*sizeof(Entry*));
-        if (estimation <= cluster->broadcastJoinThreshold || innerRDD->isReplicated()) { 
-            // broadcast inner RDD
-            loadHash(innerRDD->replicate());
-            shuffle = false;
-        } else if (innerKeyName == innerRDD->shardingKey()) { 
-            loadHash(innerRDD);
-            shuffle = outerKeyName != outerRDD->shardingKey();
-        } else {     
-            // shuffle inner RDD
 #ifdef USE_MESSAGE_HANDLER
-            queue = cluster->getQueue(this);
+        innerQueue = cluster->getQueue(this);
 #else
-            queue = cluster->getQueue();
+        innerQueue = cluster->getQueue();
 #endif
-            Thread loader(new ScatterJob<I,K,innerKey>(innerRDD, queue));
-            loadHash(new GatherRDD<I>(queue));
-            shuffle = true;
-        }
-        if (shuffle) { 
-            if (outerRDD->isReplicated()) { 
-                outer = outerRDD->replicate();
-                shuffle = false;
-            } else {
-                printf("HashSemiJoin: shuffle outer table by %s\n", outerKeyName);
-                queue = cluster->getQueue();
-            }
-        }
+        outerQueue = Cluster::instance->getQueue();
     }
+
 
     bool next(O& record)
     {
-        if (shuffle && scatter == NULL) { 
-            // Start fetching of outer relation. It is moved from constructor to separate load of
-            // inner and outer relation. Doing it in parallel may increase performance but may also cause
-            // queues overflow and so deadlock
-            scatter = new Thread(new ScatterJob<O,K,outerKey>(outer, queue));
-            outer = new GatherRDD<O>(queue);
+        Cluster* cluster = Cluster::instance.get();
+        if (table == NULL) { 
+            bool replicateInner = size <= cluster->broadcastJoinThreshold || inner->isReplicated();
+            if (replicateInner) {             
+                size *= cluster->nNodes; // adjust hash table size 
+            }
+            table = new Entry*[size];
+            memset(table, 0, size*sizeof(Entry*));
+            
+#if PARALLEL_INNER_OUTER_TABLES_LOAD
+            loadOuterTable(replicateInner);
+#endif
+            if (replicateInner) {             
+                loadHash(inner->replicate());
+            } else if (innerKeyName == inner->shardingKey()) { 
+                loadHash(inner);
+            } else { 
+                Thread loader(new ScatterJob<I,K,innerKey>(inner, innerQueue));
+                loadHash(new GatherRDD<I>(innerQueue));
+            }                
+#if !PARALLEL_INNER_OUTER_TABLES_LOAD
+            loadOuterTable(replicateInner);
+#endif
         }
-
         while (outer->next(record)) { 
             K key;
             outerKey(key, record);
             size_t hash = hashCode(key);
-            Entry* inner;            
-            for (inner = table[hash % size]; inner != NULL && !(inner->hash == hash && key == inner->key); inner = inner->collision);
-            if ((inner != NULL) ^ (kind == AntiJoin)) {
+            Entry* entry;            
+            for (entry = table[hash % size]; entry != NULL && !(entry->hash == hash && key == entry->key); entry = entry->collision);
+            if ((entry != NULL) ^ (kind == AntiJoin)) {
                 return true;
             }
         }
@@ -1339,11 +1349,27 @@ protected:
     Entry** table;
     size_t  size;
     size_t  innerSize;
+    RDD<I>* inner;
     RDD<O>* outer;
-    Queue*  queue;
+    Queue*  innerQueue;
+    Queue*  outerQueue;
     Thread* scatter;
-    bool    shuffle;
+    char const* outerKeyName;
+    char const* innerKeyName;
+    bool    innerIsShuffled;
     BlockAllocator<Entry> allocator;
+
+    void loadOuterTable(bool replicateInner)
+    {
+        if (!replicateInner && outerKeyName != outer->shardingKey()) {
+            if (outer->isReplicated()) { 
+                outer = outer->replicate();
+            } else { 
+                scatter = new Thread(new ScatterJob<O,K,outerKey>(outer, outerQueue));
+                outer = new GatherRDD<O>(outerQueue);
+            }
+        }
+    }
 
     void extendHash() 
     {
@@ -1422,7 +1448,7 @@ protected:
 
     void deleteHash() {
 #ifdef USE_MESSAGE_HANDLER
-        if (shuffle) { 
+        if (innerIsShuffled) { 
             for (size_t i = 0; i < size; i++) { 
                 Entry *curr, *next;
                 for (curr = table[i]; curr != NULL; curr = next) { 
