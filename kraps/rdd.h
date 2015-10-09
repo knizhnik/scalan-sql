@@ -1069,7 +1069,7 @@ class HashJoinRDD : public RDD< Join<O,I> >, MessageHandler
 {
 public:
     HashJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t estimation, JoinKind joinKind, char const* outerJoinKeyName, char const* innerJoinKeyName) 
-    : kind(joinKind), table(NULL), size(estimation), innerSize(0), inner(innerRDD), outer(outerRDD), scatter(NULL),
+    : kind(joinKind), table(NULL), size(estimation), innerSize(0), entry(NULL), inner(innerRDD), outer(outerRDD), scatter(NULL),
       outerKeyName(outerJoinKeyName), innerKeyName(innerJoinKeyName), innerIsShuffled(false)
     {
         assert(kind != AntiJoin);
