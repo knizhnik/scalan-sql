@@ -42,6 +42,7 @@ inline size_t unpack(char* dst, char const* src, size_t size)
     return strcopy(dst, src, size);
 }
 
+#if 0
 #define PACK_FIELD(x) size += ::pack(src.x, dst + size, sizeof(src.x));
 
 #define PACK(Class)                                 \
@@ -61,6 +62,20 @@ inline size_t unpack(Class& dst, char const* src, size_t size = 0)  \
     Class##Fields(UNPACK_FIELD);                    \
     return size;                                    \
 }
+#else
+#define PACK(Class)                                 \
+inline size_t pack(Class const& src, char* dst, size_t size = 0)    \
+{                                                   \
+    *(Class*)dst = src;                             \
+    return sizeof(Class);                           \
+}
+#define UNPACK(Class)                               \
+inline size_t unpack(Class& dst, char const* src, size_t size = 0)  \
+{                                                   \
+    dst = *(Class*)src;                            \
+    return sizeof(Class);                          \
+}
+#endif
 
 #define PARQUET_FIELD(x) unpackParquet(dst.x, reader.columns[i++].reader, sizeof(dst.x)) && 
 #define PARQUET_UNPACK(Class)                       \
