@@ -1767,10 +1767,19 @@ class CachedRDD : public RDD<T>
                 buf->size = used;
                 buf->node = node;
                 buf = Buffer::create(0, bufferSize);
-                msg = msg->next = new Message(buf);
+                Message* newMsg = new Message(buf);
                 used = 0;
                 if (isReplicated) {
                     node = input->sourceNode();
+                    if (node == nodeId) { 
+                        // link self buffers to the head of the list
+                        newMsg->next = list;
+                        list = newMsg;
+                    } else { 
+                        msg = msg->next = newMsg;
+                    }
+                } else { 
+                    msg = msg->next = newMsg;
                 }
             } else if (isReplicated && node == ANY_NODE) { 
                 node = input->sourceNode();
@@ -1806,9 +1815,17 @@ class CachedRDD : public RDD<T>
                 Cluster::instance->sendQueues[buf->node]->putFirst(buf);
                 continue;
               default:
-                Message* node = new Message(buf);
-                *tail = node;
-                tail = &node->next;
+                Message* msg = new Message(buf);
+                if (isReplicated && buf->node != nodeId) { 
+                    *tail = msg;
+                    tail = &msg->next;
+                } else { 
+                    msg->next = list;
+                    list = msg;
+                    if (tail == &list) { 
+                        tail = &msg->next;
+                    }
+                }
             }
         }
     }
@@ -1826,6 +1843,9 @@ class CachedRDD : public RDD<T>
             if ((nodeId == ANY_NODE || list->buf->node == nodeId) && curr < list->buf->size) { 
                 curr += unpack(record, list->buf->data + curr);
                 return true;
+            }
+            if (nodeId != ANY_NODE && list->buf->node != nodeId) { 
+                return false;
             }
             list = list->next;
             curr = 0;
