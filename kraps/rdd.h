@@ -7,31 +7,11 @@
 #include <assert.h>
 #include "cluster.h"
 #include "pack.h"
+#include "hash.h"
 
 #ifndef PARALLEL_INNER_OUTER_TABLES_LOAD
 #define PARALLEL_INNER_OUTER_TABLES_LOAD 1
 #endif
-
-//
-// Hash function for scalar fields
-//
-template<class T>
-inline size_t hashCode(T const& key) { 
-//    return key;
-//    return (key >> 8) ^ (key << (sizeof(key)*8 - 8));
-    return murmur_hash3_32(&key, sizeof key);
-}
-
-//
-// Hash function for string fields
-//
-inline size_t hashCode(char const* key) { 
-    size_t h = 0;
-    while (*key != '\0') { 
-        h = h*31 + (*key++ & 0xFF);
-    }
-    return h;
-}
 
 //
 // Pair is used for map-reduce
