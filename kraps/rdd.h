@@ -1816,15 +1816,15 @@ class CachedRDD : public RDD<T>
                 continue;
               default:
                 Message* msg = new Message(buf);
-                if (isReplicated && buf->node != nodeId) { 
-                    *tail = msg;
-                    tail = &msg->next;
-                } else { 
+                if (isReplicated && buf->node == nodeId) { 
                     msg->next = list;
                     list = msg;
                     if (tail == &list) { 
                         tail = &msg->next;
                     }
+                } else { 
+                    *tail = msg;
+                    tail = &msg->next;
                 }
             }
         }
