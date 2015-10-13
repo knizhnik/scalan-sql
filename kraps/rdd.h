@@ -713,7 +713,6 @@ class MapReduceRDD : public RDD< Pair<K,V> >
     struct Entry {
         Pair<K,V> pair;
         Entry* collision;
-        size_t hash;
     };
     
     Entry** table;
@@ -730,7 +729,7 @@ class MapReduceRDD : public RDD< Pair<K,V> >
         memset(newTable, 0, newSize*sizeof(Entry*));
         for (size_t i = 0; i < size; i++) { 
             for (entry = table[i]; entry != NULL; entry = next) { 
-                size_t h = entry->hash % newSize;
+                size_t h = hashCode(entry->pair.key) % newSize;
                 next = entry->collision;
                 entry->collision = newTable[h];
                 newTable[h] = entry;
@@ -755,11 +754,10 @@ class MapReduceRDD : public RDD< Pair<K,V> >
             map(pair, record);
             size_t hash = hashCode(pair.key);
             size_t h = hash % size;            
-            for (entry = table[h]; entry != NULL && !(entry->hash == hash && pair.key == entry->pair.key); entry = entry->collision);
+            for (entry = table[h]; !(entry == NULL || pair.key == entry->pair.key); entry = entry->collision);
             if (entry == NULL) { 
                 entry = allocator.alloc();
                 entry->collision = table[h];
-                entry->hash = hash;
                 table[h] = entry;
                 entry->pair = pair;
                 if (++realSize > size) { 
@@ -780,11 +778,10 @@ class MapReduceRDD : public RDD< Pair<K,V> >
             while (gather.next(pair)) {
                 size_t hash = hashCode(pair.key);
                 size_t h = hash % size;            
-                for (entry = table[h]; entry != NULL && !(entry->hash == hash && pair.key == entry->pair.key); entry = entry->collision);
+                for (entry = table[h]; !(entry == NULL || pair.key == entry->pair.key); entry = entry->collision);
                 if (entry == NULL) { 
                     entry = allocator.alloc();
                     entry->collision = table[h];
-                    entry->hash = hash;
                     table[h] = entry;
                     entry->pair = pair;
                     if(++realSize > size) { 
@@ -1014,9 +1011,8 @@ public:
                     return false;
                 }
                 outerKey(key, outerRec);
-                hash = hashCode(key);
-                size_t h = hash % size;
-                for (entry = table[h]; entry != NULL && !(entry->hash == hash && key == entry->key); entry = entry->collision);
+                size_t h = hashCode(key) % size;
+                for (entry = table[h]; !(entry == NULL || entry->equalsKey(key)); entry = entry->collision);
             } while (entry == NULL && kind == InnerJoin);
             
             if (entry == NULL) { 
@@ -1029,7 +1025,7 @@ public:
         (I&)record = entry->record;
         do {
             entry = entry->collision;
-        } while (entry != NULL && !(entry->hash == hash && key == entry->key));
+        } while (!(entry == NULL || entry->equalsKey(key)));
 
         return true;
     }
@@ -1041,10 +1037,14 @@ public:
     }
 protected:
     struct Entry {
-        K      key;
         I      record;
         Entry* collision;
-        size_t hash;
+
+        bool equalsKey(K const& other) {
+            K key;
+            innerKey(key, record);
+            return key == other;
+        }
     };
     
     JoinKind const kind;
@@ -1079,8 +1079,10 @@ protected:
         Entry** newTable = new Entry*[newSize];
         memset(newTable, 0, newSize*sizeof(Entry*));
         for (size_t i = 0; i < size; i++) { 
-            for (entry = table[i]; entry != NULL; entry = next) { 
-                size_t h = entry->hash % newSize;
+            for (entry = table[i]; entry != NULL; entry = next) {
+                K key;
+                innerKey(key, entry->record);
+                size_t h = hashCode(key) % newSize;
                 next = entry->collision;
                 entry->collision = newTable[h];
                 newTable[h] = entry;
@@ -1097,9 +1099,9 @@ protected:
         Entry* entry = new Entry();       
         size_t n = 0;
         while (input.next(entry->record)) { 
-            innerKey(entry->key, entry->record);
-            entry->hash = hashCode(entry->key);
-            size_t h = entry->hash % size;  
+            K key;
+            innerKey(key, entry->record);
+            size_t h = hashCode(key) % size;  
             Entry* oldValue;
             do {
                 oldValue = table[h];
@@ -1118,9 +1120,9 @@ protected:
         Entry* entry = allocator.alloc();
         size_t realSize = 0;
         while (gather->next(entry->record)) {
-            innerKey(entry->key, entry->record);
-            entry->hash = hashCode(entry->key);
-            size_t h = entry->hash % size;  
+            K key;
+            innerKey(key, entry->record);
+            size_t h = hashCode(key) % size;  
             entry->collision = table[h]; 
             table[h] = entry;
             entry = allocator.alloc();
@@ -1210,9 +1212,8 @@ public:
         while (outer->next(record)) { 
             K key;
             outerKey(key, record);
-            size_t hash = hashCode(key);
             Entry* entry;            
-            for (entry = table[hash % size]; entry != NULL && !(entry->hash == hash && key == entry->key); entry = entry->collision);
+            for (entry = table[hashCode(key) % size]; !(entry == NULL || entry->equalsKey(key)); entry = entry->collision);
             if ((entry != NULL) ^ (kind == AntiJoin)) {
                 return true;
             }
@@ -1227,10 +1228,15 @@ public:
     }
 protected:
     struct Entry {
-        K      key;
         I      record;
         Entry* collision;
-        size_t hash;
+
+
+        bool equalsKey(K const& other) {
+            K key;
+            innerKey(key, record);
+            return key == other;
+        }
     };
     
     JoinKind const kind;
@@ -1261,7 +1267,9 @@ protected:
         memset(newTable, 0, newSize*sizeof(Entry*));
         for (size_t i = 0; i < size; i++) { 
             for (entry = table[i]; entry != NULL; entry = next) { 
-                size_t h = entry->hash % newSize;
+                K key;
+                innerKey(key, entry->record);
+                size_t h = hashCode(key) % newSize;
                 next = entry->collision;
                 entry->collision = newTable[h];
                 newTable[h] = entry;
@@ -1278,9 +1286,9 @@ protected:
         Entry* entry = new Entry();       
         size_t n = 0;
         while (input.next(entry->record)) { 
-            innerKey(entry->key, entry->record);
-            entry->hash = hashCode(entry->key);
-            size_t h = entry->hash % size;  
+            K key;
+            innerKey(key, entry->record);
+            size_t h = hashCode(key) % size;  
             Entry* oldValue;
             do {
                 oldValue = table[h];
@@ -1299,9 +1307,9 @@ protected:
         Entry* entry = allocator.alloc();
         size_t realSize = 0;
         while (gather->next(entry->record)) {
-            innerKey(entry->key, entry->record);
-            entry->hash = hashCode(entry->key);
-            size_t h = entry->hash % size;  
+            K key;
+            innerKey(key, entry->record);
+            size_t h = hashCode(key) % size;  
             entry->collision = table[h]; 
             table[h] = entry;
             entry = allocator.alloc();
@@ -1391,9 +1399,9 @@ public:
 
                     Entry* entry = allocator.alloc();
                     while (fread(&entry->record, sizeof(I), 1, innerFile) == 1) { 
-                        innerKey(entry->key, entry->record);
-                        entry->hash = hashCode(entry->key);
-                        size_t h = entry->hash % size;  
+                        K key;
+                        innerKey(key, entry->record);
+                        size_t h = hashCode(key) % size;  
                         entry->collision = table[h]; 
                         table[h] = entry;
                         entry = allocator.alloc();
@@ -1405,9 +1413,8 @@ public:
                     outerFile = NULL;
                 } else { 
                     outerKey(key, outerRec);
-                    hash = hashCode(key);
-                    size_t h = hash % size;
-                    for (inner = table[h]; inner != NULL && !(inner->hash == hash && key == inner->key); inner = inner->collision);
+                    size_t h = hashCode(key) % size;
+                    for (inner = table[h]; !(inner == NULL || inner->equalsKey(key)); inner = inner->collision);
                 }
             } while (outerFile == NULL || (inner == NULL && kind == InnerJoin));
             
@@ -1421,7 +1428,7 @@ public:
         (I&)record = inner->record;
         do {
             inner = inner->collision;
-        } while (inner != NULL && !(inner->hash == hash && key == inner->key));
+        } while (!(inner == NULL || inner->equalsKey(key)));
 
         return true;
     }
@@ -1431,10 +1438,14 @@ public:
     }
 protected:
     struct Entry {
-        K      key;
         I      record;
         Entry* collision;
-        size_t hash;
+
+        bool equalsKey(K const& other) {
+            K key;
+            innerKey(key, record);
+            return key == other;
+        }
     };
     
     JoinKind const kind;
@@ -1540,9 +1551,9 @@ public:
                 Entry* entry = allocator.alloc();
                 clearHash();
                 while (fread(&entry->record, sizeof(I), 1, innerFile) == 1) { 
-                    innerKey(entry->key, entry->record);
-                    entry->hash = hashCode(entry->key);
-                    size_t h = entry->hash % size;  
+                    K key;
+                    innerKey(key, entry->record);
+                    size_t h = hashCode(key) % size;  
                     entry->collision = table[h]; 
                     table[h] = entry;
                     entry = allocator.alloc();
@@ -1555,10 +1566,9 @@ public:
             } else { 
                 K key;
                 outerKey(key, record);
-                size_t hash = hashCode(key);
-                size_t h = hash % size;
+                size_t h = hashCode(key) % size;
                 Entry* inner;            
-                for (inner = table[h]; inner != NULL && !(inner->hash == hash && key == inner->key); inner = inner->collision);
+                for (inner = table[h]; !(inner == NULL || inner->equalsKey(key)); inner = inner->collision);
                 if ((inner != NULL) ^ (kind == AntiJoin)) {
                     return true;
                 }                
@@ -1572,10 +1582,14 @@ public:
     }
 protected:
     struct Entry {
-        K      key;
         I      record;
         Entry* collision;
-        size_t hash;
+
+        bool equalsKey(K const& other) {
+            K key;
+            innerKey(key, record);
+            return key == other;
+        }
     };
     
     JoinKind const kind;
