@@ -436,8 +436,8 @@ namespace Q5
 
     struct OrdersProjection
     {
-        int o_orderkey;
-        int o_custkey;
+        long o_orderkey;
+        int  o_custkey;
     };
 
     void projectOrders(OrdersProjection& out, Orders const& in)
@@ -620,8 +620,8 @@ namespace Q7
 
     struct OrdersProjection
     {
-        int o_orderkey;
-        int o_custkey;
+        long o_orderkey;
+        int  o_custkey;
     };
 
     void projectOrders(OrdersProjection& out, Orders const& in)
@@ -811,8 +811,8 @@ namespace Q8
 
     struct OrdersProjection
     {
-        int o_orderkey;
-        int o_custkey;
+        long o_orderkey;
+        int  o_custkey;
         date_t o_orderdate;
     };
 
@@ -1038,8 +1038,8 @@ namespace Q9
 
     struct OrdersProjection
     {
-        int o_orderkey;
-        int o_orderdate;
+        long o_orderkey;
+        int  o_orderdate;
     };
 
     void projectOrders(OrdersProjection& out, Orders const& in)
@@ -1219,8 +1219,8 @@ namespace Q10
 
     struct OrdersProjection
     {
-        int o_orderkey;
-        int o_custkey;
+        long   o_orderkey;
+        int    o_custkey;
         date_t o_orderdate;
     };
 
@@ -1360,7 +1360,7 @@ namespace Q12
 
     struct OrdersProjection
     {
-        int o_orderkey;
+        long o_orderkey;
         priority_t o_orderpriority;
     };
 
