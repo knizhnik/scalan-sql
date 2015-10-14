@@ -7,31 +7,11 @@
 #include <assert.h>
 #include "cluster.h"
 #include "pack.h"
+#include "hash.h"
 
 #ifndef PARALLEL_INNER_OUTER_TABLES_LOAD
 #define PARALLEL_INNER_OUTER_TABLES_LOAD 1
 #endif
-
-//
-// Hash function for scalar fields
-//
-template<class T>
-inline size_t hashCode(T const& key) { 
-//    return key;
-//    return (key >> 8) ^ (key << (sizeof(key)*8 - 8));
-    return murmur_hash3_32(&key, sizeof key);
-}
-
-//
-// Hash function for string fields
-//
-inline size_t hashCode(char const* key) { 
-    size_t h = 0;
-    while (*key != '\0') { 
-        h = h*31 + (*key++ & 0xFF);
-    }
-    return h;
-}
 
 //
 // Pair is used for map-reduce
@@ -690,7 +670,7 @@ template<class T,class K,class V,void (*map)(Pair<K,V>& out, T const& in), void 
 class MapReduceRDD : public RDD< Pair<K,V> > 
 {    
   public:
-    MapReduceRDD(RDD<T>* input, size_t estimation) : table(new Entry*[estimation]), size(estimation) {
+    MapReduceRDD(RDD<T>* input, size_t estimation) : size(hashTableSize(estimation)), table(new Entry*[size]) {
         loadHash(input);
     }
 
@@ -715,8 +695,8 @@ class MapReduceRDD : public RDD< Pair<K,V> >
         Entry* collision;
     };
     
-    Entry** table;
     size_t  size;
+    Entry** table;
     size_t  i;
     Entry*  curr;
     BlockAllocator<Entry> allocator;
@@ -729,7 +709,7 @@ class MapReduceRDD : public RDD< Pair<K,V> >
         memset(newTable, 0, newSize*sizeof(Entry*));
         for (size_t i = 0; i < size; i++) { 
             for (entry = table[i]; entry != NULL; entry = next) { 
-                size_t h = hashCode(entry->pair.key) % newSize;
+                size_t h = MOD(hashCode(entry->pair.key), newSize);
                 next = entry->collision;
                 entry->collision = newTable[h];
                 newTable[h] = entry;
@@ -753,7 +733,7 @@ class MapReduceRDD : public RDD< Pair<K,V> >
         while (input->next(record)) {
             map(pair, record);
             size_t hash = hashCode(pair.key);
-            size_t h = hash % size;            
+            size_t h = MOD(hash, size);            
             for (entry = table[h]; !(entry == NULL || pair.key == entry->pair.key); entry = entry->collision);
             if (entry == NULL) { 
                 entry = allocator.alloc();
@@ -777,7 +757,7 @@ class MapReduceRDD : public RDD< Pair<K,V> >
             Pair<K,V> pair;
             while (gather.next(pair)) {
                 size_t hash = hashCode(pair.key);
-                size_t h = hash % size;            
+                size_t h = MOD(hash, size);            
                 for (entry = table[h]; !(entry == NULL || pair.key == entry->pair.key); entry = entry->collision);
                 if (entry == NULL) { 
                     entry = allocator.alloc();
@@ -966,7 +946,7 @@ class HashJoinRDD : public RDD< Join<O,I> >, MessageHandler
 {
 public:
     HashJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t estimation, JoinKind joinKind) 
-    : kind(joinKind), table(NULL), size(estimation), innerSize(0), entry(NULL), inner(innerRDD), outer(outerRDD), scatter(NULL), innerIsShuffled(false) 
+    : kind(joinKind), table(NULL), size(hashTableSize(estimation)), innerSize(0), entry(NULL), inner(innerRDD), outer(outerRDD), scatter(NULL), innerIsShuffled(false) 
     {
         assert(kind != AntiJoin);
 
@@ -1011,7 +991,7 @@ public:
                     return false;
                 }
                 outerKey(key, outerRec);
-                size_t h = hashCode(key) % size;
+                size_t h = MOD(hashCode(key), size);
                 for (entry = table[h]; !(entry == NULL || entry->equalsKey(key)); entry = entry->collision);
             } while (entry == NULL && kind == InnerJoin);
             
@@ -1082,7 +1062,7 @@ protected:
             for (entry = table[i]; entry != NULL; entry = next) {
                 K key;
                 innerKey(key, entry->record);
-                size_t h = hashCode(key) % newSize;
+                size_t h = MOD(hashCode(key), newSize);
                 next = entry->collision;
                 entry->collision = newTable[h];
                 newTable[h] = entry;
@@ -1101,7 +1081,7 @@ protected:
         while (input.next(entry->record)) { 
             K key;
             innerKey(key, entry->record);
-            size_t h = hashCode(key) % size;  
+            size_t h = MOD(hashCode(key), size);  
             Entry* oldValue;
             do {
                 oldValue = table[h];
@@ -1122,7 +1102,7 @@ protected:
         while (gather->next(entry->record)) {
             K key;
             innerKey(key, entry->record);
-            size_t h = hashCode(key) % size;  
+            size_t h = MOD(hashCode(key), size);  
             entry->collision = table[h]; 
             table[h] = entry;
             entry = allocator.alloc();
@@ -1172,7 +1152,7 @@ class HashSemiJoinRDD : public RDD<O>, MessageHandler
 {
 public:
     HashSemiJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t estimation, JoinKind joinKind) 
-    : kind(joinKind), table(NULL), size(estimation), inner(innerRDD), outer(outerRDD), scatter(NULL), innerIsShuffled(false)
+    : kind(joinKind), table(NULL), size(hashTableSize(estimation)), inner(innerRDD), outer(outerRDD), scatter(NULL), innerIsShuffled(false)
     {
         assert(kind != OuterJoin);
         Cluster* cluster = Cluster::instance.get();
@@ -1213,7 +1193,7 @@ public:
             K key;
             outerKey(key, record);
             Entry* entry;            
-            for (entry = table[hashCode(key) % size]; !(entry == NULL || entry->equalsKey(key)); entry = entry->collision);
+            for (entry = table[MOD(hashCode(key), size)]; !(entry == NULL || entry->equalsKey(key)); entry = entry->collision);
             if ((entry != NULL) ^ (kind == AntiJoin)) {
                 return true;
             }
@@ -1269,7 +1249,7 @@ protected:
             for (entry = table[i]; entry != NULL; entry = next) { 
                 K key;
                 innerKey(key, entry->record);
-                size_t h = hashCode(key) % newSize;
+                size_t h = MOD(hashCode(key), newSize);
                 next = entry->collision;
                 entry->collision = newTable[h];
                 newTable[h] = entry;
@@ -1288,7 +1268,7 @@ protected:
         while (input.next(entry->record)) { 
             K key;
             innerKey(key, entry->record);
-            size_t h = hashCode(key) % size;  
+            size_t h = MOD(hashCode(key), size);  
             Entry* oldValue;
             do {
                 oldValue = table[h];
@@ -1309,7 +1289,7 @@ protected:
         while (gather->next(entry->record)) {
             K key;
             innerKey(key, entry->record);
-            size_t h = hashCode(key) % size;  
+            size_t h = MOD(hashCode(key), size);  
             entry->collision = table[h]; 
             table[h] = entry;
             entry = allocator.alloc();
@@ -1361,7 +1341,7 @@ class ShuffleJoinRDD : public RDD< Join<O,I> >
 {
 public:
     ShuffleJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t nShuffleFiles, size_t estimation, JoinKind joinKind) 
-    : kind(joinKind), table(new Entry*[estimation]), nFiles(nShuffleFiles), size(estimation), outerFile(NULL), inner(NULL) {
+    : kind(joinKind), size(hashTableSize(estimation)), table(new Entry*[size]), nFiles(nShuffleFiles), outerFile(NULL), inner(NULL) {
         assert(kind != AntiJoin);
         Cluster* cluster = Cluster::instance.get();
         {
@@ -1401,7 +1381,7 @@ public:
                     while (fread(&entry->record, sizeof(I), 1, innerFile) == 1) { 
                         K key;
                         innerKey(key, entry->record);
-                        size_t h = hashCode(key) % size;  
+                        size_t h = MOD(hashCode(key), size);  
                         entry->collision = table[h]; 
                         table[h] = entry;
                         entry = allocator.alloc();
@@ -1413,7 +1393,7 @@ public:
                     outerFile = NULL;
                 } else { 
                     outerKey(key, outerRec);
-                    size_t h = hashCode(key) % size;
+                    size_t h = MOD(hashCode(key), size);
                     for (inner = table[h]; !(inner == NULL || inner->equalsKey(key)); inner = inner->collision);
                 }
             } while (outerFile == NULL || (inner == NULL && kind == InnerJoin));
@@ -1449,9 +1429,9 @@ protected:
     };
     
     JoinKind const kind;
+    size_t  const size;
     Entry** const table;
     size_t  const nFiles;
-    size_t  const size;
     FILE*   outerFile;
     O       outerRec;
     I       innerRec;
@@ -1516,7 +1496,7 @@ class ShuffleSemiJoinRDD : public RDD<O>
 {
 public:
     ShuffleSemiJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t nShuffleFiles, size_t estimation, JoinKind joinKind) 
-    : kind(joinKind), table(new Entry*[estimation]), nFiles(nShuffleFiles), size(estimation), outerFile(NULL) {
+    : kind(joinKind), size(estimation), table(new Entry*[size]), nFiles(nShuffleFiles), outerFile(NULL) {
         assert(kind != OuterJoin);
         Cluster* cluster = Cluster::instance.get();
         {
@@ -1553,7 +1533,7 @@ public:
                 while (fread(&entry->record, sizeof(I), 1, innerFile) == 1) { 
                     K key;
                     innerKey(key, entry->record);
-                    size_t h = hashCode(key) % size;  
+                    size_t h = MOD(hashCode(key), size);  
                     entry->collision = table[h]; 
                     table[h] = entry;
                     entry = allocator.alloc();
@@ -1566,7 +1546,7 @@ public:
             } else { 
                 K key;
                 outerKey(key, record);
-                size_t h = hashCode(key) % size;
+                size_t h = MOD(hashCode(key), size);
                 Entry* inner;            
                 for (inner = table[h]; !(inner == NULL || inner->equalsKey(key)); inner = inner->collision);
                 if ((inner != NULL) ^ (kind == AntiJoin)) {
