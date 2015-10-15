@@ -9,7 +9,7 @@
 #endif
 
 #ifndef ROUND_HASH_TABLE_SIZE
-#define ROUND_HASH_TABLE_SIZE 1
+#define ROUND_HASH_TABLE_SIZE 0
 #endif
 
 #if USE_CRC_HASH_FUNCTION
@@ -91,7 +91,40 @@ inline size_t hashTableSize(size_t estimation)
     }
     return hashSize;
 #else
-    return estimation;
+    const unsigned prime_numbers[] = {
+        17,             /* 0 */
+        37,             /* 1 */
+        79,             /* 2 */
+        163,            /* 3 */
+        331,            /* 4 */
+        673,            /* 5 */
+        1361,           /* 6 */
+        2729,           /* 7 */
+        5471,           /* 8 */
+        10949,          /* 9 */
+        21911,          /* 10 */
+        43853,          /* 11 */
+        87719,          /* 12 */
+        175447,         /* 13 */
+        350899,         /* 14 */
+        701819,         /* 15 */
+        1403641,        /* 16 */
+        2807303,        /* 17 */
+        5614657,        /* 18 */
+        11229331,       /* 19 */
+        22458671,       /* 20 */
+        44917381,       /* 21 */
+        89834777,       /* 22 */
+        179669557,      /* 23 */
+        359339171,      /* 24 */
+        718678369,      /* 25 */
+        1437356741,     /* 26 */
+        2147483647,     /* 27 */
+        4294967291U     /* 28 */
+    };
+    int i;
+    for (i = 0; prime_numbers[i] < estimation; i++);
+    return prime_numbers[i];
 #endif
 }
 
