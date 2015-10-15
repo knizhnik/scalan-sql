@@ -91,7 +91,7 @@ inline size_t hashTableSize(size_t estimation)
     }
     return hashSize;
 #else
-    return hashSize;
+    return estimation;
 #endif
 }
 

@@ -964,9 +964,11 @@ public:
         Cluster* cluster = Cluster::instance.get();
         if (table == NULL) { 
             bool replicateInner = size <= cluster->broadcastJoinThreshold;
+#if 0
             if (replicateInner) {             
                 size *= cluster->nNodes; // adjust hash table size 
             }
+#endif
             table = new Entry*[size];
             memset(table, 0, size*sizeof(Entry*));
             
@@ -1169,9 +1171,11 @@ public:
         Cluster* cluster = Cluster::instance.get();
         if (table == NULL) { 
             bool replicateInner = size <= cluster->broadcastJoinThreshold;
+#if 0
             if (replicateInner) {             
                 size *= cluster->nNodes; // adjust hash table size 
             }
+#endif
             table = new Entry*[size];
             memset(table, 0, size*sizeof(Entry*));
             
