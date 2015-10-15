@@ -96,7 +96,10 @@ inline size_t hashTableSize(size_t estimation)
 }
 
 #if ROUND_HASH_TABLE_SIZE
-#define MOD(x,y) ((x) & ((y)-1))
+inline size_t mod_power2(size_t x, size_t y) {
+    return (x ^ (x >> 21) ^ (x >> 42)) & (y - 1);
+}
+#define MOD(x,y)  mod_power2(x, y)
 #else
 #define MOD(x,y) ((x) % (y))
 #endif

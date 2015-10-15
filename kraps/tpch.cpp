@@ -1,4 +1,5 @@
 #include <time.h>
+#include <sys/time.h>
 #include <ctype.h>
 #include "rdd.h"
 #include "tpch.h"
@@ -1668,23 +1669,28 @@ namespace Q19
     }    
 }
     
-
+static time_t getCurrentTime()
+{
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return tv.tv_sec*1000 + tv.tv_usec/1000;
+}
 
 template<class T>
 void execute(char const* name, RDD<T>* (*query)()) 
 {
-    time_t start = time(NULL);
+    time_t start = getCurrentTime();
     RDD<T>* result = query();
     result->output(stdout);
     delete result;
 
     if (Cluster::instance->nodeId == 0) {
         FILE* results = fopen("results.csv", "a");
-        fprintf(results, "%s,%d\n", name, (int)(time(NULL) - start));
+        fprintf(results, "%s,%d\n", name, (int)(getCurrentTime() - start));
         fclose(results);
     }
        
-    printf("Elapsed time for %s: %d seconds\n", name, (int)(time(NULL) - start));
+    printf("Elapsed time for %s: %d milliseconds\n", name, (int)(getCurrentTime() - start));
     fflush(stdout);
 }
 
@@ -1704,10 +1710,10 @@ class TPCHJob : public Job
         Cluster::instance.set(&cluster);
         printf("Node %d started...\n", (int)cluster.nodeId);
 
-        time_t start = time(NULL);
+        time_t start = getCurrentTime();
         if (useCache) { 
             cluster.userData = new CachedData();
-            printf("Elapsed time for loading all data in memory: %d seconds\n", (int)(time(NULL) - start));
+            printf("Elapsed time for loading all data in memory: %d milliseconds\n", (int)(getCurrentTime() - start));
             cluster.barrier(); 
         }
     
