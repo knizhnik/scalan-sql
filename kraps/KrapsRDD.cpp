@@ -4,8 +4,7 @@
 #include <assert.h>
 #include "KrapsRDD.h"
 
-ThreadLocal<JNIEnv> KrapsIterator::env;
-typedef KrapsIterator* (*iterator_constructor_t)(JNIEnv *env, jobjectArray input);
+typedef KrapsIterator* (*iterator_constructor_t)(JNIEnv* env);
 
 struct KrapsRDD 
 {
@@ -23,35 +22,10 @@ struct KrapsRDD
     }
 };
 
-JNIEXPORT jlong Java_KrapsRDD_createIterator(JNIEnv* env, jobject self, jint queryId, jobjectArray iterators)
-{
-    char buf[256];
-    sprintf(buf, "libQ%d.so", queryId);
-    void* dll = dlopen(buf, RTLD_LAZY);
-    assert(dll != NULL);
-    sprintf(buf, "getQ%dIterator", queryId);
-    iterator_constructor_t constructor = (iterator_constructor_t)dlsym(dll, buf);
-    assert(constructor != NULL);
-    KrapsIterator::env = env;
-    return (jlong)(size_t)new KrapsRDD(dll, constructor(env, iterators));
-}
-
-JNIEXPORT jlong Java_KrapsRDD_nextRow(JNIEnv* env, jobject self, jlong iterator)
-{
-    KrapsRDD* rdd = (KrapsRDD*)iterator;
-    KrapsIterator::env = env;
-    void* row = rdd->next();
-    if (row != NULL) {
-        return (jlong)(size_t)row;
-    } 
-    Cluster* cluster = Cluster::instance.get();
-    cluster->barrier();
-    delete rdd;
-    return 0;
-}
 
 class KrapsCluster
 {
+  public:
     Cluster* cluster;
     char** nodes;
     int executorId;
@@ -100,6 +74,7 @@ class KrapsCluster
         }
         assert(nodeId >= 0);
         cluster = new Cluster(nodeId, nNodes, nodes);
+        cluster->userData = env;
     }
 
     void stop()
@@ -113,13 +88,48 @@ class KrapsCluster
 };
 
 static KrapsCluster kraps;
-    
-JNIEXPORT void Java_KrapsCluster_start(JNIEnv* env, jobject self, jobjectArray hosts, jint nCores)
+
+extern "C" {
+
+JNIEXPORT jlong Java_kraps_KrapsRDD_createIterator(JNIEnv* env, jobject self, jint queryId)
+{
+    char buf[256];
+    sprintf(buf, "libQ%d.so", queryId);
+    void* dll = dlopen(buf, RTLD_NOW|RTLD_GLOBAL);
+    assert(dll != NULL);
+    sprintf(buf, "getQ%dIterator", queryId);
+    iterator_constructor_t constructor = (iterator_constructor_t)dlsym(dll, buf);
+    assert(constructor != NULL);
+    return (jlong)(size_t)new KrapsRDD(dll, constructor(env));
+}
+
+JNIEXPORT jlong Java_kraps_KrapsRDD_nextRow(JNIEnv* env, jobject self, jlong iterator, jobjectArray sparkInputs)
+{
+    KrapsRDD* rdd = (KrapsRDD*)iterator;
+    Cluster* cluster = Cluster::instance.get();
+    if (cluster == NULL) { 
+        cluster = kraps.cluster;
+        Cluster::instance.set(cluster);
+    }
+    JavaContext ctx(env, sparkInputs);
+    cluster->userData = &ctx;
+    void* row = rdd->next();
+    if (row != NULL) {
+        return (jlong)(size_t)row;
+    } 
+    cluster->barrier();
+    delete rdd;
+    return 0;
+}
+
+JNIEXPORT void Java_kraps_KrapsCluster_00024_start(JNIEnv* env, jobject self, jobjectArray hosts, jint nCores)
 {
     kraps.start(env, hosts, nCores);
 }
 
-JNIEXPORT void Java_KrapsCluster_stop(JNIEnv* env, jobject self)
+JNIEXPORT void Java_kraps_KrapsCluster_00024_stop(JNIEnv* env, jobject self)
 {
     kraps.stop();
+}
+
 }
