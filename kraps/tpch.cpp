@@ -5,11 +5,12 @@
 #include "tpch.h"
 
 const size_t SF = 100; // scale factor
+const size_t N_NODES = 16;
 
 #define STRCMP(s,p) strncmp(s, p, sizeof(s))
 #define STREQ(s,p)  (STRCMP(s, p) == 0)
 #define STRCPY(d,s) strncpy(d,s,sizeof(d))
-#define SCALE(x)    ((x + Cluster::instance->nNodes - 1)*SF/(Cluster::instance->nNodes) + (x / 100)) // take in accoutn data skews
+#define SCALE(x)    ((x + N_NODES - 1)*SF/N_NODES + (x / 100)) // take in account data skews
 
 #define TABLE(x) (Cluster::instance->userData ? (RDD<x>*)((CachedData*)Cluster::instance->userData)->_##x.get() : (RDD<x>*)FileManager::load<x>(filePath(#x)))
 
@@ -193,7 +194,7 @@ namespace Q1
         return
             TABLE(Lineitem)->
             filter<predicate>()->
-            mapReduce<GroupBy,Aggregate,map,reduce>(10000)->
+            mapReduce<GroupBy,Aggregate,map,reduce,10000>()->
             project<Projection, projection>()->
             sort<compare>(100);
     }
@@ -325,15 +326,13 @@ namespace Q3
             TABLE(Lineitem)->
             filter<lineitemFilter>()->
             project<LineitemProjection, projectLineitem>()->
-            join<OrdersProjection,long,lineitemOrderKey,orderKey>(TABLE(Orders)->
-                                                                  filter<orderFilter>()->
-                                                                  project<OrdersProjection, projectOrders>(), 
-                                                                  SCALE(1500000))->
-            join<CustomerProjection,int,orderCustomerKey,customerKey>(TABLE(Customer)->
-                                                                      filter<customerFilter>()->
-                                                                      project<CustomerProjection,projectCustomer>(), 
-                                                                      SCALE(150000))->
-            mapReduce<GroupBy, double, map, sum>(1000000)->
+            join<OrdersProjection,long,lineitemOrderKey,orderKey,SCALE(1500000)>(TABLE(Orders)->
+                filter<orderFilter>()->
+                project<OrdersProjection, projectOrders>())->
+            join<CustomerProjection,int,orderCustomerKey,customerKey,SCALE(150000)>(TABLE(Customer)->
+                filter<customerFilter>()->
+                project<CustomerProjection,projectCustomer>())->
+            mapReduce<GroupBy, double, map, sum, 1000000>()->
             project<Revenue, revenue>()->
             top<byRevenueAndOrderDate>(10);
     }    
@@ -404,11 +403,10 @@ namespace Q4
             TABLE(Lineitem)->
             filter<lineitemFilter>()->
             project<LineitemProjection, projectLineitem>()->
-            join<OrdersProjection,long,lineitemOrderKey,orderKey>(TABLE(Orders)->
-                                                                  filter<orderFilter>()->
-                                                                  project<OrdersProjection,projectOrders>(), 
-                                                                  SCALE(1500000))->
-            mapReduce<Key<priority_t>, int, map, count>(25)->
+            join<OrdersProjection,long,lineitemOrderKey,orderKey,SCALE(1500000)>(TABLE(Orders)->
+                filter<orderFilter>()->
+                project<OrdersProjection,projectOrders>())->
+            mapReduce<Key<priority_t>, int, map, count, 25>()->
             sort<byPriority>(25);
     }    
 }   
@@ -554,21 +552,18 @@ namespace Q5
         return
             TABLE(Lineitem)->
             project<LineitemProjection,projectLineitem>()->            
-            join<OrdersProjection,long,lineitemOrderKey,orderKey>(TABLE(Orders)->
-                                                                  filter<orderRange>()->
-                                                                  project<OrdersProjection,projectOrders>(),
-                                                                  SCALE(1500000))->
-            join<SupplierProjection,int,lineitemSupplierKey,supplierKey>(TABLE(Supplier)->
-                                                                         project<SupplierProjection,projectSupplier>(),
-                                                                         SCALE(10000))->
-            join<CustomerProjection,int,orderCustomerKey,customerKey>(TABLE(Customer)->
-                                                                      project<CustomerProjection,projectCustomer>(),
-                                                                      SCALE(150000))->
+            join<OrdersProjection,long,lineitemOrderKey,orderKey,SCALE(1500000)>(TABLE(Orders)->
+                filter<orderRange>()->
+                project<OrdersProjection,projectOrders>())->
+            join<SupplierProjection,int,lineitemSupplierKey,supplierKey,SCALE(10000)>(TABLE(Supplier)->
+                project<SupplierProjection,projectSupplier>())->
+            join<CustomerProjection,int,orderCustomerKey,customerKey,SCALE(150000)>(TABLE(Customer)->
+                project<CustomerProjection,projectCustomer>())->
             filter<sameNation>()->
-            join<Nation,int,customerNationKey,nationKey>(TABLE(Nation),25)->
-            join<Region,int,nationRegionKey,regionKey>(TABLE(Region),5)->
+            join<Nation,int,customerNationKey,nationKey,25>(TABLE(Nation))->
+            join<Region,int,nationRegionKey,regionKey,5>(TABLE(Region))->
             filter<asiaRegion>()->
-            mapReduce<Key<name_t>,double,map,sum>(25)->
+            mapReduce<Key<name_t>,double,map,sum,25>()->
             project<Revenue,revenue>()->
             sort<byRevenue>(25);
     }    
@@ -769,19 +764,16 @@ namespace Q7
             TABLE(Lineitem)->
             filter<filterLineitem>()->           
             project<LineitemProjection, projectLineitem>()->            
-            join<OrdersProjection,long,lineitemOrderKey,orderKey>(TABLE(Orders)->
-                                                                  project<OrdersProjection,projectOrders>(), 
-                                                                  SCALE(1500000))->
-            join<SupplierProjection,int,lineitemSupplierKey,supplierKey>(TABLE(Supplier)->
-                                                                         project<SupplierProjection,projectSupplier>(),
-                                                                         SCALE(10000))->
-            join<CustomerProjection,int,orderCustomerKey,customerKey>(TABLE(Customer)->
-                                                                      project<CustomerProjection,projectCustomer>(),
-                                                                      SCALE(150000))-> 
-            join<Nation1,int,supplierNationKey,nation1Key>((RDD<Nation1>*)TABLE(Nation), 25)->
-            join<Nation2,int,customerNationKey,nation2Key>((RDD<Nation2>*)TABLE(Nation), 25)->
+            join<OrdersProjection,long,lineitemOrderKey,orderKey,SCALE(1500000)>(TABLE(Orders)->
+                project<OrdersProjection,projectOrders>())->
+            join<SupplierProjection,int,lineitemSupplierKey,supplierKey,SCALE(10000)>(TABLE(Supplier)->
+                project<SupplierProjection,projectSupplier>())->
+            join<CustomerProjection,int,orderCustomerKey,customerKey,SCALE(150000)>(TABLE(Customer)->
+                project<CustomerProjection,projectCustomer>())-> 
+            join<Nation1,int,supplierNationKey,nation1Key,25>((RDD<Nation1>*)TABLE(Nation))->
+            join<Nation2,int,customerNationKey,nation2Key,25>((RDD<Nation2>*)TABLE(Nation))->
             filter<filterNation>()->
-            mapReduce<Shipping,double,map,sum>(25*25*100)->
+            mapReduce<Shipping,double,map,sum,25*25*100>()->
             sort<byShipping>(25*25*100);
     }    
 }
@@ -988,24 +980,20 @@ namespace Q8
         return
             TABLE(Lineitem)->
             project<LineitemProjection,projectLineitem>()->            
-            join<OrdersProjection,long,lineitemOrderKey,orderKey>(TABLE(Orders)->
-                                                                  filter<orderRange>()->
-                                                                  project<OrdersProjection,projectOrders>(),
-                                                                  SCALE(1500000))->
-            join<PartProjection,int,lineitemPartKey,partKey>(TABLE(Part)->
-                                                             filter<partType>()->
-                                                             project<PartProjection,projectPart>(),
-                                                             SCALE(200000))->
-            join<SupplierProjection,int,lineitemSupplierKey,supplierKey>(TABLE(Supplier)->
-                                                                         project<SupplierProjection,projectSupplier>(),
-                                                                         SCALE(10000))->
-            join<CustomerProjection,int,orderCustomerKey,customerKey>(TABLE(Customer)->
-                                                                      project<CustomerProjection,projectCustomer>(),
-                                                                      SCALE(150000))-> 
-            join<Nation1,int,supplierNationKey,nation1Key>((RDD<Nation1>*)TABLE(Nation),25)->
-            join<Nation2,int,customerNationKey,nation2Key>((RDD<Nation2>*)TABLE(Nation),25)->
-            join<Region,int,nationRegionKey, regionKey>(TABLE(Region)->filter<regionName>(), 5)->
-            mapReduce<int,Volume,map,reduce>(100)->
+            join<OrdersProjection,long,lineitemOrderKey,orderKey,SCALE(1500000)>(TABLE(Orders)->
+                filter<orderRange>()->
+                project<OrdersProjection,projectOrders>())->
+            join<PartProjection,int,lineitemPartKey,partKey,SCALE(200000)>(TABLE(Part)->
+                filter<partType>()->
+                project<PartProjection,projectPart>())->
+            join<SupplierProjection,int,lineitemSupplierKey,supplierKey,SCALE(10000)>(TABLE(Supplier)->
+                project<SupplierProjection,projectSupplier>())->
+            join<CustomerProjection,int,orderCustomerKey,customerKey,SCALE(150000)>(TABLE(Customer)->
+                project<CustomerProjection,projectCustomer>())-> 
+            join<Nation1,int,supplierNationKey,nation1Key,25>((RDD<Nation1>*)TABLE(Nation))->
+            join<Nation2,int,customerNationKey,nation2Key,25>((RDD<Nation2>*)TABLE(Nation))->
+            join<Region,int,nationRegionKey,regionKey,5>(TABLE(Region)->filter<regionName>())->
+            mapReduce<int,Volume,map,reduce,100>()->
             project<Share, mkt>()->
             sort<byYear>(100);
     }    
@@ -1179,21 +1167,17 @@ namespace Q9
         return
             TABLE(Lineitem)->
             project<LineitemProjection,projectLineitem>()->            
-            join<OrdersProjection,long,lineitemOrderKey,orderKey>(TABLE(Orders)->
-                                                                  project<OrdersProjection,projectOrders>(),
-                                                                  SCALE(1500000))->
-            join<PartProjection,int,lineitemPartKey,partKey>(TABLE(Part)->
-                                                             filter<partName>()->
-                                                             project<PartProjection,projectPart>(),
-                                                             SCALE(200000))->
-            join<PartsuppProjection,PartsuppKey,lineitemPartsuppKey,partsuppKey>(TABLE(Partsupp)->
-                                                                                 project<PartsuppProjection,projectPartsupp>(),
-                                                                                 SCALE(800000))->
-            join<SupplierProjection,int,lineitemSupplierKey,supplierKey>(TABLE(Supplier)->
-                                                                         project<SupplierProjection,projectSupplier>(),
-                                                                         SCALE(10000))->
-            join<Nation,int,supplierNationKey,nationKey>(TABLE(Nation), 25)->
-            mapReduce<Profit,double,map,sum>(25*100)->
+            join<OrdersProjection,long,lineitemOrderKey,orderKey,SCALE(1500000)>(TABLE(Orders)->
+                project<OrdersProjection,projectOrders>())->
+            join<PartProjection,int,lineitemPartKey,partKey,SCALE(200000)>(TABLE(Part)->
+                filter<partName>()->
+                project<PartProjection,projectPart>())->
+            join<PartsuppProjection,PartsuppKey,lineitemPartsuppKey,partsuppKey,SCALE(800000)>(TABLE(Partsupp)->
+                project<PartsuppProjection,projectPartsupp>())->
+            join<SupplierProjection,int,lineitemSupplierKey,supplierKey,SCALE(10000)>(TABLE(Supplier)->
+                project<SupplierProjection,projectSupplier>())->
+            join<Nation,int,supplierNationKey,nationKey,25>(TABLE(Nation))->
+            mapReduce<Profit,double,map,sum,25*100>()->
             sort<byNationYear>(100);
     }    
 }
@@ -1323,14 +1307,12 @@ namespace Q10
             TABLE(Lineitem)->
             filter<lineitemFilter>()->
             project<LineitemProjection,projectLineitem>()->            
-            join<OrdersProjection,long,lineitemOrderKey,orderKey>(TABLE(Orders)->
-                                                                  filter<orderRange>()->
-                                                                  project<OrdersProjection,projectOrders>(),
-                                                                  SCALE(1500000))->
-            join<Customer,int,orderCustomerKey,customerKey>(TABLE(Customer),
-                                                            SCALE(150000))-> 
-            join<Nation,int,customerNationKey,nationKey>(TABLE(Nation), 25)->
-            mapReduce<GroupBy,double,map,sum>(1000)->
+            join<OrdersProjection,long,lineitemOrderKey,orderKey,SCALE(1500000)>(TABLE(Orders)->
+                filter<orderRange>()->
+                project<OrdersProjection,projectOrders>())->
+            join<Customer,int,orderCustomerKey,customerKey,SCALE(150000)>(TABLE(Customer))-> 
+            join<Nation,int,customerNationKey,nationKey,25>(TABLE(Nation))->
+            mapReduce<GroupBy,double,map,sum,1000>()->
             top<byRevenue>(20);
     }    
 }
@@ -1419,10 +1401,9 @@ namespace Q12
             TABLE(Lineitem)->
             filter<lineitemFilter>()->
             project<LineitemProjection,projectLineitem>()->                        
-            join<OrdersProjection,long,lineitemOrderKey,orderKey>(TABLE(Orders)->
-                                                                  project<OrdersProjection,projectOrders>(), 
-                                                                  SCALE(1500000))->
-            mapReduce<Key<shipmode_t>,LineCount,map,reduce>(100)->
+            join<OrdersProjection,long,lineitemOrderKey,orderKey,SCALE(1500000)>(TABLE(Orders)->
+                project<OrdersProjection,projectOrders>())->
+            mapReduce<Key<shipmode_t>,LineCount,map,reduce,100>()->
             sort<byShipmode>(100);
     }    
 }
@@ -1488,11 +1469,10 @@ namespace Q13
             TABLE(Orders)->
             filter<orderFilter>()->
             project<OrdersProjection, projectOrders>()->
-            join<CustomerProjection,int,orderCustomerKey,customerKey>(TABLE(Customer)->
-                                                                      project<CustomerProjection,projectCustomer>(),
-                                                                      SCALE(150000), OuterJoin)->
-            mapReduce<int,int,map1,count>(1000000)->
-            mapReduce<int,int,map2,count>(10000)->
+            join<CustomerProjection,int,orderCustomerKey,customerKey,SCALE(150000)>(TABLE(Customer)->
+                project<CustomerProjection,projectCustomer>(),OuterJoin)->
+            mapReduce<int,int,map1,count,1000000>()->
+            mapReduce<int,int,map2,count,10000>()->
             sort<byCustDistCount>(10000);
     }    
 }
@@ -1572,9 +1552,8 @@ namespace Q14
             TABLE(Lineitem)->
             filter<lineitemFilter>()->
             project<LineitemProjection,projectLineitem>()->                        
-            join<PartProjection,int,lineitemPartKey,partKey>(TABLE(Part)->
-                                                             project<PartProjection,projectPart>(),
-                                                             SCALE(200000))->
+            join<PartProjection,int,lineitemPartKey,partKey,SCALE(200000)>(TABLE(Part)->
+                project<PartProjection,projectPart>())->
             reduce<PromoRevenue,promoRevenue,combineRevenue>(PromoRevenue(0,0))->
             project<double,relation>();
     }    
@@ -1662,8 +1641,8 @@ namespace Q19
         return
             TABLE(Lineitem)->
             project<LineitemProjection,projectLineitem>()->                        
-            join<PartProjection,int,lineitemPartKey,partKey>(TABLE(Part)->
-                                                             project<PartProjection,projectPart>(), SCALE(200000))->
+            join<PartProjection,int,lineitemPartKey,partKey,SCALE(200000)>(TABLE(Part)->
+                project<PartProjection,projectPart>())->
             filter<brandFilter>()->
             reduce<double,revenue,sum>(0);
     }    

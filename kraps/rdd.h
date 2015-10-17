@@ -139,8 +139,8 @@ class RDD
     /**
      * Perfrom map-reduce
      */
-    template<class K,class V,void (*map)(Pair<K,V>& out, T const& in), void (*reduce)(V& dst, V const& src)>
-    RDD< Pair<K,V> >* mapReduce(size_t estimation);
+    template<class K,class V,void (*map)(Pair<K,V>& out, T const& in), void (*reduce)(V& dst, V const& src), size_t estimation>
+    RDD< Pair<K,V> >* mapReduce();
 
     /**
      * Perform aggregation of input RDD 
@@ -169,14 +169,14 @@ class RDD
     /**
      * Left join two RDDs
      */
-    template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner)>
-    RDD< Join<T,I> >* join(RDD<I>* with, size_t estimation, JoinKind kind = InnerJoin);
+    template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner), size_t estimation>
+    RDD< Join<T,I> >* join(RDD<I>* with, JoinKind kind = InnerJoin);
 
     /**
      * Left simijoin two RDDs
      */
-    template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner)>
-    RDD<T>* semijoin(RDD<I>* with, size_t estimation, JoinKind kind = InnerJoin);
+    template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner), size_t estimation>
+    RDD<T>* semijoin(RDD<I>* with, JoinKind kind = InnerJoin);
 
     /**
      * Replicate data between all nodes.
@@ -666,11 +666,11 @@ class ReduceRDD : public RDD<S>
 //
 // Classical Map-Reduce
 //
-template<class T,class K,class V,void (*map)(Pair<K,V>& out, T const& in), void (*reduce)(V& dst, V const& src)>
+template<class T,class K,class V,void (*map)(Pair<K,V>& out, T const& in), void (*reduce)(V& dst, V const& src), size_t size>
 class MapReduceRDD : public RDD< Pair<K,V> > 
 {    
   public:
-    MapReduceRDD(RDD<T>* input, size_t estimation) : size(hashTableSize(estimation)), table(new Entry*[size]) {
+    MapReduceRDD(RDD<T>* input) : table(new Entry*[size]) {
         loadHash(input);
     }
 
@@ -695,31 +695,10 @@ class MapReduceRDD : public RDD< Pair<K,V> >
         Entry* collision;
     };
     
-    size_t  size;
-    Entry** table;
+    Entry** const table;
     size_t  i;
     Entry*  curr;
     BlockAllocator<Entry> allocator;
-
-    void extendHash() 
-    {
-        Entry *entry, *next;
-        size_t newSize = size << 1;
-        Entry** newTable = new Entry*[newSize];
-        memset(newTable, 0, newSize*sizeof(Entry*));
-        for (size_t i = 0; i < size; i++) { 
-            for (entry = table[i]; entry != NULL; entry = next) { 
-                size_t h = MOD(hashCode(entry->pair.key), newSize);
-                next = entry->collision;
-                entry->collision = newTable[h];
-                newTable[h] = entry;
-            }
-        }
-        delete[] table;
-        table = newTable;
-        size = newSize;
-    }
-             
 
     void loadHash(RDD<T>* input) 
     {
@@ -740,9 +719,6 @@ class MapReduceRDD : public RDD< Pair<K,V> >
                 entry->collision = table[h];
                 table[h] = entry;
                 entry->pair = pair;
-                if (++realSize > size) { 
-                    extendHash();
-                }
             } else { 
                 reduce(entry->pair.value, pair.value);
             }
@@ -764,9 +740,6 @@ class MapReduceRDD : public RDD< Pair<K,V> >
                     entry->collision = table[h];
                     table[h] = entry;
                     entry->pair = pair;
-                    if(++realSize > size) { 
-                        extendHash();
-                    }
                 } else { 
                     reduce(entry->pair.value, pair.value);
                 }                
@@ -941,12 +914,12 @@ class TopRDD : public RDD<T>
 //
 // Join two RDDs using hash table
 //
-template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner)>
+template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner), size_t size>
 class HashJoinRDD : public RDD< Join<O,I> >, MessageHandler
 {
 public:
-    HashJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t estimation, JoinKind joinKind) 
-    : kind(joinKind), table(NULL), size(hashTableSize(estimation)), innerSize(0), entry(NULL), inner(innerRDD), outer(outerRDD), scatter(NULL), innerIsShuffled(false) 
+    HashJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, JoinKind joinKind) 
+    : kind(joinKind), table(NULL), innerSize(0), entry(NULL), inner(innerRDD), outer(outerRDD), scatter(NULL), innerIsShuffled(false) 
     {
         assert(kind != AntiJoin);
 
@@ -964,11 +937,6 @@ public:
         Cluster* cluster = Cluster::instance.get();
         if (table == NULL) { 
             bool replicateInner = size <= cluster->broadcastJoinThreshold;
-#if 0
-            if (replicateInner) {             
-                size *= cluster->nNodes; // adjust hash table size 
-            }
-#endif
             table = new Entry*[size];
             memset(table, 0, size*sizeof(Entry*));
             
@@ -1031,7 +999,6 @@ protected:
     
     JoinKind const kind;
     Entry** table;
-    size_t  size;
     size_t  innerSize;
     O       outerRec;
     I       innerRec;
@@ -1054,27 +1021,6 @@ protected:
         }
     }
 
-    void extendHash() 
-    {
-        Entry *entry, *next;
-        size_t newSize = size << 1;
-        Entry** newTable = new Entry*[newSize];
-        memset(newTable, 0, newSize*sizeof(Entry*));
-        for (size_t i = 0; i < size; i++) { 
-            for (entry = table[i]; entry != NULL; entry = next) {
-                K key;
-                innerKey(key, entry->record);
-                size_t h = MOD(hashCode(key), newSize);
-                next = entry->collision;
-                entry->collision = newTable[h];
-                newTable[h] = entry;
-            }
-        }
-        delete[] table;
-        table = newTable;
-        size = newSize;
-    }
-             
     void handle(Buffer* buf) 
     {
         BufferRDD<I> input(buf);
@@ -1108,9 +1054,6 @@ protected:
             entry->collision = table[h]; 
             table[h] = entry;
             entry = allocator.alloc();
-            if (++realSize == size) {
-                extendHash();
-            }
         }
         innerSize += realSize;
 #ifdef SHOW_HASH_STATISTIC
@@ -1149,12 +1092,12 @@ protected:
 //
 // Semijoin two RDDs using hash table
 //
-template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner)>
+template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner), size_t size>
 class HashSemiJoinRDD : public RDD<O>, MessageHandler
 {
 public:
-    HashSemiJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t estimation, JoinKind joinKind) 
-    : kind(joinKind), table(NULL), size(hashTableSize(estimation)), inner(innerRDD), outer(outerRDD), scatter(NULL), innerIsShuffled(false)
+    HashSemiJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD,JoinKind joinKind) 
+    : kind(joinKind), table(NULL), inner(innerRDD), outer(outerRDD), scatter(NULL), innerIsShuffled(false)
     {
         assert(kind != OuterJoin);
         Cluster* cluster = Cluster::instance.get();
@@ -1171,11 +1114,6 @@ public:
         Cluster* cluster = Cluster::instance.get();
         if (table == NULL) { 
             bool replicateInner = size <= cluster->broadcastJoinThreshold;
-#if 0
-            if (replicateInner) {             
-                size *= cluster->nNodes; // adjust hash table size 
-            }
-#endif
             table = new Entry*[size];
             memset(table, 0, size*sizeof(Entry*));
             
@@ -1225,7 +1163,6 @@ protected:
     
     JoinKind const kind;
     Entry** table;
-    size_t  size;
     size_t  innerSize;
     RDD<I>* inner;
     RDD<O>* outer;
@@ -1243,27 +1180,6 @@ protected:
         }
     }
 
-    void extendHash() 
-    {
-        Entry *entry, *next;
-        size_t newSize = size << 1;
-        Entry** newTable = new Entry*[newSize];
-        memset(newTable, 0, newSize*sizeof(Entry*));
-        for (size_t i = 0; i < size; i++) { 
-            for (entry = table[i]; entry != NULL; entry = next) { 
-                K key;
-                innerKey(key, entry->record);
-                size_t h = MOD(hashCode(key), newSize);
-                next = entry->collision;
-                entry->collision = newTable[h];
-                newTable[h] = entry;
-            }
-        }
-        delete[] table;
-        table = newTable;
-        size = newSize;
-    }
-             
     void handle(Buffer* buf) 
     {
         BufferRDD<I> input(buf);
@@ -1297,9 +1213,6 @@ protected:
             entry->collision = table[h]; 
             table[h] = entry;
             entry = allocator.alloc();
-            if (++realSize == size) { 
-                extendHash();
-            }
         }
         innerSize += realSize;
 #ifdef SHOW_HASH_STATISTIC
@@ -1345,7 +1258,7 @@ class ShuffleJoinRDD : public RDD< Join<O,I> >
 {
 public:
     ShuffleJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t nShuffleFiles, size_t estimation, JoinKind joinKind) 
-    : kind(joinKind), size(hashTableSize(estimation)), table(new Entry*[size]), nFiles(nShuffleFiles), outerFile(NULL), inner(NULL) {
+    : kind(joinKind), size(estimation/nShuffleFiles), table(new Entry*[size]), nFiles(nShuffleFiles), outerFile(NULL), inner(NULL) {
         assert(kind != AntiJoin);
         Cluster* cluster = Cluster::instance.get();
         {
@@ -1500,7 +1413,7 @@ class ShuffleSemiJoinRDD : public RDD<O>
 {
 public:
     ShuffleSemiJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t nShuffleFiles, size_t estimation, JoinKind joinKind) 
-    : kind(joinKind), size(estimation), table(new Entry*[size]), nFiles(nShuffleFiles), outerFile(NULL) {
+    : kind(joinKind), size(estimation/nShuffleFiles), table(new Entry*[size]), nFiles(nShuffleFiles), outerFile(NULL) {
         assert(kind != OuterJoin);
         Cluster* cluster = Cluster::instance.get();
         {
@@ -1577,9 +1490,9 @@ protected:
     };
     
     JoinKind const kind;
+    size_t  const size;
     Entry** const table;
     size_t  const nFiles;
-    size_t  const size;
     FILE*   outerFile;
     qid_t   qid;
     size_t  fileNo;
@@ -1734,9 +1647,9 @@ inline RDD<S>* RDD<T>::reduce(S const& initState) {
 }
 
 template<class T>
-template<class K,class V,void (*map_f)(Pair<K,V>& out, T const& in), void (*reduce_f)(V& dst, V const& src)>
-inline RDD< Pair<K,V> >* RDD<T>::mapReduce(size_t estimation) {
-    return new MapReduceRDD<T,K,V,map_f,reduce_f>(this, estimation);
+template<class K,class V,void (*map_f)(Pair<K,V>& out, T const& in), void (*reduce_f)(V& dst, V const& src), size_t estimation>
+inline RDD< Pair<K,V> >* RDD<T>::mapReduce() {
+    return new MapReduceRDD<T,K,V,map_f,reduce_f,estimation>(this);
 }
 
 template<class T>
@@ -1758,25 +1671,25 @@ inline RDD<T>* RDD<T>::top(size_t n) {
 }
 
 template<class T>
-template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner)>
-RDD< Join<T,I> >* RDD<T>::join(RDD<I>* with, size_t estimation, JoinKind kind) {
+template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner), size_t estimation>
+RDD< Join<T,I> >* RDD<T>::join(RDD<I>* with, JoinKind kind) {
     Cluster* cluster = Cluster::instance.get();
     if (estimation <= cluster->inmemJoinThreshold) { 
-        return new HashJoinRDD<T,I,K,outerKey,innerKey>(this, with, estimation, kind);
+        return new HashJoinRDD<T,I,K,outerKey,innerKey,estimation>(this, with, kind);
     }
     size_t nFiles = (estimation + cluster->inmemJoinThreshold - 1) / cluster->inmemJoinThreshold;
-    return new ShuffleJoinRDD<T,I,K,outerKey,innerKey>(this, with, nFiles, estimation/nFiles, kind);
+    return new ShuffleJoinRDD<T,I,K,outerKey,innerKey>(this, with, nFiles, estimation, kind);
 }
 
 template<class T>
-template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner)>
-RDD<T>* RDD<T>::semijoin(RDD<I>* with, size_t estimation, JoinKind kind) {
+template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner), size_t estimation>
+RDD<T>* RDD<T>::semijoin(RDD<I>* with, JoinKind kind) {
     Cluster* cluster = Cluster::instance.get();
     if (estimation <= cluster->inmemJoinThreshold) { 
-        return new HashSemiJoinRDD<T,I,K,outerKey,innerKey>(this, with, estimation, kind);
+        return new HashSemiJoinRDD<T,I,K,outerKey,innerKey,estimation>(this, with, kind);
     }
     size_t nFiles = (estimation + cluster->inmemJoinThreshold - 1) / cluster->inmemJoinThreshold;
-    return new ShuffleSemiJoinRDD<T,I,K,outerKey,innerKey>(this, with, nFiles, estimation/nFiles, kind);
+    return new ShuffleSemiJoinRDD<T,I,K,outerKey,innerKey>(this, with, nFiles, estimation, kind);
 }
 
 #endif
