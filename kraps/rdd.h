@@ -704,7 +704,7 @@ class MapReduceRDD : public RDD< Pair<K,V> >
     void extendHash() 
     {
         Entry *entry, *next;
-        size_t newSize = size << 1;
+        size_t newSize = hashTableSize(size+1);
         Entry** newTable = new Entry*[newSize];
         memset(newTable, 0, newSize*sizeof(Entry*));
         for (size_t i = 0; i < size; i++) { 
@@ -1057,7 +1057,7 @@ protected:
     void extendHash() 
     {
         Entry *entry, *next;
-        size_t newSize = size << 1;
+        size_t newSize = hashTableSize(size+1);
         Entry** newTable = new Entry*[newSize];
         memset(newTable, 0, newSize*sizeof(Entry*));
         for (size_t i = 0; i < size; i++) { 
@@ -1246,7 +1246,7 @@ protected:
     void extendHash() 
     {
         Entry *entry, *next;
-        size_t newSize = size << 1;
+        size_t newSize = hashTableSize(size+1);
         Entry** newTable = new Entry*[newSize];
         memset(newTable, 0, newSize*sizeof(Entry*));
         for (size_t i = 0; i < size; i++) { 
