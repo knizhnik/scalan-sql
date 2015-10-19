@@ -17,8 +17,8 @@ struct KrapsRDD
 
     KrapsRDD(void* so, KrapsIterator* iter) : dll(so), iterator(iter) {}
     ~KrapsRDD() { 
-        dlclose(dll);
         delete iterator;
+        dlclose(dll);
     }
 };
 
