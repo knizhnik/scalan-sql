@@ -447,7 +447,7 @@ namespace Q5
         out.o_custkey = in.o_custkey;
     }            
 
-    void orderKey(long& key, OrdersProjection const& in)
+    void orderKeyXXXXX(long& key, OrdersProjection const& in)
     {
         key = in.o_orderkey;
     }
@@ -554,7 +554,7 @@ namespace Q5
         return
             TABLE(Lineitem)->
             project<LineitemProjection,projectLineitem>()->            
-            join<OrdersProjection,long,lineitemOrderKey,orderKey>(TABLE(Orders)->
+            join<OrdersProjection,long,lineitemOrderKey,orderKeyXXXXX>(TABLE(Orders)->
                                                                   filter<orderRange>()->
                                                                   project<OrdersProjection,projectOrders>(),
                                                                   SCALE(1500000))->

@@ -24,7 +24,10 @@ class SparkRDD : public RDD<T>
     bool next(T& row)
     {
         JavaContext* ctx = (JavaContext*)Cluster::instance->userData;
-        return ctx->env->CallBooleanMethod(ctx->env->GetObjectArrayElement(ctx->inputs, inputNo), nextRow, (jlong)(size_t)&row);
+        jobject input = ctx->env->GetObjectArrayElement(ctx->inputs, inputNo);
+        bool rc = ctx->env->CallBooleanMethod(input, nextRow, (jlong)(size_t)&row);
+        ctx->env->DeleteLocalRef(input);
+        return rc;
     }
     SparkRDD(JNIEnv* env, jint no) : inputNo(no)
     {
