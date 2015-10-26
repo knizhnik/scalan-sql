@@ -7,6 +7,12 @@ HADOOP_HOME=~/hadoop-2.7.0
 SPARK_HOME=/srv/remote/all-common/spark-1.3.1-bin-hadoop2.6
 SPARK_HOME=~/spark
 
+# java home on Linux
+#JAVA_HOME=/usr/lib/jvm/java
+
+# java home on Mac OSX
+JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk1.8.0_60.jdk/Contents/Home
+
 CPP=g++ -pthread -fPIC -O3 -g -Wall -DSHOW_HASH_STATISTIC #-DUSE_MESSAGE_HANDLER -DSHOW_HASH_STATISTIC
 #CPP=g++ -pthread -fPIC -O3 -g -Wall
 #CPP=g++ -pthread -fPIC -O3 -g -Wall -DUSE_ZLIB
@@ -16,7 +22,7 @@ CPP=g++ -pthread -fPIC -O3 -g -Wall -DSHOW_HASH_STATISTIC #-DUSE_MESSAGE_HANDLER
 #CPP=g++ -pthread -fPIC -O3 -g -Wall -DUSE_ZLIB
 #CPP=g++ -pthread -fPIC -O0 -g -Wall -Wno-unused-value -Wno-unused-variable -Wno-sign-compare -DUSE_ZLIB -DUSE_PARQUET -I $(PARQUET_CPP_HOME)/src -I $(PARQUET_CPP_HOME)/generated -I $(HADOOP_HOME)/include 
 
-JNI_INCLUDES = -I/usr/lib/jvm/java/include/ -I/usr/lib/jvm/java/include/ -I/usr/lib/jvm/java/include/linux -I/usr/java/default/include -I/usr/java/default/include/linux -I/usr/java/include -I$(JAVA_HOME)/include -I$(JAVA_HOME)/include/linux -I/usr/lib/jvm/oracle-jdk-bin-1.8/include
+JNI_INCLUDES = -I$(JAVA_HOME)/include -I$(JAVA_HOME)/include/linux -I$(JAVA_HOME)/include/darwin -I/usr/java/default/include -I/usr/java/default/include/linux -I/usr/java/include -I$(JAVA_HOME)/include -I$(JAVA_HOME)/include/linux -I/usr/lib/jvm/oracle-jdk-bin-1.8/include
 
 tpch.o: tpch.cpp rdd.h cluster.h tpch.h sync.h sockio.h
 	$(CPP) -c tpch.cpp
@@ -53,8 +59,14 @@ q1rdd.jar: Q1_RDD.scala
 libkraps.so: cluster.o sockio.o compress.o 
 	$(CPP) -shared -o libkraps.so cluster.o sockio.o compress.o -lz
 
+libkraps.dylib: cluster.o sockio.o compress.o 
+	$(CPP) -shared -o libkraps.dylib cluster.o sockio.o compress.o -lz
+
 libkrapsrdd.so: KrapsRDD.cpp
 	$(CPP) -shared $(JNI_INCLUDES) -o libkrapsrdd.so KrapsRDD.cpp  -L. -lkraps
+
+libkrapsrdd.dylib: KrapsRDD.cpp
+	$(CPP) -shared $(JNI_INCLUDES) -o libkrapsrdd.dylib KrapsRDD.cpp  -L. -lkraps
 
 kraps.jar: KrapsRDD.scala
 	rm -f *.class

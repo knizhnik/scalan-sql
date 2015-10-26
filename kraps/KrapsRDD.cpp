@@ -3,6 +3,7 @@
 #include <dlfcn.h>
 #include <assert.h>
 #include "KrapsRDD.h"
+#include <unistd.h>
 
 typedef KrapsIterator* (*iterator_constructor_t)(JNIEnv* env);
 
@@ -95,7 +96,16 @@ JNIEXPORT jlong Java_kraps_KrapsRDD_createIterator(JNIEnv* env, jobject self, ji
 {
     char buf[256];
     sprintf(buf, "libQ%d.so", queryId);
-    void* dll = dlopen(buf, RTLD_NOW|RTLD_GLOBAL);
+//    fprintf(stdout, "Library name: %s\n", buf);
+//
+//    char cwd[1024];
+//	if (getcwd(cwd, sizeof(cwd)) != NULL)
+//	   fprintf(stdout, "Current working dir: %s\n", cwd);
+//	else
+//	   perror("getcwd() error");
+
+    void* dll = dlopen(buf, RTLD_NOW | RTLD_GLOBAL);
+
     assert(dll != NULL);
     sprintf(buf, "getQ%dIterator", queryId);
     iterator_constructor_t constructor = (iterator_constructor_t)dlsym(dll, buf);
