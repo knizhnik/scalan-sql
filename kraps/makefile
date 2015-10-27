@@ -11,7 +11,7 @@ SPARK_HOME=~/spark
 #JAVA_HOME=/usr/lib/jvm/java
 
 # java home on Mac OSX
-JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk1.8.0_60.jdk/Contents/Home
+JAVA_HOME?=/Library/Java/JavaVirtualMachines/jdk1.8.0_60.jdk/Contents/Home
 
 CPP=g++ -pthread -fPIC -O3 -g -Wall -DSHOW_HASH_STATISTIC #-DUSE_MESSAGE_HANDLER -DSHOW_HASH_STATISTIC
 #CPP=g++ -pthread -fPIC -O3 -g -Wall
