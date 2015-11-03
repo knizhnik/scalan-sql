@@ -10,6 +10,8 @@ import org.apache.spark.sql._, types.StructType
 
 import scala.collection.mutable.ArrayBuffer
 import scala.annotation.meta.param
+import scala.concurrent.ExecutionContext.implicits.global
+
 
 class RowIterator(
   input: RDD[Row],
@@ -39,18 +41,22 @@ class RowIterator(
 case class CombinePartition(index: Int, parts: Array[Array[Partition]]) extends Partition
 
 object KrapsCluster {
-  def configure(port: Int, nWorkers: Int): Unit = {
-     val server = new ServerSocket(port)
-     val sockets = Array.tabulate(nWorkers)(i => server.accept())
-     hosts = sockets.map(s => s.getInetAddress().getHostAddress())
-     sockets.map(s =>       
-       val out = new DataOutputStream(s.getOutputStream())
-       out.writeInt(hosts.size)
-       hosts.map(h => out.writeUTF(h))
-       s.close())
-     server.close()
+  def configure(port: Int, nWorkers: Int): String = {
+    val server = new ServerSocket(port)
+    val address = server.getInetAddress().getHostAddress() + ":" + port
+    yield scala.concurrent.future {
+      val sockets = Array.tabulate(nWorkers)(i => server.accept())
+      hosts = sockets.map(s => s.getInetAddress().getHostAddress())
+      sockets.map(s =>       
+        val out = new DataOutputStream(s.getOutputStream())
+        out.writeInt(hosts.size)
+        hosts.map(h => out.writeUTF(h))
+        s.close())
+      server.close()
+    }
+    address 
   }
-  
+ 
   def start(driver: String): Unit = {
      val col = driver.indexOf(':')
      val host = driver.substring(0, col)
@@ -76,9 +82,7 @@ class KrapsRDD(
   deserializer: (Long, StructType) => Row)
     extends RDD[Row](sc, input.map(rdd => new OneToOneDependency(rdd))) {
 
-  val KRAPS_DRIVER_PORT = 51
-
-  yield Kraps.Cluster.configure(KRAPS_DRIVER_PORT, nNodes)
+  val krapsDriver = KrapsCluster.configure(54321, nNodes)
 
   protected def getPartitions: Array[Partition] = {
     val parts: Array[Array[Partition]] = input.map(_.partitions)
@@ -112,6 +116,7 @@ class KrapsRDD(
   }
 
   def compute(split: Partition, context: TaskContext): Iterator[Row] = {
+    KrapsCluster.start(krapsDriver)
     logInfo("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! compute !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
     val s = split.asInstanceOf[CombinePartition]
     val coalescedInput = Array.tabulate(input.size)(i =>
