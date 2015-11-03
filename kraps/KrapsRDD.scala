@@ -1,27 +1,23 @@
 package kraps
 
+import org.apache.spark._
+import org.apache.spark.rdd._
+import org.apache.spark.sql._, catalyst.InternalRow, types.StructType
 import java.net._
 import java.io._
 
-
-import org.apache.spark._
-import org.apache.spark.rdd._
-import org.apache.spark.sql._, types.StructType
-
 import scala.collection.mutable.ArrayBuffer
 import scala.annotation.meta.param
-import scala.concurrent.ExecutionContext.implicits.global
-
 
 class RowIterator(
-  input: RDD[Row],
+  input: RDD[InternalRow],
   partitions: Array[Partition],
   index: Int,
   nNodes: Int,
   context: TaskContext,
-  serialize: (Long, Row) => Int) {
+  serialize: (Long, InternalRow) => Int) {
 
-  var iter: Iterator[Row] = null
+  var iter: Iterator[InternalRow] = null
   var i = index
 
   def next(row: Long): Boolean = {
@@ -43,24 +39,28 @@ case class CombinePartition(index: Int, parts: Array[Array[Partition]]) extends 
 object KrapsCluster {
   def configure(port: Int, nWorkers: Int): String = {
     val server = new ServerSocket(port)
-    val address = server.getInetAddress().getHostAddress() + ":" + port
-    yield scala.concurrent.future {
-      val sockets = Array.tabulate(nWorkers)(i => server.accept())
-      hosts = sockets.map(s => s.getInetAddress().getHostAddress())
-      sockets.map(s =>       
-        val out = new DataOutputStream(s.getOutputStream())
-        out.writeInt(hosts.size)
-        hosts.map(h => out.writeUTF(h))
-        s.close())
-      server.close()
-    }
+    val address = server.getInetAddress().getHostName() + ":" + port
+    val t = new Thread(new Runnable {
+      def run() {
+        val sockets = Array.tabulate(nWorkers)(i => server.accept())
+        val hosts = sockets.map(s => s.getInetAddress().getHostName())
+        sockets.map(s => {      
+          val out = new DataOutputStream(s.getOutputStream())
+          out.writeInt(hosts.size)
+          hosts.map(h => out.writeUTF(h))
+          s.close()
+        })
+        server.close()
+      }
+    })
+    t.start
     address 
   }
  
   def start(driver: String): Unit = {
      val col = driver.indexOf(':')
      val host = driver.substring(0, col)
-     val port = Integer.parseInt(drive.substring(col+1))
+     val port = Integer.parseInt(driver.substring(col+1))
      val s = new Socket(InetAddress.getByName(host), port)
      val in = new DataInputStream(s.getInputStream())
      val hosts = Array.tabulate(in.readInt())(i => in.readUTF())
@@ -77,10 +77,10 @@ class KrapsRDD(
   queryId: Int,
   nNodes: Int,
   schema: StructType,
-  input: Array[RDD[Row]],
-  serializers: Array[(Long, Row) => Int],
-  deserializer: (Long, StructType) => Row)
-    extends RDD[Row](sc, input.map(rdd => new OneToOneDependency(rdd))) {
+  input: Array[RDD[InternalRow]],
+  serializers: Array[(Long, InternalRow) => Int],
+  deserializer: (Long, StructType) => InternalRow)
+    extends RDD[InternalRow](sc, input.map(rdd => new OneToOneDependency(rdd))) {
 
   val krapsDriver = KrapsCluster.configure(54321, nNodes)
 
@@ -89,7 +89,7 @@ class KrapsRDD(
     Array.tabulate(nNodes)(n => CombinePartition(n, parts))
   }
 
-  class KrapsIterator(krapsInput: Long, scalaInput : Array[RowIterator]) extends Iterator[Row] {
+  class KrapsIterator(krapsInput: Long, scalaInput : Array[RowIterator]) extends Iterator[InternalRow] {
     var row: Long = 0
     var eof: Boolean = false
 
@@ -107,7 +107,7 @@ class KrapsRDD(
       }
     }
 
-    def next: Row = {
+    def next: InternalRow = {
       if (row == 0) throw new java.lang.IllegalStateException()
       val curr = row
       row = 0
@@ -115,15 +115,15 @@ class KrapsRDD(
     }
   }
 
-  def compute(split: Partition, context: TaskContext): Iterator[Row] = {
+  def compute(split: Partition, context: TaskContext): Iterator[InternalRow] = {
     KrapsCluster.start(krapsDriver)
     logInfo("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! compute !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
     val s = split.asInstanceOf[CombinePartition]
     val coalescedInput = Array.tabulate(input.size)(i =>
         new RowIterator(input(i), s.parts(i), split.index, nNodes, context, serializers(i)))
     val it = createIterator(queryId)
-    logInfo(s"!!!!!!!!!!!!!!!!!!!!!!!!!!!!! KrapsIterator($it) !!!!!!!!!!!!!!!!!!!")
-    new KrapsIterator(it,coalescedInput)
+    //logInfo(s"!!!!!!!!!!!!!!!!!!!!!!!!!!!!! KrapsIterator($it) !!!!!!!!!!!!!!!!!!!")
+    new KrapsIterator(it, coalescedInput)
   }
 
   @native def createIterator(queryId: Int): Long
