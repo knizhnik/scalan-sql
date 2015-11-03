@@ -1,5 +1,9 @@
 package kraps
 
+import java.net._
+import java.io._
+
+
 import org.apache.spark._
 import org.apache.spark.rdd._
 import org.apache.spark.sql._, types.StructType
@@ -35,6 +39,29 @@ class RowIterator(
 case class CombinePartition(index: Int, parts: Array[Array[Partition]]) extends Partition
 
 object KrapsCluster {
+  def configure(port: Int, nWorkers: Int): Unit = {
+     val server = new ServerSocket(port)
+     val sockets = Array.tabulate(nWorkers)(i => server.accept())
+     hosts = sockets.map(s => s.getInetAddress().getHostAddress())
+     sockets.map(s =>       
+       val out = new DataOutputStream(s.getOutputStream())
+       out.writeInt(hosts.size)
+       hosts.map(h => out.writeUTF(h))
+       s.close())
+     server.close()
+  }
+  
+  def start(driver: String): Unit = {
+     val col = driver.indexOf(':')
+     val host = driver.substring(0, col)
+     val port = Integer.parseInt(drive.substring(col+1))
+     val s = new Socket(InetAddress.getByName(host), port)
+     val in = new DataInputStream(s.getInputStream())
+     val hosts = Array.tabulate(in.readInt())(i => in.readUTF())
+     s.close()
+     start(hosts, 1)
+  }
+  
   @native def start(hosts: Array[String], nCores: Int): Unit
   @native def stop(): Unit
 }
@@ -48,6 +75,10 @@ class KrapsRDD(
   serializers: Array[(Long, Row) => Int],
   deserializer: (Long, StructType) => Row)
     extends RDD[Row](sc, input.map(rdd => new OneToOneDependency(rdd))) {
+
+  val KRAPS_DRIVER_PORT = 51
+
+  yield Kraps.Cluster.configure(KRAPS_DRIVER_PORT, nNodes)
 
   protected def getPartitions: Array[Partition] = {
     val parts: Array[Array[Partition]] = input.map(_.partitions)
