@@ -212,7 +212,7 @@ from
     join nation on c_nationkey = n_nationkey
 where
     o_orderdate >= 19941101 and o_orderdate < 19950201
-    and l_returnflag = 'R'
+    and l_returnflag = 82 -- 'R'
 group by
     c_custkey,
     c_name,

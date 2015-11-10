@@ -447,7 +447,7 @@ namespace Q5
         out.o_custkey = in.o_custkey;
     }            
 
-    void orderKeyXXXXX(long& key, OrdersProjection const& in)
+    void orderKey(long& key, OrdersProjection const& in)
     {
         key = in.o_orderkey;
     }
@@ -554,7 +554,7 @@ namespace Q5
         return
             TABLE(Lineitem)->
             project<LineitemProjection,projectLineitem>()->            
-            join<OrdersProjection,long,lineitemOrderKey,orderKeyXXXXX>(TABLE(Orders)->
+            join<OrdersProjection,long,lineitemOrderKey,orderKey>(TABLE(Orders)->
                                                                   filter<orderRange>()->
                                                                   project<OrdersProjection,projectOrders>(),
                                                                   SCALE(1500000))->
@@ -1266,7 +1266,7 @@ namespace Q10
         char c_address[40];
         char c_phone[15];
         char c_comment[117];
-        
+
         bool operator == (GroupBy const& other) const
         {
             return c_custkey == other.c_custkey
@@ -1284,7 +1284,9 @@ namespace Q10
         }
 
         friend void print(GroupBy const& g, FILE* out) {
-            fprintf(out, "%d, %s, %f, %s, %s, %s, %s", g.c_custkey, g.c_name, g.c_acctball, g.n_name, g.c_address, g.c_phone, g.c_comment);
+            fprintf(out, "%d, %s, %f, %s, %s, %.*s, %s", g.c_custkey,
+                    g.c_name, g.c_acctball, g.n_name, g.c_address,
+                    (int)sizeof(g.c_phone), g.c_phone, g.c_comment);
         } 
     };
 

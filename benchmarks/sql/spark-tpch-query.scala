@@ -115,7 +115,9 @@ group by
     o_orderdate,
     o_shippriority
 order by
-    o_orderdate""")
+    revenue desc,
+    o_orderdate
+limit 10""")
 
 exec("Q4", """
 select
@@ -174,7 +176,7 @@ from (
     select
         n1.n_name as supp_nation,
         n2.n_name as cust_nation,
-        l_shipdate/10000 as l_year,
+        floor(l_shipdate/10000) as l_year,
         l_extendedprice * (1-l_discount) as volume
     from
         supplier join lineitem on s_suppkey = l_suppkey
@@ -209,7 +211,7 @@ from
         sum(volume) as total_volume
     from (
         select
-            o_orderdate/10000 as o_year,
+            floor(o_orderdate/10000) as o_year,
             l_extendedprice * (1-l_discount) as volume,
             n2.n_name as nation
         from
@@ -238,7 +240,7 @@ select
 from (
     select
         n_name as nation,
-        o_orderdate/10000 as o_year,
+        floor(o_orderdate/10000) as o_year,
         l_extendedprice*(1-l_discount)-ps_supplycost * l_quantity as amount
     from
         lineitem join supplier on s_suppkey = l_suppkey
@@ -272,7 +274,7 @@ from
     join nation on c_nationkey = n_nationkey
 where
     o_orderdate >= 19941101 and o_orderdate < 19950201
-    and l_returnflag = 'R'
+    and l_returnflag = 82 
 group by
     c_custkey,
     c_name,
@@ -282,7 +284,8 @@ group by
     c_address,
     c_comment
 order by
-    revenue desc""")
+    revenue desc
+limit 20""")
 
 exec("Q12", """
 select
