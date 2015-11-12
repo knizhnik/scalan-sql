@@ -521,7 +521,10 @@ class DirRDD : public RDD<T>
   public:
     DirRDD(char* path) : dir(path), segno(Cluster::instance->nodeId), step(Cluster::instance->nNodes), split(Cluster::instance->split), f(NULL) {}
 
-    RDD<T>* replicate() { 
+    RDD<T>* replicate() {
+        if (Cluster::instance->sharedNothing) {
+            return RDD<T>::replicate();
+        }
         nRecords *= split;
         segno = 0;
         step = 1;
