@@ -1,4 +1,5 @@
 #include <time.h>
+#include <sys/time.h>
 #include <ctype.h>
 #include "rdd.h"
 #include "tpch.h"
@@ -54,9 +55,9 @@ void sum(double& dst, double const& src)
     dst += src;
 }
 
-void count(int& dst, int const&)
+void count(int& dst, int const& src)
 {
-    dst += 1;
+    dst += src;
 }
 
 void nationKey(int& key, Nation const& nation)
@@ -436,8 +437,8 @@ namespace Q5
 
     struct OrdersProjection
     {
-        int o_orderkey;
-        int o_custkey;
+        long o_orderkey;
+        int  o_custkey;
     };
 
     void projectOrders(OrdersProjection& out, Orders const& in)
@@ -490,44 +491,43 @@ namespace Q5
         return order.o_orderdate >= 19960101 && order.o_orderdate < 19970101;
     }
 
-    bool sameNation(Join<Join<Join<OrdersProjection,LineitemProjection>,CustomerProjection>,SupplierProjection> const& r)
+    bool sameNation(Join<Join<Join<LineitemProjection,OrdersProjection>,SupplierProjection>,CustomerProjection> const& r)
     {
         return r.c_nationkey == r.s_nationkey;
     }
 
-    void customerNationKey(int& key, Join<Join<Join<OrdersProjection,LineitemProjection>,CustomerProjection>,SupplierProjection> const& r)
+    void customerNationKey(int& key, Join<Join<Join<LineitemProjection,OrdersProjection>,SupplierProjection>,CustomerProjection> const& r)
     {
         key = r.c_nationkey;
     }
     
-    void lineitemSupplierKey(int& key, Join<Join<OrdersProjection,LineitemProjection>,CustomerProjection> const& r)
+    void lineitemSupplierKey(int& key, Join<LineitemProjection,OrdersProjection> const& r)
     {
         key = r.l_suppkey;
     }
     
-    void orderCustomerKey(int& key, Join<OrdersProjection,LineitemProjection> const& r)
+    void orderCustomerKey(int& key, Join<Join<LineitemProjection,OrdersProjection>,SupplierProjection> const& r)
     {
         key = r.o_custkey;
     }
 
-    void nationRegionKey(int& key, Join<Join<Join<Join<OrdersProjection,LineitemProjection>,CustomerProjection>,SupplierProjection>,Nation> const& r)
+    void nationRegionKey(int& key, Join<Join<Join<Join<LineitemProjection,OrdersProjection>,SupplierProjection>,CustomerProjection>,Nation> const& r)
     {
         key = r.n_regionkey;
     }
     
-    bool asiaRegion(Join<Join<Join<Join<Join<OrdersProjection,LineitemProjection>,CustomerProjection>,SupplierProjection>,Nation>,Region> const& r) 
+    bool asiaRegion(Join<Join<Join<Join<Join<LineitemProjection,OrdersProjection>,SupplierProjection>,CustomerProjection>,Nation>,Region> const& r) 
     { 
         return STREQ(r.r_name, "ASIA");
 
     }
-
     struct RevenueValue
     {
         double sum;
         long count;
     };
 
-    void map(Pair<Key<name_t>,RevenueValue>& pair, Join<Join<Join<Join<Join<OrdersProjection,LineitemProjection>,CustomerProjection>,SupplierProjection>,Nation>,Region> const& r)
+    void map(Pair<Key<name_t>,RevenueValue>& pair, Join<Join<Join<Join<Join<LineitemProjection,OrdersProjection>,SupplierProjection>,CustomerProjection>,Nation>,Region> const& r)
     {
         STRCPY(pair.key.val, r.n_name);
         pair.value.sum = r.l_extendedprice * (1 - r.l_discount);
@@ -564,18 +564,18 @@ namespace Q5
     RDD<Revenue>* query() 
     { 
         return
-            TABLE(Orders)->
-            filter<orderRange>()->
-            project<OrdersProjection,projectOrders>()->
-            join<LineitemProjection,long,orderKey,lineitemOrderKey>(TABLE(Lineitem)->
-                                                                    project<LineitemProjection,projectLineitem>(),
-                                                                    SCALE(6000000))->
-            join<CustomerProjection,int,orderCustomerKey,customerKey>(TABLE(Customer)->
-                                                                      project<CustomerProjection,projectCustomer>(),
-                                                                      SCALE(150000))->
+            TABLE(Lineitem)->
+            project<LineitemProjection,projectLineitem>()->            
+            join<OrdersProjection,long,lineitemOrderKey,orderKey>(TABLE(Orders)->
+                                                                  filter<orderRange>()->
+                                                                  project<OrdersProjection,projectOrders>(),
+                                                                  SCALE(1500000))->
             join<SupplierProjection,int,lineitemSupplierKey,supplierKey>(TABLE(Supplier)->
                                                                          project<SupplierProjection,projectSupplier>(),
                                                                          SCALE(10000))->
+            join<CustomerProjection,int,orderCustomerKey,customerKey>(TABLE(Customer)->
+                                                                      project<CustomerProjection,projectCustomer>(),
+                                                                      SCALE(150000))->
             filter<sameNation>()->
             join<Nation,int,customerNationKey,nationKey>(TABLE(Nation),25)->
             join<Region,int,nationRegionKey,regionKey>(TABLE(Region),5)->
@@ -584,6 +584,7 @@ namespace Q5
             project<Revenue,revenue>()->
             sort<byRevenue>(25);
     }    
+
 }
 namespace Q6
 {
@@ -633,8 +634,8 @@ namespace Q7
 
     struct OrdersProjection
     {
-        int o_orderkey;
-        int o_custkey;
+        long o_orderkey;
+        int  o_custkey;
     };
 
     void projectOrders(OrdersProjection& out, Orders const& in)
@@ -824,8 +825,8 @@ namespace Q8
 
     struct OrdersProjection
     {
-        int o_orderkey;
-        int o_custkey;
+        long o_orderkey;
+        int  o_custkey;
         date_t o_orderdate;
     };
 
@@ -1051,8 +1052,8 @@ namespace Q9
 
     struct OrdersProjection
     {
-        int o_orderkey;
-        int o_orderdate;
+        long o_orderkey;
+        int  o_orderdate;
     };
 
     void projectOrders(OrdersProjection& out, Orders const& in)
@@ -1232,8 +1233,8 @@ namespace Q10
 
     struct OrdersProjection
     {
-        int o_orderkey;
-        int o_custkey;
+        long   o_orderkey;
+        int    o_custkey;
         date_t o_orderdate;
     };
 
@@ -1373,7 +1374,7 @@ namespace Q12
 
     struct OrdersProjection
     {
-        int o_orderkey;
+        long o_orderkey;
         priority_t o_orderpriority;
     };
 
@@ -1681,61 +1682,54 @@ namespace Q19
     }    
 }
     
-
+static time_t getCurrentTime()
+{
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return tv.tv_sec*1000 + tv.tv_usec/1000;
+}
 
 template<class T>
 void execute(char const* name, RDD<T>* (*query)()) 
 {
-    time_t start = time(NULL);
+    time_t start = getCurrentTime();
     RDD<T>* result = query();
     result->output(stdout);
     delete result;
 
     if (Cluster::instance->nodeId == 0) {
         FILE* results = fopen("results.csv", "a");
-        fprintf(results, "%s,%d\n", name, (int)(time(NULL) - start));
+        fprintf(results, "%s,%d\n", name, (int)(getCurrentTime() - start));
         fclose(results);
     }
        
-    printf("Elapsed time for %s: %d seconds\n", name, (int)(time(NULL) - start));
+    printf("Elapsed time for %s: %d milliseconds\n", name, (int)(getCurrentTime() - start));
     fflush(stdout);
 }
 
 class TPCHJob : public Job
 {
-    size_t const nodeId;
-    size_t const nHosts;
-    char** const hosts;
-    size_t const nQueues;
-    size_t const bufferSize;
-    size_t const recvQueueSize;
-    size_t const sendQueueSize;
-    size_t const syncInterval;
-    size_t const broadcastJoinThreshold;
-    size_t const inmemJoinThreshold;
-    size_t const split;
-    char   const*tmp;
-    bool   const sharedNothing;
-    bool   const useCache;
+    Cluster cluster;
+    bool useCache;
+
   public:
-    TPCHJob(size_t _nodeId, size_t _nHosts, char** _hosts = NULL, size_t _nQueues = 64, size_t _bufferSize = 4*64*1024, size_t _recvQueueSize = 4*64*1024*1024,  size_t _sendQueueSize = 4*4*1024*1024, size_t _syncInterval = 64*1024*1024, size_t _broadcastJoinThreshold = 10000, size_t _inmemJoinThreshold = 10000000, char const* _tmp = "/tmp", bool _sharedNothing = false, size_t _split = 1, bool _useCache = false)
-    : nodeId(_nodeId), nHosts(_nHosts), hosts(_hosts), nQueues(_nQueues), bufferSize(_bufferSize), recvQueueSize(_recvQueueSize),
-      sendQueueSize(_sendQueueSize), syncInterval(_syncInterval), broadcastJoinThreshold(_broadcastJoinThreshold),
-        inmemJoinThreshold(_inmemJoinThreshold), split(_split), tmp(_tmp), sharedNothing(_sharedNothing), useCache(_useCache) {}
+    TPCHJob(size_t nodeId, size_t nHosts, char** hosts = NULL, size_t nQueues = 64, size_t bufferSize = 4*64*1024, size_t recvQueueSize = 4*64*1024*1024,  size_t sendQueueSize = 4*4*1024*1024, size_t syncInterval = 64*1024*1024, size_t broadcastJoinThreshold = 10000, size_t inmemJoinThreshold = 10000000, char const* tmp = "/tmp", bool sharedNothing = false, size_t split = 1, bool _useCache = false)
+    : cluster(nodeId, nHosts, hosts, nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, split),
+      useCache(_useCache)
+    {}
     
   public:
     void run() {
-    Cluster cluster(nodeId, nHosts, hosts, nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, split);
-        printf("Node %d started...\n", (int)nodeId);
+        Cluster::instance.set(&cluster);
+        printf("Node %d started...\n", (int)cluster.nodeId);
 
-        time_t start = time(NULL);
+        time_t start = getCurrentTime();
         if (useCache) { 
             cluster.userData = new CachedData();
-            printf("Elapsed time for loading all data in memory: %d seconds\n", (int)(time(NULL) - start));
+            printf("Elapsed time for loading all data in memory: %d milliseconds\n", (int)(getCurrentTime() - start));
             cluster.barrier(); 
         }
-        execute("Q5",  Q5::query);
-#if 0
+    
         execute("Q1",  Q1::query);
         execute("Q3",  Q3::query);
         execute("Q4",  Q4::query);
@@ -1749,10 +1743,10 @@ class TPCHJob : public Job
         execute("Q13", Q13::query);
         execute("Q14", Q14::query);
         execute("Q19", Q19::query);
-     #endif   
+        
         delete (CachedData*)cluster.userData;
 
-        printf("Node %d finished.\n", (int)nodeId);
+        printf("Node %d finished.\n", (int)cluster.nodeId);
     }
 };
 
