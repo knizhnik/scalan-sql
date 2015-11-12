@@ -1362,7 +1362,6 @@ public:
             saveOuterFiles(new GatherRDD<O>(queue));
         }
         fileNo = 0;
-        memset(table, 0, size*sizeof(Entry*));
     }
 
     bool next(Join<O,I>& record)

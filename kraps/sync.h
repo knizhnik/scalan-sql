@@ -187,11 +187,20 @@ class BlockAllocator
     size_t size;
     Block* used;
     Block* free;
+    Block* lastUsed;
+    Block* lastFree;
     
   public:
     void reset() {
-        free = used;
-        used = NULL;
+        if (used != NULL) {
+            if (free != NULL) {
+                lastFree->next = used;
+            } else {
+                free = used;
+            }
+            lastFree = lastUsed;
+            used = lastUsed = NULL;
+        }
         size = BlockSize;
     }
     T* alloc() {
@@ -204,11 +213,14 @@ class BlockAllocator
             } else { 
                 used = new Block(used);
             }
+            if (lastUsed == NULL) {
+                lastUsed = used;
+            }
             size = 0;
         }
         return &used->data[size++];
     }
-    BlockAllocator() : size(BlockSize), used(NULL), free(NULL) {}
+    BlockAllocator() : size(BlockSize), used(NULL), free(NULL), lastUsed(NULL), lastFree(NULL) {}
     ~BlockAllocator() {
         Block *curr, *next;
         for (curr = used; curr != NULL; curr = next) {
