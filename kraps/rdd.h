@@ -1348,18 +1348,18 @@ public:
     : kind(joinKind), size(hashTableSize(estimation)), table(new Entry*[size]), nFiles(nShuffleFiles), outerFile(NULL), inner(NULL) {
         assert(kind != AntiJoin);
         Cluster* cluster = Cluster::instance.get();
+        Queue* innerQueue = cluster->getQueue();
+        Queue* outerQueue = cluster->getQueue();
+        qid = innerQueue->qid;
         {
             // shuffle inner RDD
-            Queue* queue = cluster->getQueue();
-            Thread loader(new ScatterJob<I,K,innerKey>(innerRDD, queue));
-            qid = queue->qid;
-            saveInnerFiles(new GatherRDD<I>(queue));
+            Thread loader(new ScatterJob<I,K,innerKey>(innerRDD, innerQueue));
+            saveInnerFiles(new GatherRDD<I>(innerQueue));
         }
         {
             // shuffle outer RDD
-            Queue* queue = cluster->getQueue();
-            Thread loader(new ScatterJob<O,K,outerKey>(outerRDD, queue));
-            saveOuterFiles(new GatherRDD<O>(queue));
+            Thread loader(new ScatterJob<O,K,outerKey>(outerRDD, outerQueue));
+            saveOuterFiles(new GatherRDD<O>(outerQueue));
         }
         fileNo = 0;
     }
@@ -1502,21 +1502,20 @@ public:
     : kind(joinKind), size(estimation), table(new Entry*[size]), nFiles(nShuffleFiles), outerFile(NULL) {
         assert(kind != OuterJoin);
         Cluster* cluster = Cluster::instance.get();
+        Queue* innerQueue = cluster->getQueue();
+        Queue* outerQueue = cluster->getQueue();
+        qid = innerQueue->qid;
         {
             // shuffle inner RDD
-            Queue* queue = cluster->getQueue();
-            Thread loader(new ScatterJob<I,K,innerKey>(innerRDD, queue));
-            qid = queue->qid;
-            saveInnerFiles(new GatherRDD<I>(queue));
+            Thread loader(new ScatterJob<I,K,innerKey>(innerRDD, innerQueue));
+            saveInnerFiles(new GatherRDD<I>(innerQueue));
         }
         {
             // shuffle outer RDD
-            Queue* queue = cluster->getQueue();
-            Thread loader(new ScatterJob<O,K,outerKey>(outerRDD, queue));
-            saveOuterFiles(new GatherRDD<O>(queue));
+            Thread loader(new ScatterJob<O,K,outerKey>(outerRDD, outerQueue));
+            saveOuterFiles(new GatherRDD<O>(outerQueue));
         }
         fileNo = 0;
-        memset(table, 0, size*sizeof(Entry*));
     }
 
     bool next(Join<O,I>& record)
@@ -1531,8 +1530,11 @@ public:
                 FILE* innerFile = cluster->openTempFile("inner", qid, fileNo);
                 outerFile = cluster->openTempFile("outer", qid, fileNo);
                 
+                memset(table, 0, size*sizeof(Entry*));
+                allocator.reset();                
+
                 Entry* entry = allocator.alloc();
-                clearHash();
+
                 while (fread(&entry->record, sizeof(I), 1, innerFile) == 1) { 
                     K key;
                     innerKey(key, entry->record);
@@ -1560,7 +1562,6 @@ public:
     }
 
     ~ShuffleSemiJoinRDD() { 
-        clearHash();
         delete[] table;
     }
 protected:
@@ -1626,18 +1627,6 @@ protected:
         }
         delete[] files;
         delete input;
-    }
-            
-
-    void clearHash() {
-        for (size_t i = 0; i < size; i++) { 
-            Entry *curr, *next;
-            for (curr = table[i]; curr != NULL; curr = next) { 
-                next = curr->collision;
-                delete curr;
-            }
-            table[i] = NULL;
-        }
     }
 };
     

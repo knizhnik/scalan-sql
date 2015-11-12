@@ -138,6 +138,7 @@ order by
 exec("Q5", """
 select
     n_name,
+    count(*),
     sum(l_extendedprice * (1-l_discount)) as revenue
 from
     customer join orders on c_custkey = o_custkey

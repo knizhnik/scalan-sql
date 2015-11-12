@@ -1648,7 +1648,7 @@ namespace Q19
             ||
             (STREQ(r.p_brand, "Brand#43")
              && (STREQ(r.p_container, "LG CASE") || STREQ(r.p_container, "LG BOX") || STREQ(r.p_container, "LG PACK") || STREQ(r.p_container, "LG PKG"))
-             && r.l_quantity >= 15 && r.l_quantity <= 14
+             && r.l_quantity >= 4 && r.l_quantity <= 14
              && r.p_size >= 1 && r.p_size <= 15
              && (STREQ(r.l_shipmode, "AIR") || STREQ(r.l_shipmode, "AIR REG"))
              && STREQ(r.l_shipinstruct, "DELIVER IN PERSON"));

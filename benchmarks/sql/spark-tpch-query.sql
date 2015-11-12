@@ -7,6 +7,16 @@ create temporary table region using org.apache.spark.sql.parquet options(path "h
 create temporary table nation using org.apache.spark.sql.parquet options(path "hdfs://strong:9121/Nation.parquet");
 create temporary table part using org.apache.spark.sql.parquet options(path "hdfs://strong:9121/Part.parquet");
 
+
+create temporary table lineitem using org.apache.spark.sql.parquet options(path "hdfs://SZX1000044123:9000/tpch/data/Lineitem_s0100_016.parquet");
+create temporary table orders using org.apache.spark.sql.parquet options(path "hdfs://SZX1000044123:9000/tpch/data/Orders_s0100_016.parquet");
+create temporary table customer using org.apache.spark.sql.parquet options(path "hdfs://SZX1000044123:9000/tpch/data/Customer_s0100_016.parquet");
+create temporary table supplier using org.apache.spark.sql.parquet options(path "hdfs://SZX1000044123:9000/tpch/data/Supplier_s0100_016.parquet");
+create temporary table partsupp using org.apache.spark.sql.parquet options(path "hdfs://SZX1000044123:9000/tpch/data/Partsupp_s0100_016.parquet");
+create temporary table region using org.apache.spark.sql.parquet options(path "hdfs://SZX1000044123:9000/tpch/data/Region_s0100_016.parquet");
+create temporary table nation using org.apache.spark.sql.parquet options(path "hdfs://SZX1000044123:9000/tpch/data/Nation_s0100_016.parquet");
+create temporary table part using org.apache.spark.sql.parquet options(path "hdfs://SZX1000044123:9000/tpch/data/Part_s0100_016.parquet");
+
 set spark.sql.codegen=true;
 -- set spark.sql.autoBroadcastJoinThreshold=1073741824;
 set spark.sql.parquet.filterPushdown=true;
@@ -76,6 +86,7 @@ order by
 -- Q5
 select
     n_name,
+    count(*),
     sum(l_extendedprice * (1-l_discount)) as revenue
 from
     customer join orders on c_custkey = o_custkey
