@@ -82,3 +82,7 @@ clean:
 
 tgz: clean 
 	cd .. ; tar cvzf kraps.tgz kraps
+
+
+doc:
+	doxygen doxygen.cfg

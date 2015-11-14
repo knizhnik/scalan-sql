@@ -13,9 +13,9 @@
 #define PARALLEL_INNER_OUTER_TABLES_LOAD 1
 #endif
 
-//
-// Pair is used for map-reduce
-//
+/**
+ * Pair is used for map-reduce
+ */
 template<class K, class V>
 struct Pair
 {
@@ -38,9 +38,9 @@ struct Pair
     }
 };
 
-//
-// Result of join
-//
+/**
+ *  Result of join
+ */
 template<class Outer, class Inner>
 struct Join : Outer, Inner 
 {
@@ -61,9 +61,9 @@ struct Join : Outer, Inner
     }
 };
 
-//
-// Fixed size string key (used to wrap C char arrays)
-//
+/**
+ * Fixed size string key (used to wrap C char arrays)
+ */
 template<class T>
 struct Key
 {
@@ -94,9 +94,9 @@ struct Key
     }
 };
 
-//
-// Print functions for scalars
-//
+/**
+ * Print functions for scalars
+ */
 inline void print(int val, FILE* out)
 {
     fprintf(out, "%d", val);
@@ -114,6 +114,9 @@ inline void print(char const* val, FILE* out)
     fprintf(out, "%s", val);
 }
 
+/**
+ * Join kind
+ */
 enum JoinKind 
 {
     InnerJoin,
@@ -121,59 +124,82 @@ enum JoinKind
     AntiJoin
 };
 
-//
-// Abstract RDD (Resilient Distributed Dataset)
-//
+/**
+ * Abstract RDD (Resilient Distributed Dataset)
+ */
 template<class T>
 class RDD
 {
   public:
+    /**
+     * Main RDD method for iterating thoough records
+     * @param record [out] placeholder for the next record
+     * @return true if there is next record, false otherwise
+     */
     virtual bool next(T& record) = 0;
 
     /**
      * Filter input RDD
+     * @return RDD with records matching predicate 
      */
     template<bool (*predicate)(T const&)>
     RDD<T>* filter();
 
     /**
      * Perfrom map-reduce
+     * @param estimation esimation for number of pairs
+     * @return RDD with &lt;key,value&gt; pairs
      */
     template<class K,class V,void (*map)(Pair<K,V>& out, T const& in), void (*reduce)(V& dst, V const& src)>
     RDD< Pair<K,V> >* mapReduce(size_t estimation);
 
     /**
      * Perform aggregation of input RDD 
+     * @param initState initial aggregate value
+     * @return RDD with aggregated value
      */
     template<class S,void (*accumulate)(S& state,  T const& in),void (*combine)(S& state, S const& in)>
     RDD<S>* reduce(S const& initState);
 
     /**
-     * Map recortds of input RDD
+     * Map records of input RDD
+     * @return projection of the input RDD. 
      */
     template<class P, void (*projection)(P& out, T const& in)>
     RDD<P>* project();
 
     /**
      * Sort input RDD
+     * @param estimation estimation for number of records in RDD
+     * @return RDD with sorted records
      */
     template<int (*compare)(T const* a, T const* b)> 
     RDD<T>* sort(size_t estimation);
 
     /**
      * Find top N records according to provided comparison function
+     * @param n number of returned top records
+     * @return RDD with up to N top records
      */
     template<int (*compare)(T const* a, T const* b)> 
     RDD<T>* top(size_t n);
 
     /**
-     * Left join two RDDs
+     * Left join two RDDs. Inner join returns pairs of matches records in outer and inner table.
+     * Outer join also returns records from outer table for which there are matching in inner table.
+     * @param with inner join table
+     * @param estimation estimation for number of joined records
+     * @param kind join kind (inner/outer join)
      */
     template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner)>
     RDD< Join<T,I> >* join(RDD<I>* with, size_t estimation, JoinKind kind = InnerJoin);
 
     /**
-     * Left simijoin two RDDs
+     * Left simijoin two RDDs. Semijoin find matched records in both tables but returns only records from outer table.
+     * Antijoin returns only this records of outer table for which there are no matching in inner table.
+     * @param with inner join table
+     * @param estimation estimation for number of joined records
+     * @param kind join kind (inner/anti join)
      */
     template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner)>
     RDD<T>* semijoin(RDD<I>* with, size_t estimation, JoinKind kind = InnerJoin);
@@ -182,12 +208,14 @@ class RDD
      * Replicate data between all nodes.
      * Broadcast local RDD data to all nodes and gather data from all nodes.
      * As a result all nodes get the same replicas of input data
+     * @return replicated RDD, combining data from all nodes
      */
     virtual RDD<T>* replicate();
 
     /**
-     * Return single record from input RDD or substitute it with default value of RDD is empty.
+     * Get single record from input RDD or substitute it with default value of RDD is empty.
      * This method is usful for obtaining aggregation result
+     * @return Single record from input RDD or substitute it with default value of RDD is empty.
      */
     T result(T const& defaultValue) {
         T record;
@@ -196,6 +224,7 @@ class RDD
 
     /**
      * Print RDD records to the stream
+     * @param out output stream
      */
     void output(FILE* out);
 
@@ -203,9 +232,9 @@ class RDD
 
 };
 
-//
-// Tranfer data from RDD to queue
-//
+/**
+ * Tranfer data from RDD to queue
+ */
 template<class T>
 inline void enqueue(RDD<T>* input, size_t node, Queue* queue) 
 {
@@ -236,18 +265,18 @@ inline void enqueue(RDD<T>* input, size_t node, Queue* queue)
     }
 }
 
-//
-// Send data to coordinator
-//
+/**
+ * Send data to coordinator
+ */
 template<class T>
 inline void sendToCoordinator(RDD<T>* input, Queue* queue) 
 {
     enqueue(input, COORDINATOR, queue);
 }
 
-//
-// Fetch data from RDD and place it in queue
-//
+/**
+ * Fetch data from RDD and place it in queue
+ */
 template<class T>
 class FetchJob : public Job
 {
@@ -263,9 +292,9 @@ private:
     Queue* const queue;
 };
 
-//
-// Scatter RDD data between nodes using provided distribution key and hash function
-//
+/**
+ * Scatter RDD data between nodes using provided distribution key and hash function
+ */
 template<class T, class K, void (*dist_key)(K& key, T const& record)>
 class ScatterJob : public Job
 {
@@ -330,9 +359,9 @@ private:
 };
 
 
-//
-// RDD rerepseting result of gathering data from multiple nodes (opposite to Scatter)
-//
+/**
+ * RDD representing result of gathering data from multiple nodes (opposite to Scatter)
+ */
 template<class T>
 class GatherRDD : public RDD<T>
 {
@@ -379,9 +408,9 @@ private:
     size_t nWorkers;
 };
 
-//
-// RDD for fetching elements from buffer, used in message handlers
-//
+/**
+ * RDD for fetching elements from buffer, used in message handlers
+ */
 template<class T>
 class BufferRDD
 {
@@ -402,9 +431,9 @@ class BufferRDD
     size_t pos;
 };
 
-//
-// Replicate RDD replicates data to all nodes
-//
+/**
+ * Replicate RDD data to all nodes
+ */
 template<class T>
 class BroadcastJob : public Job
 {
@@ -462,6 +491,9 @@ private:
     Queue* const queue;
 };
 
+/**
+ * RDD representing result of replication
+ */
 template<class T>
 class ReplicateRDD : public GatherRDD<T>
 {
@@ -472,9 +504,13 @@ private:
 };
     
 
-//
-// Read data from OS plain file
-//
+/**
+ * Read data from OS plain file.
+ * File can be used in two modes. In shared-nothing mode each node is expected to access its own local file.
+ * Alternatively, file is present in some distributed file system and accessible by all nodes.
+ * In this case file sis logically splited into parts, according to number of nodes in ther cluster, 
+ * and each node access its own part of the file.
+ */
 template<class T>
 class FileRDD : public RDD<T>
 {
@@ -511,10 +547,10 @@ class FileRDD : public RDD<T>
     long nRecords;
 };
 
-//
-// Read data from set of OS plain files located in specified directory.
-// Each node is given its own set of fileds.
-//
+/**
+ * Read data from set of OS plain files located in specified directory.
+ * Each node is given its own set of fileds.
+ */
 template<class T>
 class DirRDD : public RDD<T>
 {
@@ -576,9 +612,9 @@ class DirRDD : public RDD<T>
 #include "parquet.h"
 #endif
 
-//
-// File manager to created proper file RDD based on file name
-//
+/**
+ * File manager to created proper file RDD based on file name
+ */
 class FileManager
 {
 public:
@@ -598,9 +634,9 @@ public:
     }
 };
 
-//
-// Filter resutls using provided condition
-//
+/**
+ * Filter resutls using provided condition
+ */
 template<class T, bool (*predicate)(T const&)>
 class FilterRDD : public RDD<T>
 {
@@ -622,9 +658,9 @@ class FilterRDD : public RDD<T>
     RDD<T>* const in;
 };
     
-//
-// Perform aggregation of input data (a-la Scala fold)
-//
+/**
+ * Perform aggregation of input data (a-la Scala fold)
+ */
 template<class T, class S,void (*accumulate)(S& state, T const& in),void (*combine)(S& state, S const& in)>
 class ReduceRDD : public RDD<S> 
 {    
@@ -666,9 +702,9 @@ class ReduceRDD : public RDD<S>
     bool first;
 };
         
-//
-// Classical Map-Reduce
-//
+/**
+ * Classical Map-Reduce
+ */
 template<class T,class K,class V,void (*map)(Pair<K,V>& out, T const& in), void (*reduce)(V& dst, V const& src)>
 class MapReduceRDD : public RDD< Pair<K,V> > 
 {    
@@ -786,9 +822,9 @@ class MapReduceRDD : public RDD< Pair<K,V> >
     }
 };
 
-//
-// Project (map) RDD records
-//
+/**
+ * Project (map) RDD records
+ */
 template<class T, class P, void project(P& out, T const& in)>
 class ProjectRDD : public RDD<P>
 {
@@ -810,9 +846,9 @@ class ProjectRDD : public RDD<P>
     RDD<T>* const in;
 };
 
-//
-// Sort using given comparison function
-//
+/**
+ *  Sort using given comparison function
+ */
 template<class T, int compare(T const* a, T const* b)>
 class SortRDD : public RDD<T>
 {
@@ -867,9 +903,9 @@ class SortRDD : public RDD<T>
     }
 };
 
-//
-// Get top N records using given comparison function
-//
+/**
+ * Get top N records using given comparison function
+ */
 template<class T, int compare(T const* a, T const* b)>
 class TopRDD : public RDD<T>
 {
@@ -941,9 +977,11 @@ class TopRDD : public RDD<T>
     }
 };
 
-//
-// Join two RDDs using hash table
-//
+/**
+ * Join two RDDs using hash table.
+ * Depending on estimated result size and broadcastJoinThreshold, this RDD either broadcast inner table, 
+ * either shuffle inner table 
+ */
 template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner)>
 class HashJoinRDD : public RDD< Join<O,I> >, MessageHandler
 {
@@ -1149,9 +1187,11 @@ protected:
     }
 };
     
-//
-// Semijoin two RDDs using hash table
-//
+/**
+ * Semijoin two RDDs using hash table
+ * Depending on estimated result size and broadcastJoinThreshold, this RDD either broadcast inner table, 
+ * either shuffle inner table 
+ */
 template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner)>
 class HashSemiJoinRDD : public RDD<O>, MessageHandler
 {
@@ -1340,9 +1380,13 @@ protected:
 };
   
 
-//
-// Join two RDDs using shuffle join
-//
+/**
+ * Join two RDDs using shuffle join.
+ * This join method is used when estimated result size is larger than inmemJoinThreshold.
+ * In this case inner and outer tables are shuffled into N files, where N=estimation/inmemJoinThreshold.
+ * The inner table files are one-by-one loaded in memory (placed in hash table and records frim corresponding 
+ * outer table files are located in this hash table.
+ */
 template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner)>
 class ShuffleJoinRDD : public RDD< Join<O,I> >
 {
@@ -1494,9 +1538,13 @@ protected:
 };
     
   
-//
-// Simejoin two RDDs using shuffle join
-//
+/**
+ * Semijoin two RDDs using shuffle join.
+ * This join method is used when estimated result size is larger than inmemJoinThreshold.
+ * In this case inner and outer tables are shuffled into N files, where N=estimation/inmemJoinThreshold.
+ * The inner table files are one-by-one loaded in memory (placed in hash table and records frim corresponding 
+ * outer table files are located in this hash table.
+ */
 template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner)>
 class ShuffleSemiJoinRDD : public RDD<O>
 {
@@ -1634,9 +1682,9 @@ protected:
 };
     
   
-//
-// Cache RDD in memory
-//
+/**
+ * Cache RDD in memory
+ */
 template<class T>
 class CachedRDD : public RDD<T>
 {
