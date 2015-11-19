@@ -97,7 +97,7 @@ def parseDate(s: String): Int = (s.substring(0,4) + s.substring(5,7) + s.substri
 val lineitemRDD = lineitems.map(_.split("\\|")).map(p => Row(p(0).toLong, p(1).toInt, p(2).toInt, p(3).toInt, p(4).toDouble, p(5).toDouble, p(6).toDouble, p(7).toDouble, p(8)(0).toByte, p(9)(0).toByte, parseDate(p(10)), parseDate(p(11)), parseDate(p(12)), p(13), p(14), p(15)))
 val ordersRDD = orders.map(_.split("\\|")).map(p => Row(p(0).toLong, p(1).toInt, p(2)(0).toByte, p(3).toDouble, parseDate(p(4)), p(5), p(6), p(7).toInt, p(8)))
 val customerRDD = customer.map(_.split("\\|")).map(p => Row(p(0).toInt, p(1), p(2), p(3).toInt, p(4), p(5).toDouble, p(6), p(7)))
-val supplierRDD = customer.map(_.split("\\|")).map(p => Row(p(0).toInt, p(1), p(2), p(3).toInt, p(4), p(5).toDouble, p(6)))
+val supplierRDD = supplier.map(_.split("\\|")).map(p => Row(p(0).toInt, p(1), p(2), p(3).toInt, p(4), p(5).toDouble, p(6)))
 val partsuppRDD = partsupp.map(_.split("\\|")).map(p => Row(p(0).toInt, p(1).toInt, p(2).toInt, p(3).toDouble, p(4)))
 val regionRDD = region.map(_.split("\\|")).map(p => Row(p(0).toInt, p(1), p(2)))
 val nationRDD = nation.map(_.split("\\|")).map(p => Row(p(0).toInt, p(1), p(2).toInt, p(3)))
