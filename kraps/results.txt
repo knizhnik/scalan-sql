@@ -1,1 +1,75 @@
-results
+8x2 --------------------
+Elapsed time for loading all data in memory: 707608 milliseconds
+Elapsed time for Q1: 1901 milliseconds
+Elapsed time for Q3: 8818 milliseconds
+Elapsed time for Q4: 5248 milliseconds
+Elapsed time for Q5: 18244 milliseconds
+Elapsed time for Q6: 1169 milliseconds
+Elapsed time for Q7: 16681 milliseconds
+Elapsed time for Q8: 21750 milliseconds
+Elapsed time for Q9: 42602 milliseconds
+Elapsed time for Q10: 9858 milliseconds
+Elapsed time for Q12: 2022 milliseconds
+Elapsed time for Q13: 6561 milliseconds
+Elapsed time for Q14: 1234 milliseconds
+Elapsed time for Q19: 20867 milliseconds
+8x4 --------------------
+Elapsed time for loading all data in memory: 2950 milliseconds
+Elapsed time for Q1: 972 milliseconds
+Elapsed time for Q3: 7485 milliseconds
+Elapsed time for Q4: 4043 milliseconds
+Elapsed time for Q5: 17164 milliseconds
+Elapsed time for Q6: 615 milliseconds
+Elapsed time for Q7: 15252 milliseconds
+Elapsed time for Q8: 19585 milliseconds
+Elapsed time for Q9: 38634 milliseconds
+Elapsed time for Q10: 9660 milliseconds
+Elapsed time for Q12: 1356 milliseconds
+Elapsed time for Q13: 4697 milliseconds
+Elapsed time for Q14: 779 milliseconds
+Elapsed time for Q19: 16919 milliseconds
+4x4 --------------------
+Elapsed time for loading all data in memory: 7899 milliseconds
+Elapsed time for Q1: 1900 milliseconds
+Elapsed time for Q3: 11608 milliseconds
+Elapsed time for Q4: 7209 milliseconds
+Elapsed time for Q5: 24995 milliseconds
+Elapsed time for Q6: 1117 milliseconds
+Elapsed time for Q7: 25195 milliseconds
+Elapsed time for Q8: 30264 milliseconds
+Elapsed time for Q9: 56177 milliseconds
+Elapsed time for Q10: 11556 milliseconds
+Elapsed time for Q12: 2125 milliseconds
+Elapsed time for Q13: 7874 milliseconds
+Elapsed time for Q14: 1238 milliseconds
+Elapsed time for Q19: 26592 milliseconds
+8x8 --------------------
+Elapsed time for loading all data in memory: 1467 milliseconds
+Elapsed time for Q1: 683 milliseconds
+Elapsed time for Q3: 7863 milliseconds
+Elapsed time for Q4: 4508 milliseconds
+Elapsed time for Q5: 16258 milliseconds
+Elapsed time for Q6: 521 milliseconds
+Elapsed time for Q7: 15191 milliseconds
+Elapsed time for Q8: 19219 milliseconds
+Elapsed time for Q9: 38053 milliseconds
+Elapsed time for Q10: 10085 milliseconds
+Elapsed time for Q12: 1198 milliseconds
+Elapsed time for Q13: 4550 milliseconds
+Elapsed time for Q14: 970 milliseconds
+Elapsed time for Q19: 15026 milliseconds
+4x8 --------------------
+Elapsed time for loading all data in memory: 2865 milliseconds
+Elapsed time for Q1: 1343 milliseconds
+Elapsed time for Q3: 11066 milliseconds
+Elapsed time for Q4: 6252 milliseconds
+Elapsed time for Q5: 25246 milliseconds
+Elapsed time for Q6: 933 milliseconds
+Elapsed time for Q7: 25598 milliseconds
+Elapsed time for Q8: 30954 milliseconds
+Elapsed time for Q9: 59784 milliseconds
+Elapsed time for Q10: 11021 milliseconds
+Elapsed time for Q12: 2126 milliseconds
+Elapsed time for Q13: 6001 milliseconds
+Elapsed time for Q14: 1158 milliseconds
+Elapsed time for Q19: 25088 milliseconds
