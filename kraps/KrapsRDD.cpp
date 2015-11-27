@@ -92,7 +92,7 @@ static KrapsCluster kraps;
 
 extern "C" {
 
-JNIEXPORT jlong Java_kraps_KrapsRDD_createIterator(JNIEnv* env, jobject self, jint queryId)
+JNIEXPORT jlong Java_kraps_KrapsRDD_createIterator(JNIEnv* env, jobject self, jint queryId, jobjectArray sparkInputs)
 {
     char buf[256];
     sprintf(buf, "libQ%d.so", queryId);
@@ -110,18 +110,27 @@ JNIEXPORT jlong Java_kraps_KrapsRDD_createIterator(JNIEnv* env, jobject self, ji
     sprintf(buf, "getQ%dIterator", queryId);
     iterator_constructor_t constructor = (iterator_constructor_t)dlsym(dll, buf);
     assert(constructor != NULL);
+
+    JavaContext ctx(env, sparkInputs);
+    Cluster* cluster = Cluster::instance.get();
+    if (cluster == NULL) { 
+        cluster = kraps.cluster;
+        Cluster::instance.set(cluster);
+    }
+    cluster->userData = &ctx;
+
     return (jlong)(size_t)new KrapsRDD(dll, constructor(env));
 }
 
 JNIEXPORT jlong Java_kraps_KrapsRDD_nextRow(JNIEnv* env, jobject self, jlong iterator, jobjectArray sparkInputs)
 {
     KrapsRDD* rdd = (KrapsRDD*)iterator;
+    JavaContext ctx(env, sparkInputs);
     Cluster* cluster = Cluster::instance.get();
     if (cluster == NULL) { 
         cluster = kraps.cluster;
         Cluster::instance.set(cluster);
     }
-    JavaContext ctx(env, sparkInputs);
     cluster->userData = &ctx;
     void* row = rdd->next();
     if (row != NULL) {

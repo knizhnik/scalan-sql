@@ -121,12 +121,12 @@ class KrapsRDD(
     val s = split.asInstanceOf[CombinePartition]
     val coalescedInput = Array.tabulate(input.size)(i =>
         new RowIterator(input(i), s.parts(i), split.index, nNodes, context, serializers(i)))
-    val it = createIterator(queryId)
+    val it = createIterator(queryId, coalescedInput)
     //logInfo(s"!!!!!!!!!!!!!!!!!!!!!!!!!!!!! KrapsIterator($it) !!!!!!!!!!!!!!!!!!!")
     new KrapsIterator(it, coalescedInput)
   }
 
-  @native def createIterator(queryId: Int): Long
+  @native def createIterator(queryId: Int, scalaInput : Array[RowIterator]): Long
   @native def nextRow(iterator: Long, scalaInput : Array[RowIterator]): Long
 }
 
