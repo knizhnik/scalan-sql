@@ -173,7 +173,7 @@ int main(int argc, char* argv[])
             partsupp.ps_partkey = atoi(columns[0]);
             partsupp.ps_suppkey = atoi(columns[1]);
             partsupp.ps_availqty = atoi(columns[2]);
-            partsupp.ps_supplycost = atoi(columns[3]);
+            partsupp.ps_supplycost = atof(columns[3]);
             strncpy(partsupp.ps_comment, columns[4], sizeof partsupp.ps_comment);
             size_t rc = fwrite(&partsupp, sizeof(partsupp), 1, out[i % nShards]);
             assert(rc == 1);

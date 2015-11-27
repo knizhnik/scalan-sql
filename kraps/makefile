@@ -13,9 +13,9 @@ SPARK_HOME=~/spark
 # java home on Mac OSX
 JAVA_HOME?=/Library/Java/JavaVirtualMachines/jdk1.8.0_60.jdk/Contents/Home
 
-CPP=g++ -pthread -fPIC -O3 -g -Wall -DSHOW_HASH_STATISTIC #-DUSE_MESSAGE_HANDLER -DSHOW_HASH_STATISTIC
+#CPP=g++ -pthread -fPIC -O3 -g -Wall -DSHOW_HASH_STATISTIC #-DUSE_MESSAGE_HANDLER -DSHOW_HASH_STATISTIC
 #CPP=g++ -pthread -fPIC -O3 -g -Wall
-#CPP=g++ -pthread -fPIC -O3 -g -Wall -DUSE_ZLIB
+CPP=g++ -pthread -fPIC -O3 -g -Wall -DUSE_ZLIB -I ~/.nix-profile/include/
 #CPP=g++ -pthread -fPIC -O3 -g -Wall -DUSE_LZH
 #CPP=g++ -pthread -fPIC -O0 -g -Wall
 #CPP=g++ -pthread -fPIC -O3 -g -Wall -DUSE_SIMDCOMP -I $(SIMDCOMP_HOME)/include
@@ -40,8 +40,8 @@ parquet.o: parquet.cpp rdd.h cluster.h
 	$(CPP) -c parquet.cpp
 
 tpch: tpch.o cluster.o sockio.o compress.o parquet.o 
-#	$(CPP) -o tpch tpch.o cluster.o sockio.o compress.o 
-	$(CPP) -o tpch tpch.o cluster.o sockio.o compress.o -lz
+	$(CPP) -static -o tpch tpch.o cluster.o sockio.o compress.o -L/home/knizhnik/.nix-profile/lib -lz
+#	$(CPP) -o tpch tpch.o cluster.o sockio.o compress.o -lz
 #	$(CPP) -o tpch tpch.o cluster.o sockio.o compress.o -L $(SIMDCOMP_HOME) -lsimdcomp 
 #	$(CPP) -o tpch tpch.o cluster.o sockio.o compress.o  parquet.o $(PARQUET_CPP_HOME)/build/libParquet.a $(PARQUET_CPP_HOME)/build/libParquetCompression.a $(PARQUET_CPP_HOME)/build/libThriftParquet.a $(PARQUET_CPP_HOME)/thirdparty/installed/lib/libsnappy.a  $(PARQUET_CPP_HOME)/thirdparty/installed/lib/liblz4.a /usr/local/lib/libthrift.a $(HADOOP_HOME)/lib/native/libhdfs.a -L/usr/lib/jvm/oracle-jdk-bin-1.8/jre/lib/amd64/server -lz -ljvm
 
