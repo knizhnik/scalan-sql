@@ -99,6 +99,7 @@ class KrapsRDD(
       } else {
          if (row == 0) row = nextRow(krapsInput, scalaInput)
          if (row == 0) {
+           KrapsCluster.stop()
            eof = true
            false
          } else {
