@@ -13,6 +13,10 @@
 #define PARALLEL_INNER_OUTER_TABLES_LOAD 1
 #endif
 
+#ifndef UNKNOWN_ESTIMATION
+#define UNKNOWN_ESTIMATION (1024*1024)
+#endif
+
 /**
  * Pair is used for map-reduce
  */
@@ -151,7 +155,7 @@ class RDD
      * @return RDD with &lt;key,value&gt; pairs
      */
     template<class K,class V,void (*map)(Pair<K,V>& out, T const& in), void (*reduce)(V& dst, V const& src)>
-    RDD< Pair<K,V> >* mapReduce(size_t estimation);
+    RDD< Pair<K,V> >* mapReduce(size_t estimation = UNKNOWN_ESTIMATION);
 
     /**
      * Perform aggregation of input RDD 
@@ -174,7 +178,7 @@ class RDD
      * @return RDD with sorted records
      */
     template<int (*compare)(T const* a, T const* b)> 
-    RDD<T>* sort(size_t estimation);
+    RDD<T>* sort(size_t estimation = UNKNOWN_ESTIMATION);
 
     /**
      * Find top N records according to provided comparison function
@@ -192,7 +196,7 @@ class RDD
      * @param kind join kind (inner/outer join)
      */
     template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner)>
-    RDD< Join<T,I> >* join(RDD<I>* with, size_t estimation, JoinKind kind = InnerJoin);
+    RDD< Join<T,I> >* join(RDD<I>* with, size_t estimation = UNKNOWN_ESTIMATION, JoinKind kind = InnerJoin);
 
     /**
      * Left simijoin two RDDs. Semijoin find matched records in both tables but returns only records from outer table.
@@ -202,7 +206,7 @@ class RDD
      * @param kind join kind (inner/anti join)
      */
     template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner)>
-    RDD<T>* semijoin(RDD<I>* with, size_t estimation, JoinKind kind = InnerJoin);
+    RDD<T>* semijoin(RDD<I>* with, size_t estimation = UNKNOWN_ESTIMATION, JoinKind kind = InnerJoin);
 
     /**
      * Replicate data between all nodes.
