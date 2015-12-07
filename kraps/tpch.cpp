@@ -2,6 +2,7 @@
 #include <sys/time.h>
 #include <ctype.h>
 #include "rdd.h"
+#include "tile.h"
 #include "tpch.h"
 
 const size_t SF = 100; // scale factor
@@ -12,6 +13,7 @@ const size_t SF = 100; // scale factor
 #define SCALE(x)    ((x + Cluster::instance->nNodes - 1)*SF/(Cluster::instance->nNodes) + (x / 100)) // take in accoutn data skews
 
 #define TABLE(x) (Cluster::instance->userData ? (RDD<x>*)((CachedData*)Cluster::instance->userData)->_##x.get() : (RDD<x>*)FileManager::load<x>(filePath(#x)))
+#define TILE_TABLE(x) (Cluster::instance->userData ? (TileRDD<x>*)((TileCachedData*)Cluster::instance->userData)->_##x.get() : (TileRDD<x>*)FileManager::load<x>(filePath(#x)))
 
 char const* dataDir;
 char const* dataFormat;
@@ -39,6 +41,30 @@ class CachedData
     CachedRDD<Region> _Region;
 
     CachedData() : 
+    _Lineitem(FileManager::load<Lineitem>(filePath("Lineitem")), SCALE(6000000)),
+    _Orders(FileManager::load<Orders>(filePath("Orders")),       SCALE(1500000)),
+    _Supplier(FileManager::load<Supplier>(filePath("Supplier")), SCALE(10000)),
+    _Customer(FileManager::load<Customer>(filePath("Customer")), SCALE(150000)),
+    _Part(FileManager::load<Part>(filePath("Part")),             SCALE(200000)),
+    _Partsupp(FileManager::load<Partsupp>(filePath("Partsupp")), SCALE(800000)),
+    _Nation(FileManager::load<Nation>(filePath("Nation")),       25),
+    _Region(FileManager::load<Region>(filePath("Region")),       5) {}
+
+};
+
+class TileCachedData
+{
+  public:
+    TileCachedRDD<Lineitem> _Lineitem;
+    TileCachedRDD<Orders> _Orders;
+    TileCachedRDD<Supplier> _Supplier;
+    TileCachedRDD<Customer> _Customer;
+    TileCachedRDD<Part> _Part;
+    TileCachedRDD<Partsupp> _Partsupp;
+    TileCachedRDD<Nation> _Nation;
+    TileCachedRDD<Region> _Region;
+
+    TileCachedData() : 
     _Lineitem(FileManager::load<Lineitem>(filePath("Lineitem")), SCALE(6000000)),
     _Orders(FileManager::load<Orders>(filePath("Orders")),       SCALE(1500000)),
     _Supplier(FileManager::load<Supplier>(filePath("Supplier")), SCALE(10000)),
@@ -197,8 +223,17 @@ namespace Q1
             project<Projection, projection>()->
             sort<compare>(100);
     }
-}
 
+    RDD<Projection>* tileQuery() 
+    { 
+        return
+            TILE_TABLE(Lineitem)->
+            filter<predicate>()->
+            mapReduce<GroupBy,Aggregate,map,reduce>(10000)->
+            project<Projection, projection>()->
+            sort<compare>(100);
+    }
+}
 namespace Q3
 {
     struct LineitemProjection 
@@ -1700,11 +1735,13 @@ class TPCHJob : public Job
 {
     Cluster cluster;
     bool useCache;
+    bool tileMode;
 
   public:
-    TPCHJob(size_t nodeId, size_t nHosts, char** hosts = NULL, size_t nQueues = 64, size_t bufferSize = 4*64*1024, size_t recvQueueSize = 4*64*1024*1024,  size_t sendQueueSize = 4*4*1024*1024, size_t syncInterval = 64*1024*1024, size_t broadcastJoinThreshold = 10000, size_t inmemJoinThreshold = 10000000, char const* tmp = "/tmp", bool sharedNothing = false, size_t split = 1, bool _useCache = false)
+    TPCHJob(size_t nodeId, size_t nHosts, char** hosts = NULL, size_t nQueues = 64, size_t bufferSize = 4*64*1024, size_t recvQueueSize = 4*64*1024*1024,  size_t sendQueueSize = 4*4*1024*1024, size_t syncInterval = 64*1024*1024, size_t broadcastJoinThreshold = 10000, size_t inmemJoinThreshold = 10000000, char const* tmp = "/tmp", bool sharedNothing = false, size_t split = 1, bool _useCache = false, bool _tileMode = false)
     : cluster(nodeId, nHosts, hosts, nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, split),
-      useCache(_useCache)
+        useCache(_useCache),
+        tileMode(_tileMode)
     {}
     
   public:
@@ -1714,26 +1751,30 @@ class TPCHJob : public Job
 
         time_t start = getCurrentTime();
         if (useCache) { 
-            cluster.userData = new CachedData();
+            cluster.userData = tileMode ? (void*)new TileCachedData() : (void*)new CachedData();;
             printf("Elapsed time for loading all data in memory: %d milliseconds\n", (int)(getCurrentTime() - start));
             cluster.barrier(); 
         }
     
-        execute("Q1",  Q1::query);
-        execute("Q3",  Q3::query);
-        execute("Q4",  Q4::query);
-        execute("Q5",  Q5::query);
-        execute("Q6",  Q6::query);
-        execute("Q7",  Q7::query);
-        execute("Q8",  Q8::query);
-        execute("Q9",  Q9::query);
-        execute("Q10", Q10::query);
-        execute("Q12", Q12::query);
-        execute("Q13", Q13::query);
-        execute("Q14", Q14::query);
-        execute("Q19", Q19::query);
-        
-        delete (CachedData*)cluster.userData;
+        if (tileMode) { 
+            execute("Q1",  Q1::tileQuery);
+            delete (TileCachedData*)cluster.userData;
+        } else { 
+            execute("Q1",  Q1::query);
+            execute("Q3",  Q3::query);
+            execute("Q4",  Q4::query);
+            execute("Q5",  Q5::query);
+            execute("Q6",  Q6::query);
+            execute("Q7",  Q7::query);
+            execute("Q8",  Q8::query);
+            execute("Q9",  Q9::query);
+            execute("Q10", Q10::query);
+            execute("Q12", Q12::query);
+            execute("Q13", Q13::query);
+            execute("Q14", Q14::query);
+            execute("Q19", Q19::query);
+            delete (CachedData*)cluster.userData;
+        }
 
         printf("Node %d finished.\n", (int)cluster.nodeId);
     }
@@ -1743,6 +1784,7 @@ int main(int argc, char* argv[])
 {
     int i;
     bool useCache = false;
+    bool tileMode = false;
     size_t nQueues = 64;
     size_t bufferSize = 4*64*1024;
     size_t recvQueueSize = 4*64*1024*1024;
@@ -1762,6 +1804,8 @@ int main(int argc, char* argv[])
             option = argv[i]+1;
             if (strcmp(option, "cache") == 0) { 
                 useCache = true;
+            } else if (strcmp(option, "tile") == 0) { 
+                tileMode = true;
             } else if (strcmp(option, "dir") == 0) { 
                 dataDir = argv[++i];
             } else if (strcmp(option, "format") == 0) { 
@@ -1794,6 +1838,7 @@ int main(int argc, char* argv[])
                       "-dir\tdata directory (.)\n"
                       "-format\tdata format: parquet, plain-file,... ()\n"
                       "-cache\tCache all data in memory\n"
+                      "-tile\tUse tile mode\n"
                       "-tmp DIR\ttemporary files location (/tmp)\n"
                       "-shared-nothing 0/1\tdata is located at executor nodes (1)\n"
                       "-queues N\tnumber of queues (64)\n"
@@ -1824,7 +1869,7 @@ int main(int argc, char* argv[])
         Cluster::nodes = new Cluster*[nNodes];
         Thread** clusterThreads = new Thread*[nNodes];
         for (nodeId = 0; nodeId < nNodes; nodeId++) {
-            clusterThreads[nodeId] = new Thread(new TPCHJob(nodeId, nNodes, NULL, nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, split, useCache), nodeId);
+            clusterThreads[nodeId] = new Thread(new TPCHJob(nodeId, nNodes, NULL, nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, split, useCache, tileMode), nodeId);
         }
         for (nodeId = 0; nodeId < nNodes; nodeId++) {
             delete clusterThreads[nodeId];
@@ -1832,7 +1877,7 @@ int main(int argc, char* argv[])
         delete[] clusterThreads;
         delete[] Cluster::nodes;
     } else if (argc == i + nNodes) {
-        TPCHJob test(nodeId, nNodes, &argv[i], nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, split, useCache);
+        TPCHJob test(nodeId, nNodes, &argv[i], nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, split, useCache, tileMode);
         test.run();
     } else {      
         fprintf(stderr, "At least one node has to be specified\n");
