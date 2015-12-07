@@ -229,6 +229,7 @@ namespace Q1
         return
             TILE_TABLE(Lineitem)->
             filter<predicate>()->
+            untile()->
             mapReduce<GroupBy,Aggregate,map,reduce>(10000)->
             project<Projection, projection>()->
             sort<compare>(100);
@@ -625,6 +626,14 @@ namespace Q6
     { 
         return
             TABLE(Lineitem)->
+            filter<lineitemFilter>()->
+            reduce<double,revenue,sum>(0);
+    }
+
+    RDD<double>* tileQuery() 
+    { 
+        return
+            TILE_TABLE(Lineitem)->
             filter<lineitemFilter>()->
             reduce<double,revenue,sum>(0);
     }
@@ -1758,6 +1767,7 @@ class TPCHJob : public Job
     
         if (tileMode) { 
             execute("Q1",  Q1::tileQuery);
+            execute("Q6",  Q6::tileQuery);
             delete (TileCachedData*)cluster.userData;
         } else { 
             execute("Q1",  Q1::query);

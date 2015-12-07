@@ -141,8 +141,16 @@ class TileRDD
      * @return RDD with records matching predicate 
      */
     template<bool (*predicate)(T const&)>
-    RDD<T>* filter();
+    TileRDD<T>* filter();
     
+    /**
+     * Perform aggregation of input RDD 
+     * @param initState initial aggregate value
+     * @return RDD with aggregated value
+     */
+    template<class S,void (*accumulate)(S& state,  T const& in),void (*combine)(S& state, S const& in)>
+    RDD<S>* reduce(S const& initState);
+
     /**
      * Map records of input RDD
      * @return projection of the input RDD. 
@@ -157,21 +165,30 @@ class TileRDD
  * Filter resutls using provided condition
  */
 template<class T, bool (*predicate)(T const&)>
-class TileFilterRDD : public RDD<T>
+class TileFilterRDD : public TileRDD<T>
 {
   public:
     TileFilterRDD(TileRDD<T>* input) : in(input), pos(0) {}
 
-    bool next(T& record) {
+    bool next(Tile<T>& dst) {
+        size_t i = 0; 
         do { 
-            if (pos >= tile.size) {
-                if (!in->next(tile)) { 
+            if (pos >= src.size) {
+                if (!in->next(src)) { 
+                    if (i != 0) { 
+                        break;
+                    }
                     return false;
                 }
                 pos = 0;
             }
-            record = tile.data[pos++];
-        } while (!predicate(record));
+            if (predicate(src.data[pos])) { 
+                dst.data[i++] = src.data[pos];
+            }
+            pos += 1;
+        } while (i < MAX_TILE_SIZE);
+
+        dst.size = i;
         return true;
     }
 
@@ -180,7 +197,7 @@ class TileFilterRDD : public RDD<T>
   private:
     TileRDD<T>* const in;
     size_t pos;
-    Tile<T> tile;
+    Tile<T> src;
 };
 
 /**
@@ -210,6 +227,52 @@ class TileProjectRDD : public TileRDD<P>
     TileRDD<T>* const in;
 };
 
+/**
+ * Perform aggregation of input data (a-la Scala fold)
+ */
+template<class T, class S,void (*accumulate)(S& state, T const& in),void (*combine)(S& state, S const& in)>
+class TileReduceRDD : public RDD<S> 
+{    
+  public:
+    TileReduceRDD(TileRDD<T>* input, S const& initState) : state(initState), first(true) {
+        aggregate(input);
+    }
+    bool next(S& record) {
+        if (first) { 
+            record = state;
+            first = false;
+            return true;
+        }
+        return false;
+    }
+
+  private:
+    void aggregate(TileRDD<T>* input) { 
+        Tile<T> tile;
+        while (input->next(tile)) { 
+            for (size_t i = 0, n = tile.size; i < n; i++) {
+                accumulate(state, tile.data[i]);
+            }
+        }
+        Cluster* cluster = Cluster::instance.get();
+        Queue* queue = cluster->getQueue();
+        if (cluster->isCoordinator()) {
+            S partialState;
+            GatherRDD<S> gather(queue);
+            queue->putFirst(Buffer::eof(queue->qid)); // do not wait for self node
+            while (gather.next(partialState)) {
+                combine(state, partialState);
+            }
+        } else {
+            sendToCoordinator<S>(this, queue);            
+        }
+        delete input;
+    }
+    
+    S state;
+    bool first;
+};
+        
 /**
  * Decompose tile into scalar elements
  */
@@ -394,7 +457,7 @@ RDD<T>* TileRDD<T>::untile()
 
 template<class T>
 template<bool (*predicate)(T const&)>
-RDD<T>* TileRDD<T>::filter()
+TileRDD<T>* TileRDD<T>::filter()
 {
     return new TileFilterRDD<T, predicate>(this);
 }
@@ -404,6 +467,12 @@ template<class P, void (*projection)(P& out, T const& in)>
 TileRDD<P>* TileRDD<T>::project()
 {
     return new TileProjectRDD<T, P, projection>(this);
+}
+
+template<class T>
+template<class S,void (*accumulate)(S& state, T const& in), void(*combine)(S& state, S const& partial)>
+inline RDD<S>* TileRDD<T>::reduce(S const& initState) {
+    return new TileReduceRDD<T,S,accumulate,combine>(this, initState);
 }
 
 #endif
