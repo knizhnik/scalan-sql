@@ -1118,7 +1118,7 @@ namespace Q9
     struct PartProjection
     {
         int p_partkey;
-        name_t p_name;
+        char p_name[55];
      };
 
     void projectPart(PartProjection& out, Part const& in)
