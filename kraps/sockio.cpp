@@ -36,8 +36,9 @@ bool Socket::isLocalHost(char const* address)
     struct utsname localHost;
     uname(&localHost);
     size_t localHostNodeNameLen = strlen(localHost.nodename);
-    return strncmp(address, "localhost:", 10) == 0 
-        || (strncmp(address, localHost.nodename, localHostNodeNameLen) == 0 && address[localHostNodeNameLen] == ':');
+    return strncmp(address, "localhost:", 10) == 0
+        || (strncmp(address, localHost.nodename, localHostNodeNameLen) == 0 &&
+            (address[localHostNodeNameLen] == ':' || address[localHostNodeNameLen] == '.'));
 }
     
 Socket* Socket::createGlobal(int port, size_t listenQueueSize)
