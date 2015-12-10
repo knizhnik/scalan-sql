@@ -2,23 +2,15 @@
 #include <time.h>
 #include <sys/time.h>
 
-#define N_ELEMS 16LL*1024*1024*1024
-
-template<class T>
-class Iterator {
-public:
-  //  virtual bool next(T& val) = 0;
-};
-
-#define virtual
+#define N_ELEMS 1LL*1024*1024*1024
 
 template<class T, class I, bool(*predicate)(T const&)>
-class Filter : public Iterator<T>
+class Filter
 {
   I* in;
 public:
   Filter(I* input) : in(input) {}
-  virtual bool next(double& val) {
+  bool next(double& val) {
     while(in->next(val)) {
       if (predicate(val)) {
 	return true;
@@ -29,14 +21,14 @@ public:
 };
 
 template<class T, class I, class A, void (*fold)(A&,T const&)>
-class Aggregate : public Iterator<T>
+class Aggregate 
 {
   I* in;
   bool first;
 public:
   Aggregate(I* input) : in(input), first(true) {}
 
-  virtual bool next(A& val) {
+  bool next(A& val) {
     if (!first) {
       return false;
     }
@@ -51,7 +43,7 @@ public:
 };
 
 template<class T>
-class Cache : public Iterator<T>
+class Cache 
 {
   T* data;
   size_t size;
@@ -59,7 +51,7 @@ class Cache : public Iterator<T>
 public:
   Cache(T* ptr, size_t len) : data(ptr), size(len), curr(0) {}
 
-  virtual bool next(T& val) {
+  bool next(T& val) {
     if (curr < size) {
       val = data[curr++];
       return true;
@@ -106,7 +98,7 @@ int main()
   for (size_t i = 0; i < N_ELEMS; i++) {
     arr[i] = i;
   }
-  if (0) {
+  {
     time_t start = getCurrentTime();
     double sum = 0;
     for (size_t i = 0; i < N_ELEMS; i++) {
