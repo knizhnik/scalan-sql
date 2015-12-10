@@ -15,7 +15,7 @@ JAVA_HOME?=/Library/Java/JavaVirtualMachines/jdk1.8.0_60.jdk/Contents/Home
 
 #CPP=g++ -pthread -fPIC -O3 -g -Wall -DSHOW_HASH_STATISTIC #-DUSE_MESSAGE_HANDLER -DSHOW_HASH_STATISTIC
 #CPP=g++ -pthread -fPIC -O3 -g -Wall
-CPP=g++ -pthread -fPIC -O3 -g -Wall -DUSE_ZLIB -I $(HOME)/.nix-profile/include/
+CPP=g++ -pthread -fPIC -flto -O3 -g -Wall -DUSE_ZLIB -I $(HOME)/.nix-profile/include/
 #CPP=g++ -pthread -fPIC -O3 -g -Wall -DUSE_LZH
 #CPP=g++ -pthread -fPIC -O0 -g -Wall
 #CPP=g++ -pthread -fPIC -O3 -g -Wall -DUSE_SIMDCOMP -I $(SIMDCOMP_HOME)/include

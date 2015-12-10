@@ -15,8 +15,9 @@ class Tile
 {
   public:
     size_t size;
-    T data[MAX_TILE_SIZE];
-    Tile(size_t used = 0) : size(used) {}
+    T* data;
+    T buf[MAX_TILE_SIZE];
+    Tile(size_t used = 0) : size(used), data(buf) {}
 };
 
 
@@ -293,7 +294,7 @@ class TileCachedRDD : public TileRDD<T>
             return false;
         }
         tile.size = curr + MAX_TILE_SIZE <= size ? MAX_TILE_SIZE : size - curr;
-        memcpy(tile.data, buf+curr, tile.size*sizeof(T));
+        tile.data = &buf[curr];
         curr += tile.size;
         return true;
     }

@@ -122,6 +122,28 @@ inline void partsuppKey(PartsuppKey& key, Partsupp const& ps)
     
 namespace Q1
 {
+   struct LineitemProjection
+   {
+     double l_extendedprice;
+     double l_discount;
+     double l_tax;
+     double l_quantity;
+     date_t l_shipdate;
+     char   l_returnflag;
+     char   l_linestatus;
+   };
+
+  inline void projectLineitem(LineitemProjection& out, Lineitem const& in)
+  {
+      out.l_extendedprice = in.l_extendedprice;
+      out.l_discount = in.l_discount;
+      out.l_tax = in.l_tax;
+      out.l_quantity = in.l_quantity;
+      out.l_shipdate = in.l_shipdate;
+      out.l_returnflag = in.l_returnflag;
+      out.l_linestatus = in.l_linestatus;
+  }
+  
     struct Projection
     {
         double sum_qty;
@@ -166,12 +188,12 @@ namespace Q1
         size_t count_order;
     };
     
-    inline bool predicate(Lineitem const& lineitem) 
+    inline bool predicate(LineitemProjection const& lineitem) 
     {
         return lineitem.l_shipdate <= 19981201;
     }
 
-    inline void map(Pair<GroupBy,Aggregate>& pair, Lineitem const& lineitem)
+    inline void map(Pair<GroupBy,Aggregate>& pair, LineitemProjection const& lineitem)
     {
         pair.key.l_returnflag = lineitem.l_returnflag;
         pair.key.l_linestatus = lineitem.l_linestatus;
@@ -218,6 +240,7 @@ namespace Q1
     { 
         return
             TABLE(Lineitem)->
+	    project<LineitemProjection, projectLineitem>()->
             filter<predicate>()->
             mapReduce<GroupBy,Aggregate,map,reduce>(10000)->
             project<Projection, projection>()->
@@ -228,6 +251,7 @@ namespace Q1
     { 
         return
             TILE_TABLE(Lineitem)->
+	    project<LineitemProjection, projectLineitem>()->
             filter<predicate>()->
             untile()->
             mapReduce<GroupBy,Aggregate,map,reduce>(10000)->
