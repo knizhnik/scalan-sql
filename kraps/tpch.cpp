@@ -236,15 +236,11 @@ namespace Q1
         return diff != 0 ? diff : a->l_linestatus - b->l_linestatus;
     }
 
-    RDD<Projection>* query() 
+    template<class I>
+    auto query(I* in) 
     { 
         return
-            TABLE(Lineitem)->
-	    project<LineitemProjection, projectLineitem>()->
-            filter<predicate>()->
-            mapReduce<GroupBy,Aggregate,map,reduce>(10000)->
-            project<Projection, projection>()->
-            sort<compare>(100);
+            sort<compare>(project<Projection, projection>(mapReduce<GroupBy,Aggregate,map,reduce>(filter<predicate>(project<LineitemProjection, projectLineitem>(in)), 10000)))(100);
     }
 
     RDD<Projection>* tileQuery() 
@@ -1818,7 +1814,6 @@ int main(int argc, char* argv[])
 {
     int i;
     bool useCache = false;
-    bool tileMode = false;
     size_t nQueues = 64;
     size_t bufferSize = 4*64*1024;
     size_t recvQueueSize = 4*64*1024*1024;
@@ -1838,8 +1833,6 @@ int main(int argc, char* argv[])
             option = argv[i]+1;
             if (strcmp(option, "cache") == 0) { 
                 useCache = true;
-            } else if (strcmp(option, "tile") == 0) { 
-                tileMode = true;
             } else if (strcmp(option, "dir") == 0) { 
                 dataDir = argv[++i];
             } else if (strcmp(option, "format") == 0) { 
@@ -1872,7 +1865,6 @@ int main(int argc, char* argv[])
                       "-dir\tdata directory (.)\n"
                       "-format\tdata format: parquet, plain-file,... ()\n"
                       "-cache\tCache all data in memory\n"
-                      "-tile\tUse tile mode\n"
                       "-tmp DIR\ttemporary files location (/tmp)\n"
                       "-shared-nothing 0/1\tdata is located at executor nodes (1)\n"
                       "-queues N\tnumber of queues (64)\n"
@@ -1903,7 +1895,7 @@ int main(int argc, char* argv[])
         Cluster::nodes = new Cluster*[nNodes];
         Thread** clusterThreads = new Thread*[nNodes];
         for (nodeId = 0; nodeId < nNodes; nodeId++) {
-            clusterThreads[nodeId] = new Thread(new TPCHJob(nodeId, nNodes, NULL, nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, split, useCache, tileMode), nodeId);
+            clusterThreads[nodeId] = new Thread(new TPCHJob(nodeId, nNodes, NULL, nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, split, useCache), nodeId);
         }
         for (nodeId = 0; nodeId < nNodes; nodeId++) {
             delete clusterThreads[nodeId];
@@ -1911,7 +1903,7 @@ int main(int argc, char* argv[])
         delete[] clusterThreads;
         delete[] Cluster::nodes;
     } else if (argc == i + nNodes) {
-        TPCHJob test(nodeId, nNodes, &argv[i], nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, split, useCache, tileMode);
+        TPCHJob test(nodeId, nNodes, &argv[i], nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, split, useCache);
         test.run();
     } else {      
         fprintf(stderr, "At least one node has to be specified\n");

@@ -140,7 +140,7 @@ class RDD
      * @param record [out] placeholder for the next record
      * @return true if there is next record, false otherwise
      */
-    virtual bool next(T& record) = 0;
+    virtual bool getNext(T& record) = 0;
 
     /**
      * Filter input RDD
@@ -233,14 +233,14 @@ class RDD
     void output(FILE* out);
 
     virtual~RDD() {}
-
 };
+
 
 /**
  * Tranfer data from RDD to queue
  */
-template<class T>
-inline void enqueue(RDD<T>* input, size_t node, Queue* queue) 
+template<class T, class I = RDD<T> >
+inline void enqueue(I* input, size_t node, Queue* queue) 
 {
     Cluster* cluster = Cluster::instance.get();
     qid_t qid = queue->qid;
@@ -272,8 +272,8 @@ inline void enqueue(RDD<T>* input, size_t node, Queue* queue)
 /**
  * Send data to coordinator
  */
-template<class T>
-inline void sendToCoordinator(RDD<T>* input, Queue* queue) 
+template<class T, class I = RDD<T> >
+inline void sendToCoordinator(I* input, Queue* queue) 
 {
     enqueue(input, COORDINATOR, queue);
 }
@@ -281,15 +281,15 @@ inline void sendToCoordinator(RDD<T>* input, Queue* queue)
 /**
  * Fetch data from RDD and place it in queue
  */
-template<class T>
+template<class T, class I = RDD<T> >
 class FetchJob : public Job
 {
 public:
-    FetchJob(RDD<T>* in, Queue* q) : input(in), queue(q) {}
+    FetchJob(I* in, Queue* q) : input(in), queue(q) {}
 
     void run()
     {        
-        enqueue(input, Cluster::instance->nodeId, queue);
+        enqueue<T,I>(input, Cluster::instance->nodeId, queue);
     }
 private:
     RDD<T>* const input;
@@ -299,11 +299,11 @@ private:
 /**
  * Scatter RDD data between nodes using provided distribution key and hash function
  */
-template<class T, class K, void (*dist_key)(K& key, T const& record)>
+template<class T, class K, void (*dist_key)(K& key, T const& record), class I = RDD<T> >
 class ScatterJob : public Job
 {
 public:
-    ScatterJob(RDD<T>* in, Queue* q) : input(in), queue(q) {}
+    ScatterJob(I* in, Queue* q) : input(in), queue(q) {}
     ~ScatterJob() { delete input; }
     
     void run()
@@ -358,7 +358,7 @@ public:
         delete[] buffers;
     }
 private:
-    RDD<T>* const input;
+    I* const input;
     Queue* const queue;
 };
 
@@ -398,6 +398,10 @@ public:
         return true;
     }
 
+    bool getNext(T& record) { 
+        return next(record);
+    }
+
     GatherRDD(Queue* q) : buf(NULL), used(0), size(0), queue(q), nWorkers(Cluster::instance->nNodes) {}
     ~GatherRDD() { 
         if (buf != NULL) { 
@@ -416,7 +420,7 @@ private:
  * RDD for fetching elements from buffer, used in message handlers
  */
 template<class T>
-class BufferRDD
+class BufferRDD : public RDD<T>
 {
   public:
     bool next(T& record) {
@@ -427,6 +431,10 @@ class BufferRDD
         return true;
     }
     
+    bool getNext(T& record) { 
+        return next(record);
+    }
+
     BufferRDD(Buffer* buffer) : buf(buffer), pos(0) {}
     ~BufferRDD() { buf->release(); }
 
@@ -438,11 +446,11 @@ class BufferRDD
 /**
  * Replicate RDD data to all nodes
  */
-template<class T>
+template<class T, class I = RDD<T> >
 class BroadcastJob : public Job
 {
 public:
-    BroadcastJob(RDD<T>* in, Queue* q) : input(in), queue(q) {}
+    BroadcastJob(I* in, Queue* q) : input(in), queue(q) {}
     ~BroadcastJob() { delete input; }
     
     void run()
@@ -491,18 +499,18 @@ public:
         }
     }
 private:
-    RDD<T>* const input;
+    I* const input;
     Queue* const queue;
 };
 
 /**
  * RDD representing result of replication
  */
-template<class T>
-class ReplicateRDD : public GatherRDD<T>
+template<class T, class I = RDD<T> >
+class ReplicateRDD : public GatherRDD<T,I>
 {
 public:
-    ReplicateRDD(RDD<T>* input, Queue* queue) : GatherRDD<T>(queue), thread(new BroadcastJob<T>(input, queue)) {}
+    ReplicateRDD(I* input, Queue* queue) : GatherRDD<T>(queue), thread(new BroadcastJob<T,I>(input, queue)) {}
 private:
     Thread thread;
 };
@@ -516,7 +524,7 @@ private:
  * and each node access its own part of the file.
  */
 template<class T>
-class FileRDD : public RDD<T>
+class FileRDD 
 {
   public:
     FileRDD(char* path) : f(fopen(path, "rb")), segno(Cluster::instance->nodeId), split(Cluster::instance->sharedNothing ? 1 : Cluster::instance->nNodes) {
@@ -541,6 +549,10 @@ class FileRDD : public RDD<T>
         return ++recNo <= nRecords && fread(&record, sizeof(T), 1, f) == 1;
     }
     
+    bool getNext(T& record) { 
+        return next(record);
+    }
+
     ~FileRDD() { fclose(f); }
 
   private:
@@ -556,7 +568,7 @@ class FileRDD : public RDD<T>
  * Each node is given its own set of fileds.
  */
 template<class T>
-class DirRDD : public RDD<T>
+class DirRDD 
 {
   public:
     DirRDD(char* path) : dir(path), segno(Cluster::instance->nodeId), step(Cluster::instance->nNodes), split(Cluster::instance->split), f(NULL) {}
@@ -596,6 +608,10 @@ class DirRDD : public RDD<T>
                 f = NULL;
             }
         }
+    }
+
+    bool getNext(T& record) { 
+        return next(record);
     }
 
     ~DirRDD() {
@@ -641,11 +657,11 @@ public:
 /**
  * Filter resutls using provided condition
  */
-template<class T, bool (*predicate)(T const&)>
+template<class T, bool (*predicate)(T const&), class I = RDD<T> >
 class FilterRDD : public RDD<T>
 {
   public:
-    FilterRDD(RDD<T>* input) : in(input) {}
+    FilterRDD(I* input) : in(input) {}
 
     bool next(T& record) {
         while (in->next(record)) { 
@@ -656,20 +672,24 @@ class FilterRDD : public RDD<T>
         return false;
     }
 
+    bool getNext(T& record) { 
+        return next(record);
+    }
+
     ~FilterRDD() { delete in; }
 
   private:
-    RDD<T>* const in;
+    I* const in;
 };
     
 /**
  * Perform aggregation of input data (a-la Scala fold)
  */
-template<class T, class S,void (*accumulate)(S& state, T const& in),void (*combine)(S& state, S const& in)>
+template<class T, class S,void (*accumulate)(S& state, T const& in),void (*combine)(S& state, S const& in), class I = RDD<T> >
 class ReduceRDD : public RDD<S> 
 {    
   public:
-    ReduceRDD(RDD<T>* input, S const& initState) : state(initState), first(true) {
+    ReduceRDD(I* input, S const& initState) : state(initState), first(true) {
         aggregate(input);
     }
     bool next(S& record) {
@@ -681,8 +701,13 @@ class ReduceRDD : public RDD<S>
         return false;
     }
 
+    bool getNext(S& record) { 
+        return next(record);
+    }
+
+
   private:
-    void aggregate(RDD<T>* input) { 
+    void aggregate(I* input) { 
         T record;
         while (input->next(record)) { 
             accumulate(state, record);
@@ -697,7 +722,7 @@ class ReduceRDD : public RDD<S>
                 combine(state, partialState);
             }
         } else {
-            sendToCoordinator<S>(this, queue);            
+            sendToCoordinator<S,I>(this, queue);            
         }
         delete input;
     }
@@ -709,11 +734,11 @@ class ReduceRDD : public RDD<S>
 /**
  * Classical Map-Reduce
  */
-template<class T,class K,class V,void (*map)(Pair<K,V>& out, T const& in), void (*reduce)(V& dst, V const& src)>
+template<class T,class K,class V,void (*map)(Pair<K,V>& out, T const& in), void (*reduce)(V& dst, V const& src), class I = RDD<T> >
 class MapReduceRDD : public RDD< Pair<K,V> > 
 {    
   public:
-    MapReduceRDD(RDD<T>* input, size_t estimation) : size(hashTableSize(estimation)), table(new Entry*[size]) {
+    MapReduceRDD(I* input, size_t estimation) : size(hashTableSize(estimation)), table(new Entry*[size]) {
         loadHash(input);
     }
 
@@ -727,6 +752,10 @@ class MapReduceRDD : public RDD< Pair<K,V> >
         record = curr->pair;
         curr = curr->collision;
         return true;
+    }
+
+    bool getNext(Pair<K,V>& record) { 
+        return next(record);
     }
 
     ~MapReduceRDD() { 
@@ -764,7 +793,7 @@ class MapReduceRDD : public RDD< Pair<K,V> >
     }
              
 
-    void loadHash(RDD<T>* input) 
+    void loadHash(I* input) 
     {
         Entry* entry;
         T record;
@@ -795,7 +824,7 @@ class MapReduceRDD : public RDD< Pair<K,V> >
         Cluster* cluster = Cluster::instance.get();
         Queue* queue = cluster->getQueue();
         if (cluster->isCoordinator()) { 
-            GatherRDD< Pair<K,V> > gather(queue);
+            GatherRDD<Pair<K,V>,I> gather(queue);
             queue->putFirst(Buffer::eof(queue->qid)); // do not wait for self node
             Pair<K,V> pair;
             while (gather.next(pair)) {
@@ -815,7 +844,7 @@ class MapReduceRDD : public RDD< Pair<K,V> >
                 }                
             }            
         } else {
-            sendToCoordinator< Pair<K,V> >(this, queue);            
+            sendToCoordinator<Pair<K,V>,I>(this, queue);            
         }
         printf("HashAggregate: estimated size=%ld, real size=%ld\n", size, realSize);
         delete input;
@@ -829,7 +858,7 @@ class MapReduceRDD : public RDD< Pair<K,V> >
 /**
  * Project (map) RDD records
  */
-template<class T, class P, void project(P& out, T const& in)>
+template<class T, class P, void project(P& out, T const& in), class I = RDD<T> >
 class ProjectRDD : public RDD<P>
 {
   public:
@@ -844,16 +873,20 @@ class ProjectRDD : public RDD<P>
         return false;
     }
 
+    bool getNext(P& record) {
+        return next(record);
+    }
+
     ~ProjectRDD() { delete in; }
 
   private:
-    RDD<T>* const in;
+    I* const in;
 };
 
 /**
  *  Sort using given comparison function
  */
-template<class T, int compare(T const* a, T const* b)>
+template<class T, int compare(T const* a, T const* b), class I = RDD<T> >
 class SortRDD : public RDD<T>
 {
   public:
@@ -869,6 +902,10 @@ class SortRDD : public RDD<T>
         return false;
     }
     
+    bool getNext(T& record) {
+        return next(record);
+    }
+
     ~SortRDD() { 
         delete[] buf;
     }
@@ -880,12 +917,12 @@ class SortRDD : public RDD<T>
 
     typedef int(*comparator_t)(void const* p, void const* q);
 
-    void loadArray(RDD<T>* input, size_t estimation) { 
+    void loadArray(I* input, size_t estimation) { 
         Cluster* cluster = Cluster::instance.get();
         Queue* queue = cluster->getQueue();
         if (cluster->isCoordinator()) {         
-            Thread loader(new FetchJob<T>(input, queue));
-            GatherRDD<T> gather(queue);
+            Thread loader(new FetchJob<T,I>(input, queue));
+            GatherRDD<T,I> gather(queue);
             buf = new T[estimation];
             for (size = 0; gather.next(buf[size]);) { 
                 if (++size == estimation) { 
@@ -898,7 +935,7 @@ class SortRDD : public RDD<T>
             }
             qsort(buf, size, sizeof(T), (comparator_t)compare);
         } else { 
-            sendToCoordinator<T>(input, queue);
+            sendToCoordinator<T,I>(input, queue);
             buf = NULL;
             size = 0;
         }
@@ -910,11 +947,11 @@ class SortRDD : public RDD<T>
 /**
  * Get top N records using given comparison function
  */
-template<class T, int compare(T const* a, T const* b)>
+template<class T, int compare(T const* a, T const* b), class I = RDD<T> >
 class TopRDD : public RDD<T>
 {
   public:
-    TopRDD(RDD<T>* input, size_t top) : i(0) {
+    TopRDD(I* input, size_t top) : i(0) {
         buf = new T[top];
         size_t n = loadTop(input, 0, top);
         delete input;
@@ -948,6 +985,10 @@ class TopRDD : public RDD<T>
         return false;
     }
     
+    bool getNext(T& record) {
+        return next(record);
+    }
+
     ~TopRDD() { 
         delete[] buf;
     }
@@ -957,7 +998,7 @@ class TopRDD : public RDD<T>
     size_t size;
     size_t i;
     
-    size_t loadTop(RDD<T>* input, size_t n, size_t top) { 
+    size_t loadTop(I* input, size_t n, size_t top) { 
         T record;
         while (input->next(record)) {
             size_t l = 0, r = n;
@@ -986,11 +1027,11 @@ class TopRDD : public RDD<T>
  * Depending on estimated result size and broadcastJoinThreshold, this RDD either broadcast inner table, 
  * either shuffle inner table 
  */
-template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner)>
+template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner), class ORdd = RDD<O>, class IRdd = RDD<I>>
 class HashJoinRDD : public RDD< Join<O,I> >, MessageHandler
 {
 public:
-    HashJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t estimation, JoinKind joinKind) 
+    HashJoinRDD(ORdd* outerRDD, IRdd* innerRDD, size_t estimation, JoinKind joinKind) 
     : kind(joinKind), table(NULL), size(hashTableSize(estimation)), innerSize(0), entry(NULL), inner(innerRDD), outer(outerRDD), scatter(NULL), innerIsShuffled(false) 
     {
         assert(kind != AntiJoin);
@@ -1023,8 +1064,8 @@ public:
             if (replicateInner) {             
                 loadHash(inner->replicate());
             } else { 
-                Thread loader(new ScatterJob<I,K,innerKey>(inner, innerQueue));
-                loadHash(new GatherRDD<I>(innerQueue));
+                Thread loader(new ScatterJob<I,K,innerKey,IRdd>(inner, innerQueue));
+                loadHash(new GatherRDD<I,IRdd>(innerQueue));
                 innerIsShuffled = true;
             }                
 #if !PARALLEL_INNER_OUTER_TABLES_LOAD
@@ -1057,6 +1098,11 @@ public:
         return true;
     }
 
+    bool getNext(Join<O,I>& record) 
+    {
+        return next(record);
+    }
+
     ~HashJoinRDD() { 
         deleteHash();
         delete outer;
@@ -1083,8 +1129,8 @@ protected:
     K       key;
     size_t  hash;
     Entry*  entry;
-    RDD<I>* inner;
-    RDD<O>* outer;
+    IRdd*   inner;
+    ORdd*   outer;
     Queue*  innerQueue;
     Queue*  outerQueue;
     Thread* scatter;
@@ -1094,8 +1140,8 @@ protected:
     void loadOuterTable(bool replicateInner)
     {
         if (!replicateInner) {
-            scatter = new Thread(new ScatterJob<O,K,outerKey>(outer, outerQueue));
-            outer = new GatherRDD<O>(outerQueue);
+            scatter = new Thread(new ScatterJob<O,K,outerKey,ORdd>(outer, outerQueue));
+            outer = new GatherRDD<O,ORdd>(outerQueue);
         }
     }
 
@@ -1142,7 +1188,7 @@ protected:
     }   
 
 
-    void loadHash(RDD<I>* gather) 
+    void loadHash(IRdd* gather) 
     {
         Entry* entry = allocator.alloc();
         size_t realSize = 0;
@@ -1196,11 +1242,11 @@ protected:
  * Depending on estimated result size and broadcastJoinThreshold, this RDD either broadcast inner table, 
  * either shuffle inner table 
  */
-template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner)>
+template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner), class ORdd = RDD<O>, class IRdd = RDD<I>>
 class HashSemiJoinRDD : public RDD<O>, MessageHandler
 {
 public:
-    HashSemiJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t estimation, JoinKind joinKind) 
+    HashSemiJoinRDD(ORdd* outerRDD, IRdd* innerRDD, size_t estimation, JoinKind joinKind) 
     : kind(joinKind), table(NULL), size(hashTableSize(estimation)), inner(innerRDD), outer(outerRDD), scatter(NULL), innerIsShuffled(false)
     {
         assert(kind != OuterJoin);
@@ -1232,8 +1278,8 @@ public:
             if (replicateInner) {             
                 loadHash(inner->replicate());
             } else { 
-                Thread loader(new ScatterJob<I,K,innerKey>(inner, innerQueue));
-                loadHash(new GatherRDD<I>(innerQueue));
+                Thread loader(new ScatterJob<I,K,innerKey,IRdd>(inner, innerQueue));
+                loadHash(new GatherRDD<I,IRdd>(innerQueue));
                 innerIsShuffled = true;
             }                
 #if !PARALLEL_INNER_OUTER_TABLES_LOAD
@@ -1250,6 +1296,11 @@ public:
             }
         }
         return false;
+    }
+
+    bool getNext(O& record) 
+    {
+        return next(record);
     }
 
     ~HashSemiJoinRDD() { 
@@ -1274,8 +1325,8 @@ protected:
     Entry** table;
     size_t  size;
     size_t  innerSize;
-    RDD<I>* inner;
-    RDD<O>* outer;
+    IRdd*   inner;
+    ORdd*   outer;
     Queue*  innerQueue;
     Queue*  outerQueue;
     Thread* scatter;
@@ -1285,8 +1336,8 @@ protected:
     void loadOuterTable(bool replicateInner)
     {
         if (!replicateInner) {
-            scatter = new Thread(new ScatterJob<O,K,outerKey>(outer, outerQueue));
-            outer = new GatherRDD<O>(outerQueue);
+            scatter = new Thread(new ScatterJob<O,K,outerKey,ORdd>(outer, outerQueue));
+            outer = new GatherRDD<O,ORdd>(outerQueue);
         }
     }
 
@@ -1333,7 +1384,7 @@ protected:
     }   
 
 
-    void loadHash(RDD<I>* gather) 
+    void loadHash(IRdd* gather) 
     {
         Entry* entry = allocator.alloc();
         size_t realSize = 0;
@@ -1391,11 +1442,11 @@ protected:
  * The inner table files are one-by-one loaded in memory (placed in hash table and records frim corresponding 
  * outer table files are located in this hash table.
  */
-template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner)>
+template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner), class ORdd = RDD<O>, class IRdd = RDD<I>>
 class ShuffleJoinRDD : public RDD< Join<O,I> >
 {
 public:
-    ShuffleJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t nShuffleFiles, size_t estimation, JoinKind joinKind) 
+    ShuffleJoinRDD(ORdd* outerRDD, IRdd* innerRDD, size_t nShuffleFiles, size_t estimation, JoinKind joinKind) 
     : kind(joinKind), size(hashTableSize(estimation)), table(new Entry*[size]), nFiles(nShuffleFiles), outerFile(NULL), inner(NULL) {
         assert(kind != AntiJoin);
         Cluster* cluster = Cluster::instance.get();
@@ -1404,13 +1455,13 @@ public:
         qid = innerQueue->qid;
         {
             // shuffle inner RDD
-            Thread loader(new ScatterJob<I,K,innerKey>(innerRDD, innerQueue));
-            saveInnerFiles(new GatherRDD<I>(innerQueue));
+            Thread loader(new ScatterJob<I,K,innerKey,IRdd>(innerRDD, innerQueue));
+            saveInnerFiles(new GatherRDD<I,IRdd>(innerQueue));
         }
         {
             // shuffle outer RDD
-            Thread loader(new ScatterJob<O,K,outerKey>(outerRDD, outerQueue));
-            saveOuterFiles(new GatherRDD<O>(outerQueue));
+            Thread loader(new ScatterJob<O,K,outerKey,ORdd>(outerRDD, outerQueue));
+            saveOuterFiles(new GatherRDD<O,ORdd>(outerQueue));
         }
         fileNo = 0;
     }
@@ -1467,6 +1518,11 @@ public:
         return true;
     }
 
+    bool getNext(Join<O,I>& record)
+    {
+        return next(record);
+    }
+
     ~ShuffleJoinRDD() { 
         delete[] table;
     }
@@ -1496,7 +1552,7 @@ protected:
     size_t  fileNo;
     BlockAllocator<Entry> allocator;
     
-    void saveOuterFiles(RDD<O>* input)
+    void saveOuterFiles(ORdd* input)
     {
         FILE** files = new FILE*[nFiles];
         Cluster* cluster = Cluster::instance.get();
@@ -1518,7 +1574,7 @@ protected:
         delete input;
     }
             
-    void saveInnerFiles(RDD<I>* input)
+    void saveInnerFiles(IRdd* input)
     {
         FILE** files = new FILE*[nFiles];
         Cluster* cluster = Cluster::instance.get();
@@ -1549,11 +1605,11 @@ protected:
  * The inner table files are one-by-one loaded in memory (placed in hash table and records frim corresponding 
  * outer table files are located in this hash table.
  */
-template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner)>
+template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner), class ORdd = RDD<O>, class IRdd = RDD<I>>
 class ShuffleSemiJoinRDD : public RDD<O>
 {
 public:
-    ShuffleSemiJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t nShuffleFiles, size_t estimation, JoinKind joinKind) 
+    ShuffleSemiJoinRDD(ORdd* outerRDD, IRdd* innerRDD, size_t nShuffleFiles, size_t estimation, JoinKind joinKind) 
     : kind(joinKind), size(estimation), table(new Entry*[size]), nFiles(nShuffleFiles), outerFile(NULL) {
         assert(kind != OuterJoin);
         Cluster* cluster = Cluster::instance.get();
@@ -1562,13 +1618,13 @@ public:
         qid = innerQueue->qid;
         {
             // shuffle inner RDD
-            Thread loader(new ScatterJob<I,K,innerKey>(innerRDD, innerQueue));
-            saveInnerFiles(new GatherRDD<I>(innerQueue));
+            Thread loader(new ScatterJob<I,K,innerKey,IRdd>(innerRDD, innerQueue));
+            saveInnerFiles(new GatherRDD<I,IRdd>(innerQueue));
         }
         {
             // shuffle outer RDD
-            Thread loader(new ScatterJob<O,K,outerKey>(outerRDD, outerQueue));
-            saveOuterFiles(new GatherRDD<O>(outerQueue));
+            Thread loader(new ScatterJob<O,K,outerKey,ORdd>(outerRDD, outerQueue));
+            saveOuterFiles(new GatherRDD<O,ORdd>(outerQueue));
         }
         fileNo = 0;
     }
@@ -1616,6 +1672,11 @@ public:
         }
     }
 
+    bool getNext(Join<O,I>& record)
+    {
+        return next(record);
+    }
+
     ~ShuffleSemiJoinRDD() { 
         delete[] table;
     }
@@ -1640,7 +1701,7 @@ protected:
     size_t  fileNo;
     BlockAllocator<Entry> allocator;
     
-    void saveOuterFiles(RDD<O>* input)
+    void saveOuterFiles(ORdd* input)
     {
         FILE** files = new FILE*[nFiles];
         Cluster* cluster = Cluster::instance.get();
@@ -1662,7 +1723,7 @@ protected:
         delete input;
     }
             
-    void saveInnerFiles(RDD<I>* input)
+    void saveInnerFiles(IRdd* input)
     {
         FILE** files = new FILE*[nFiles];
         Cluster* cluster = Cluster::instance.get();
@@ -1703,6 +1764,11 @@ class CachedRDD : public RDD<T>
         record = buf[curr++];
         return true;
     }
+
+    bool nextRow(T& record) { 
+        return next(record);
+    }
+
     ~CachedRDD() { 
         if (!copy) { 
             delete[] buf;
@@ -1820,6 +1886,81 @@ RDD<T>* RDD<T>::semijoin(RDD<I>* with, size_t estimation, JoinKind kind) {
     }
     size_t nFiles = (estimation + cluster->inmemJoinThreshold - 1) / cluster->inmemJoinThreshold;
     return new ShuffleSemiJoinRDD<T,I,K,outerKey,innerKey>(this, with, nFiles, estimation/nFiles, kind);
+}
+
+template<class T,class I>
+inline void output(FILE* out, I* in) 
+{
+    Cluster* cluster = Cluster::instance.get();
+    Queue* queue = cluster->getQueue();
+    if (cluster->isCoordinator()) {         
+        Thread fetch(new FetchJob<T,I>(in, queue));
+        GatherRDD<T,I> gather(queue);
+        T record;
+        while (gather.next(record)) { 
+            print(record, out);
+            fputc('\n', out);
+        }
+    } else {         
+        sendToCoordinator<T,I>(in, queue);
+    }
+    cluster->barrier();
+}
+
+template<class T, class I>
+inline auto replicateI* in) { 
+    Queue* queue = Cluster::instance->getQueue();
+    return new ReplicateRDD<T,I>(in, queue);
+}
+
+template<class T, bool (*predicate)(T const&), class I>
+inline auto filter(I* in) { 
+    return new FilterRDD<T,predicate,I>(in);
+}
+
+template<class T,class S,void (*accumulate)(S& state, T const& in), void(*combine)(S& state, S const& partial), class I>
+inline auto reduce(I* in, S const& initState) {
+    return new ReduceRDD<T,S,accumulate,combine,I>(in, initState);
+}
+
+template<class T,class K,class V,void (*map_f)(Pair<K,V>& out, T const& in), void (*reduce_f)(V& dst, V const& src), class I>
+inline auto mapReduce(I* in, size_t estimation) {
+    return new MapReduceRDD<T,K,V,map_f,reduce_f,I>(in, estimation);
+}
+
+template<class T,class P, void (*projection)(P& out, T const& in), class I>
+inline auto project(I* in) {
+    return new ProjectRDD<T,P,projection,I>(in);
+}
+
+template<class T, int (*compare)(T const* a, T const* b), class I> 
+inline auto RDD<T>::sort(I* in, size_t estimation) {
+    return new SortRDD<T,compare,I>(in, estimation);
+}
+
+template<int (*compare)(T const* a, T const* b), class I> 
+inline auto RDD<T>::top(I* in, size_t n) {
+    return new TopRDD<T,compare,I>(in, n);
+}
+
+template<class T, class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner), class ORdd, class IRdd>
+inline auto join(ORdd* outer, IRdd* inner, size_t estimation, JoinKind kind) {
+    Cluster* cluster = Cluster::instance.get();
+    if (estimation <= cluster->inmemJoinThreshold) { 
+        return new HashJoinRDD<T,I,K,outerKey,innerKey,ORdd,IRdd>(outer, inner, estimation, kind);
+    }
+    size_t nFiles = (estimation + cluster->inmemJoinThreshold - 1) / cluster->inmemJoinThreshold;
+    return new ShuffleJoinRDD<T,I,K,outerKey,innerKey,ORdd,IRdd>(outer, inner, nFiles, estimation/nFiles, kind);
+}
+
+template<class T, class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner), class ORdd, class IRdd>
+inline auto semijoin(ORdd* outer, IRdd* inner, size_t estimation, JoinKind kind) {
+    Cluster* cluster = Cluster::instance.get();
+    if (estimation <= cluster->inmemJoinThreshold) { 
+        return new HashSemiJoinRDD<T,I,K,outerKey,innerKey,ORdd,IRdd>(outer, inner, estimation, kind);
+    }
+    size_t nFiles = (estimation + cluster->inmemJoinThreshold - 1) / cluster->inmemJoinThreshold;
+    return new ShuffleSemiJoinRDD<T,I,K,outerKey,innerKey,ORdd,IRdd>(in, with, nFiles, estimation/nFiles, kind);
 }
 
 #endif
