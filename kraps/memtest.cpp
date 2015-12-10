@@ -3,10 +3,14 @@
 #include <sys/time.h>
 
 #define N_ELEMS 1LL*1024*1024*1024
+
+#define elemof(x) decltype(x->elem)
+
 template<class T>
 class RDD
 {
   public:
+    static T elem;
     virtual bool getNext(T& record) = 0;
 };
 
@@ -16,7 +20,7 @@ class Filter : public RDD<T>
   I* in;
 public:
   Filter(I* input) : in(input) {}
-  bool next(double& val) {
+  bool next(T& val) {
     while(in->next(val)) {
       if (predicate(val)) {
 	return true;
@@ -24,13 +28,13 @@ public:
     }
     return false;
   } 
-    bool getNext(double& val){ 
+    bool getNext(T& val){ 
         return next(val);
     }
 };
 
 template<class T, class I, class A, void (*fold)(A&,T const&)>
-class Aggregate 
+class Aggregate  : public RDD<A>
 {
   I* in;
   bool first;
@@ -49,10 +53,13 @@ public:
     first = false;
     return true;
   }
+    bool getNext(A& val){ 
+        return next(val);
+    }
 };
 
 template<class T>
-class Cache 
+class Cache : public RDD<T>
 {
   T* data;
   size_t size;
@@ -67,10 +74,13 @@ public:
     }
     return false;
   }
+    bool getNext(T& val){ 
+        return next(val);
+    }
 };
 
 template<class T, bool (*predicate)(T const&), class I>
-inline Filter<T, predicate, I>* filter(I* in)
+inline auto filter(I* in)
 {
     return new Filter<T, predicate, I>(in);
 }
@@ -82,8 +92,8 @@ inline Aggregate<T, I, A, fold>* aggregate(I* in)
 }
 
 
-
-bool predicate(double const& val) {
+template<class T>
+bool predicate(T const& val) {
   return val >= N_ELEMS/3;
 }
 
@@ -101,7 +111,10 @@ static time_t getCurrentTime()
 
 auto query(double* arr) 
 {
-    return aggregate<double,double,sum>(filter<double,predicate>(new Cache<double>(arr, N_ELEMS)));
+    auto s1 = new Cache<double>(arr, N_ELEMS);
+    auto s2 = filter<elemof(s1), predicate>(s1);
+    auto s3 = aggregate<double,double,sum>(s2);
+    return s3;
 }
 int main()
 {

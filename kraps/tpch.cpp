@@ -12,8 +12,7 @@ const size_t SF = 100; // scale factor
 #define STRCPY(d,s) strncpy(d,s,sizeof(d))
 #define SCALE(x)    ((x + Cluster::instance->nNodes - 1)*SF/(Cluster::instance->nNodes) + (x / 100)) // take in accoutn data skews
 
-#define TABLE(x) (Cluster::instance->userData ? (RDD<x>*)((CachedData*)Cluster::instance->userData)->_##x.get() : (RDD<x>*)FileManager::load<x>(filePath(#x)))
-#define TILE_TABLE(x) (Cluster::instance->userData ? (TileRDD<x>*)((TileCachedData*)Cluster::instance->userData)->_##x.get() : (TileRDD<x>*)FileManager::load<x>(filePath(#x)))
+#define TABLE(x) (RDD<x>*)((CachedData*)Cluster::instance->userData)->_##x.get() 
 
 char const* dataDir;
 char const* dataFormat;
@@ -236,23 +235,14 @@ namespace Q1
         return diff != 0 ? diff : a->l_linestatus - b->l_linestatus;
     }
 
-    template<class I>
-    auto query(I* in) 
+    auto query() 
     { 
         return
-            sort<compare>(project<Projection, projection>(mapReduce<GroupBy,Aggregate,map,reduce>(filter<predicate>(project<LineitemProjection, projectLineitem>(in)), 10000)))(100);
-    }
-
-    RDD<Projection>* tileQuery() 
-    { 
-        return
-            TILE_TABLE(Lineitem)->
-	    project<LineitemProjection, projectLineitem>()->
-            filter<predicate>()->
-            untile()->
-            mapReduce<GroupBy,Aggregate,map,reduce>(10000)->
-            project<Projection, projection>()->
-            sort<compare>(100);
+            sort<Projection,compare>
+            (project<Pair<GroupBy,Aggregate>,Projection, projection>
+             (mapReduce<LineitemProjection,GroupBy,Aggregate,map,reduce>
+              (filter<LineitemProjection,predicate>
+               (project<Lineitem,LineitemProjection,projectLineitem>(TABLE(Lineitem)), 10000)))(100);
     }
 }
 namespace Q3
@@ -375,9 +365,10 @@ namespace Q3
         return a->revenue > b->revenue ? -1 : a->revenue == b->revenue ? (a->o_orderdate < b->o_orderdate ? -1 : a->o_orderdate == b->o_orderdate ? 0 : 1) : 1;
     }
 
-    RDD<Revenue>* query() 
+    auto query() 
     { 
         return
+            top<byRevenueAndOrderDate>(10);
             TABLE(Lineitem)->
             filter<lineitemFilter>()->
             project<LineitemProjection, projectLineitem>()->
@@ -391,7 +382,6 @@ namespace Q3
                                                                       SCALE(150000))->
             mapReduce<GroupBy, double, map, sum>(1000000)->
             project<Revenue, revenue>()->
-            top<byRevenueAndOrderDate>(10);
     }    
 }
 namespace Q4
