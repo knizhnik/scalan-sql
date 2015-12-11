@@ -252,6 +252,8 @@ class RDD
     virtual~RDD() {}
 };
 
+template<class T, class Rdd>
+auto replicate(Rdd* in);
 
 /**
  * Tranfer data from RDD to queue
@@ -1101,7 +1103,7 @@ public:
             loadOuterTable(replicateInner);
 #endif
             if (replicateInner) {             
-                loadHash(inner->replicate());
+                loadHash(replicate<I,IRdd>(inner));
             } else { 
                 Thread loader(new ScatterJob<I,K,innerKey,IRdd>(inner, innerQueue));
                 loadHash(new GatherRDD<I>(innerQueue));
@@ -1316,7 +1318,7 @@ public:
             loadOuterTable(replicateInner);
 #endif
             if (replicateInner) {             
-                loadHash(inner->replicate());
+                loadHash(replicate<I,IRdd>(inner));
             } else { 
                 Thread loader(new ScatterJob<I,K,innerKey,IRdd>(inner, innerQueue));
                 loadHash(new GatherRDD<I>(innerQueue));
