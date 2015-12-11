@@ -2,7 +2,6 @@
 #include <sys/time.h>
 #include <ctype.h>
 #include "rdd.h"
-#include "tile.h"
 #include "tpch.h"
 
 const size_t SF = 100; // scale factor
@@ -40,30 +39,6 @@ class CachedData
     CachedRDD<Region> _Region;
 
     CachedData() : 
-    _Lineitem(FileManager::load<Lineitem>(filePath("Lineitem")), SCALE(6000000)),
-    _Orders(FileManager::load<Orders>(filePath("Orders")),       SCALE(1500000)),
-    _Supplier(FileManager::load<Supplier>(filePath("Supplier")), SCALE(10000)),
-    _Customer(FileManager::load<Customer>(filePath("Customer")), SCALE(150000)),
-    _Part(FileManager::load<Part>(filePath("Part")),             SCALE(200000)),
-    _Partsupp(FileManager::load<Partsupp>(filePath("Partsupp")), SCALE(800000)),
-    _Nation(FileManager::load<Nation>(filePath("Nation")),       25),
-    _Region(FileManager::load<Region>(filePath("Region")),       5) {}
-
-};
-
-class TileCachedData
-{
-  public:
-    TileCachedRDD<Lineitem> _Lineitem;
-    TileCachedRDD<Orders> _Orders;
-    TileCachedRDD<Supplier> _Supplier;
-    TileCachedRDD<Customer> _Customer;
-    TileCachedRDD<Part> _Part;
-    TileCachedRDD<Partsupp> _Partsupp;
-    TileCachedRDD<Nation> _Nation;
-    TileCachedRDD<Region> _Region;
-
-    TileCachedData() : 
     _Lineitem(FileManager::load<Lineitem>(filePath("Lineitem")), SCALE(6000000)),
     _Orders(FileManager::load<Orders>(filePath("Orders")),       SCALE(1500000)),
     _Supplier(FileManager::load<Supplier>(filePath("Supplier")), SCALE(10000)),
@@ -238,11 +213,11 @@ namespace Q1
     auto query() 
     { 
         return
-            sort<Projection,compare>
-            (project<Pair<GroupBy,Aggregate>,Projection, projection>
-             (mapReduce<LineitemProjection,GroupBy,Aggregate,map,reduce>
-              (filter<LineitemProjection,predicate>
-               (project<Lineitem,LineitemProjection,projectLineitem>(TABLE(Lineitem)), 10000)))(100);
+            (sort<Projection,compare>
+             (project<Pair<GroupBy,Aggregate>,Projection, projection>
+              (mapReduce<LineitemProjection,GroupBy,Aggregate,map,reduce>
+               (filter<LineitemProjection,predicate>
+                (project<Lineitem,LineitemProjection,projectLineitem>(TABLE(Lineitem))), 10000)), 100));
     }
 }
 namespace Q3
@@ -367,21 +342,17 @@ namespace Q3
 
     auto query() 
     { 
-        return
-            top<byRevenueAndOrderDate>(10);
-            TABLE(Lineitem)->
-            filter<lineitemFilter>()->
-            project<LineitemProjection, projectLineitem>()->
-            join<OrdersProjection,long,lineitemOrderKey,orderKey>(TABLE(Orders)->
-                                                                  filter<orderFilter>()->
-                                                                  project<OrdersProjection, projectOrders>(), 
-                                                                  SCALE(1500000))->
-            join<CustomerProjection,int,orderCustomerKey,customerKey>(TABLE(Customer)->
-                                                                      filter<customerFilter>()->
-                                                                      project<CustomerProjection,projectCustomer>(), 
-                                                                      SCALE(150000))->
-            mapReduce<GroupBy, double, map, sum>(1000000)->
-            project<Revenue, revenue>()->
+        auto s1 = filter<Lineitem,lineitemFilter>(TABLE(Lineitem));
+        auto s2 = project<Lineitem,LineitemProjection, projectLineitem>(s1);
+        auto s3 = filter<Orders,orderFilter>(TABLE(Orders));
+        auto s4 = project<Orders,OrdersProjection,projectOrders>(s3);            
+        auto s5 = join<LineitemProjection,OrdersProjection,long,lineitemOrderKey,orderKey>(s2, s4, SCALE(1500000));
+        auto s6 = filter<Customer,customerFilter>(TABLE(Customer));
+        auto s7 = project<Customer,CustomerProjection,projectCustomer>(s6);
+        auto s8 = join<typeof(s5),CustomerProjection,int,orderCustomerKey,customerKey>(s5, s7, SCALE(150000));
+        auto s9 = mapReduce<typeof(s8),GroupBy,double,map,sum>(s8, 1000000);
+        auto s10 = project<Pair<GroupBy,double>,Revenue,revenue>(s9);
+        return top<Revenue,byRevenueAndOrderDate>(s10, 10);
     }    
 }
 namespace Q4
@@ -444,18 +415,15 @@ namespace Q4
         return STRCMP(a->key.val, b->key.val);
     }
 
-    RDD< Pair<Key<priority_t>,int> >* query() 
+    auto query() 
     { 
-        return
-            TABLE(Lineitem)->
-            filter<lineitemFilter>()->
-            project<LineitemProjection, projectLineitem>()->
-            join<OrdersProjection,long,lineitemOrderKey,orderKey>(TABLE(Orders)->
-                                                                  filter<orderFilter>()->
-                                                                  project<OrdersProjection,projectOrders>(), 
-                                                                  SCALE(1500000))->
-            mapReduce<Key<priority_t>, int, map, count>(25)->
-            sort<byPriority>(25);
+        auto s1 = filter<Lineitem,lineitemFilter>(TABLE(Lineitem));
+        auto s2 = project<Lineitem,LineitemProjection,projectLineitem>(s1);
+        auto s3 = filter<Orders,orderFilter>(TABLE(Orders));
+        auto s4 = project<Orders,OrdersProjection,projectOrders>(s3);
+        auto s5 = join<LineitemProjection,OrdersProjection,long,lineitemOrderKey,orderKey>(s2, s4, SCALE(1500000));
+        auto s6 = mapReduce<typeof(s5),Key<priority_t>,int,map,count>(s5, 25);
+        return sort<Pair<Key<priority_t>,int>,byPriority>(s6, 25);
     }    
 }   
 namespace Q5
@@ -595,28 +563,23 @@ namespace Q5
         return a->revenue > b->revenue ? -1 : a->revenue == b->revenue ? 0 : 1;
     }
 
-    RDD<Revenue>* query() 
+    auto query() 
     { 
-        return
-            TABLE(Lineitem)->
-            project<LineitemProjection,projectLineitem>()->            
-            join<OrdersProjection,long,lineitemOrderKey,orderKey>(TABLE(Orders)->
-                                                                  filter<orderRange>()->
-                                                                  project<OrdersProjection,projectOrders>(),
-                                                                  SCALE(1500000))->
-            join<SupplierProjection,int,lineitemSupplierKey,supplierKey>(TABLE(Supplier)->
-                                                                         project<SupplierProjection,projectSupplier>(),
-                                                                         SCALE(10000))->
-            join<CustomerProjection,int,orderCustomerKey,customerKey>(TABLE(Customer)->
-                                                                      project<CustomerProjection,projectCustomer>(),
-                                                                      SCALE(150000))->
-            filter<sameNation>()->
-            join<Nation,int,customerNationKey,nationKey>(TABLE(Nation),25)->
-            join<Region,int,nationRegionKey,regionKey>(TABLE(Region),5)->
-            filter<asiaRegion>()->
-            mapReduce<Key<name_t>,double,map,sum>(25)->
-            project<Revenue,revenue>()->
-            sort<byRevenue>(25);
+        auto s1 = project<Lineitem,LineitemProjection,projectLineitem>(TABLE(Lineitem));
+        auto s2 = filter<Orders,orderRange>(TABLE(Orders));
+        auto s3 = project<Orders,OrdersProjection,projectOrders>(s2);
+        auto s4 = join<LineitemProjection,OrdersProjection,long,lineitemOrderKey,orderKey>(s1, s3, SCALE(1500000));
+        auto s5 = project<Supplier,SupplierProjection,projectSupplier>(TABLE(Supplier));
+        auto s6 = join<typeof(s4),SupplierProjection,int,lineitemSupplierKey,supplierKey>(s4, s5, SCALE(10000));
+        auto s7 = project<Customer,CustomerProjection,projectCustomer>(TABLE(Customer));
+        auto s8 = join<typeof(s6),CustomerProjection,int,orderCustomerKey,customerKey>(s6, s7, SCALE(150000));
+        auto s9 = filter<typeof(s8),sameNation>(s8);        
+        auto s10 = join<typeof(s9),Nation,int,customerNationKey,nationKey>(s9, TABLE(Nation), 25);
+        auto s11 = join<typeof(s10),Region,int,nationRegionKey,regionKey>(s10, TABLE(Region), 5);
+        auto s12 = filter<typeof(s11),asiaRegion>(s11);
+        auto s13 = mapReduce<typeof(s12),Key<name_t>,double,map,sum>(s12, 25);
+        auto s14 = project<Pair<Key<name_t>,double>,Revenue,revenue>(s13);
+        return sort<Revenue,byRevenue>(s14, 25);
     }    
 }
 namespace Q6
@@ -632,20 +595,11 @@ namespace Q6
         result += l.l_extendedprice*l.l_discount;
     }
     
-    RDD<double>* query() 
+    auto query() 
     { 
         return
-            TABLE(Lineitem)->
-            filter<lineitemFilter>()->
-            reduce<double,revenue,sum>(0);
-    }
-
-    RDD<double>* tileQuery() 
-    { 
-        return
-            TILE_TABLE(Lineitem)->
-            filter<lineitemFilter>()->
-            reduce<double,revenue,sum>(0);
+            (reduce<Lineitem,double,revenue,sum>
+             (filter<Lineitem,lineitemFilter>(TABLE(Lineitem)), 0));
     }
 }
 namespace Q7
@@ -658,7 +612,7 @@ namespace Q7
         double l_extendedprice;
         double l_discount;
     };
-
+    
     inline void projectLineitem(LineitemProjection& out, Lineitem const& in)
     {
         out.l_orderkey = in.l_orderkey;
@@ -792,14 +746,14 @@ namespace Q7
         }
     };
 
-    #define ShippingFields(FIELD) \
-        FIELD(supp_nation)        \
-        FIELD(cust_nation)        \
-        FIELD(l_year)
+#define ShippingFields(FIELD) \
+    FIELD(supp_nation)        \
+    FIELD(cust_nation)        \
+    FIELD(l_year)
 
     PACK(Shipping)
     UNPACK(Shipping)
-
+    
     inline void map(Pair<Shipping,double>& pair, Join<Join<Join<Join<Join<LineitemProjection,OrdersProjection>,SupplierProjection>,CustomerProjection>,Nation1>,Nation2> const& r)
     {
         STRCPY(pair.key.supp_nation, r.n1.n_name);
@@ -817,28 +771,24 @@ namespace Q7
         return (diff != 0) ? diff : a->key.l_year - b->key.l_year;
     }
 
-    RDD< Pair<Shipping,double> > * query() 
+    auto query() 
     { 
-        return
-            TABLE(Lineitem)->
-            filter<filterLineitem>()->           
-            project<LineitemProjection, projectLineitem>()->            
-            join<OrdersProjection,long,lineitemOrderKey,orderKey>(TABLE(Orders)->
-                                                                  project<OrdersProjection,projectOrders>(), 
-                                                                  SCALE(1500000))->
-            join<SupplierProjection,int,lineitemSupplierKey,supplierKey>(TABLE(Supplier)->
-                                                                         project<SupplierProjection,projectSupplier>(),
-                                                                         SCALE(10000))->
-            join<CustomerProjection,int,orderCustomerKey,customerKey>(TABLE(Customer)->
-                                                                      project<CustomerProjection,projectCustomer>(),
-                                                                      SCALE(150000))-> 
-            join<Nation1,int,supplierNationKey,nation1Key>((RDD<Nation1>*)TABLE(Nation), 25)->
-            join<Nation2,int,customerNationKey,nation2Key>((RDD<Nation2>*)TABLE(Nation), 25)->
-            filter<filterNation>()->
-            mapReduce<Shipping,double,map,sum>(25*25*100)->
-            sort<byShipping>(25*25*100);
-    }    
+        auto s1 = filter<Lineitem,filterLineitem>(TABLE(Lineitem));
+        auto s2 = project<Lineitem,LineitemProjection,projectLineitem>(s1);            
+        auto s3 = project<Orders,OrdersProjection,projectOrders>(TABLE(Orders));
+        auto s4 = join<LineitemProjection,OrdersProjection,long,lineitemOrderKey,orderKey>(s2, s3, SCALE(1500000));
+        auto s5 = project<Supplier,SupplierProjection,projectSupplier>(TABLE(Supplier));
+        auto s6 = join<typeof(s4),SupplierProjection,int,lineitemSupplierKey,supplierKey>(s4, s5, SCALE(10000));
+        auto s7 = project<Customer,CustomerProjection,projectCustomer>(TABLE(Customer));
+        auto s8 = join<typeof(s6),CustomerProjection,int,orderCustomerKey,customerKey>(s6, s7, SCALE(150000));
+        auto s9 = join<typeof(s8),Nation1,int,supplierNationKey,nation1Key>(s8, (CachedRDD<Nation1>*)TABLE(Nation), 25);
+        auto s10 = join<typeof(s9),Nation2,int,customerNationKey,nation2Key>(s9, (CachedRDD<Nation2>*)TABLE(Nation), 25);
+        auto s11 = filter<typeof(s10),filterNation>(s10);
+        auto s12 = mapReduce<typeof(s11),Shipping,double,map,sum>(s11, 25*25*100);
+        return sort<Pair<Shipping,double>,byShipping>(s12, 25*25*100);
+    }
 }
+
 namespace Q8
 {
     struct LineitemProjection 
@@ -904,7 +854,7 @@ namespace Q8
     {
         int p_partkey;
         char p_type[25];
-     };
+    };
 
     inline void projectPart(PartProjection& out, Part const& in)
     {
@@ -1037,33 +987,29 @@ namespace Q8
         return a->o_year - b->o_year;
     }
     
-    RDD<Share>* query() 
+    auto query() 
     { 
-        return
-            TABLE(Lineitem)->
-            project<LineitemProjection,projectLineitem>()->            
-            join<OrdersProjection,long,lineitemOrderKey,orderKey>(TABLE(Orders)->
-                                                                  filter<orderRange>()->
-                                                                  project<OrdersProjection,projectOrders>(),
-                                                                  SCALE(1500000))->
-            join<PartProjection,int,lineitemPartKey,partKey>(TABLE(Part)->
-                                                             filter<partType>()->
-                                                             project<PartProjection,projectPart>(),
-                                                             SCALE(200000))->
-            join<SupplierProjection,int,lineitemSupplierKey,supplierKey>(TABLE(Supplier)->
-                                                                         project<SupplierProjection,projectSupplier>(),
-                                                                         SCALE(10000))->
-            join<CustomerProjection,int,orderCustomerKey,customerKey>(TABLE(Customer)->
-                                                                      project<CustomerProjection,projectCustomer>(),
-                                                                      SCALE(150000))-> 
-            join<Nation1,int,supplierNationKey,nation1Key>((RDD<Nation1>*)TABLE(Nation),25)->
-            join<Nation2,int,customerNationKey,nation2Key>((RDD<Nation2>*)TABLE(Nation),25)->
-            join<Region,int,nationRegionKey, regionKey>(TABLE(Region)->filter<regionName>(), 5)->
-            mapReduce<int,Volume,map,reduce>(100)->
-            project<Share, mkt>()->
-            sort<byYear>(100);
+        auto s1 = project<Lineitem,LineitemProjection,projectLineitem>(TABLE(Lineitem));
+        auto s2 = filter<Orders,orderRange>(TABLE(Orders));
+        auto s3 = project<Orders,OrdersProjection,projectOrders>(s2);
+        auto s4 = join<LineitemProjection,OrdersProjection,long,lineitemOrderKey,orderKey>(s1, s3, SCALE(1500000));
+        auto s5 = filter<Part,partType>(TABLE(Part));
+        auto s6 = project<Part,PartProjection,projectPart>(s5);
+        auto s7 = join<typeof(s4),PartProjection,int,lineitemPartKey,partKey>(s4, s6, SCALE(200000));
+        auto s8 = project<Supplier,SupplierProjection,projectSupplier>(TABLE(Supplier));
+        auto s9 = join<typeof(s7),SupplierProjection,int,lineitemSupplierKey,supplierKey>(s7, s8, SCALE(10000));
+        auto s10 = project<Customer,CustomerProjection,projectCustomer>(TABLE(Customer));
+        auto s11 = join<typeof(s9),CustomerProjection,int,orderCustomerKey,customerKey>(s9, s10, SCALE(150000));
+        auto s12 = join<typeof(s11),Nation1,int,supplierNationKey,nation1Key>(s11, (CachedRDD<Nation1>*)TABLE(Nation), 25);
+        auto s13 = join<typeof(s12),Nation2,int,customerNationKey,nation2Key>(s12, (CachedRDD<Nation2>*)TABLE(Nation), 25);
+        auto s14 = filter<Region,regionName>(TABLE(Region));
+        auto s15 = join<typeof(s13),Region,int,nationRegionKey,regionKey>(s13, s14, 5);
+        auto s16 = mapReduce<typeof(s15),int,Volume,map,reduce>(s15, 100);
+        auto s17 = project<Pair<int,Volume>,Share,mkt>(s16);
+        return sort<Share,byYear>(s17, 100);
     }    
 }
+
 namespace Q9
 {
     struct LineitemProjection 
@@ -1208,9 +1154,9 @@ namespace Q9
         } 
     };
 
-    #define ProfitFields(FIELD) \
-        FIELD(nation)           \
-        FIELD(o_year)
+#define ProfitFields(FIELD) \
+    FIELD(nation)           \
+    FIELD(o_year)
 
     PACK(Profit)
     UNPACK(Profit)
@@ -1228,27 +1174,21 @@ namespace Q9
         return (diff != 0) ? diff : b->key.o_year - a->key.o_year;
     }
         
-    RDD< Pair<Profit,double> >* query() 
+    auto query() 
     { 
-        return
-            TABLE(Lineitem)->
-            project<LineitemProjection,projectLineitem>()->            
-            join<OrdersProjection,long,lineitemOrderKey,orderKey>(TABLE(Orders)->
-                                                                  project<OrdersProjection,projectOrders>(),
-                                                                  SCALE(1500000))->
-            join<PartProjection,int,lineitemPartKey,partKey>(TABLE(Part)->
-                                                             filter<partName>()->
-                                                             project<PartProjection,projectPart>(),
-                                                             SCALE(200000))->
-            join<PartsuppProjection,PartsuppKey,lineitemPartsuppKey,partsuppKey>(TABLE(Partsupp)->
-                                                                                 project<PartsuppProjection,projectPartsupp>(),
-                                                                                 SCALE(800000))->
-            join<SupplierProjection,int,lineitemSupplierKey,supplierKey>(TABLE(Supplier)->
-                                                                         project<SupplierProjection,projectSupplier>(),
-                                                                         SCALE(10000))->
-            join<Nation,int,supplierNationKey,nationKey>(TABLE(Nation), 25)->
-            mapReduce<Profit,double,map,sum>(25*100)->
-            sort<byNationYear>(100);
+        auto s1 = project<Lineitem,LineitemProjection,projectLineitem>(TABLE(Lineitem));
+        auto s2 = project<Orders,OrdersProjection,projectOrders>(TABLE(Orders));
+        auto s3 = join<LineitemProjection,OrdersProjection,long,lineitemOrderKey,orderKey>(s1, s2, SCALE(1500000));
+        auto s4 = filter<Part,partName>(TABLE(Part));
+        auto s5 = project<Part,PartProjection,projectPart>(s4);
+        auto s6 = join<typeof(s3),PartProjection,int,lineitemPartKey,partKey>(s3, s5, SCALE(200000));
+        auto s7 = project<Partsupp,PartsuppProjection,projectPartsupp>(TABLE(Partsupp));
+        auto s8 = join<typeof(s6),PartsuppProjection,PartsuppKey,lineitemPartsuppKey,partsuppKey>(s6, s7, SCALE(800000));
+        auto s9 = project<Supplier,SupplierProjection,projectSupplier>(TABLE(Supplier));
+        auto s10 = join<typeof(s8),SupplierProjection,int,lineitemSupplierKey,supplierKey>(s8, s9, SCALE(10000));
+        auto s11 = join<typeof(s10),Nation,int,supplierNationKey,nationKey>(s10, TABLE(Nation), 25);
+        auto s12 = mapReduce<typeof(s11),Profit,double,map,sum>(s11, 25*100);
+        return sort<Pair<Profit,double>,byNationYear>(s12, 100);
     }    
 }
 namespace Q10
@@ -1344,14 +1284,14 @@ namespace Q10
         } 
     };
 
-    #define GroupByFields(FIELD) \
-        FIELD(c_custkey) \
-        FIELD(c_name) \
-        FIELD(c_acctball) \
-        FIELD(n_name) \
-        FIELD(c_address) \
-        FIELD(c_phone) \
-        FIELD(c_comment)
+#define GroupByFields(FIELD) \
+    FIELD(c_custkey)         \
+    FIELD(c_name)            \
+    FIELD(c_acctball)        \
+    FIELD(n_name)            \
+    FIELD(c_address)         \
+    FIELD(c_phone)           \
+    FIELD(c_comment)
 
     PACK(GroupBy)
     UNPACK(GroupBy)
@@ -1373,21 +1313,17 @@ namespace Q10
         return a->value < b->value ? 1 : a->value == b->value ? 0 : -1;
     }
         
-    RDD< Pair<GroupBy,double> >* query() 
+    auto query() 
     { 
-        return
-            TABLE(Lineitem)->
-            filter<lineitemFilter>()->
-            project<LineitemProjection,projectLineitem>()->            
-            join<OrdersProjection,long,lineitemOrderKey,orderKey>(TABLE(Orders)->
-                                                                  filter<orderRange>()->
-                                                                  project<OrdersProjection,projectOrders>(),
-                                                                  SCALE(1500000))->
-            join<Customer,int,orderCustomerKey,customerKey>(TABLE(Customer),
-                                                            SCALE(150000))-> 
-            join<Nation,int,customerNationKey,nationKey>(TABLE(Nation), 25)->
-            mapReduce<GroupBy,double,map,sum>(1000)->
-            top<byRevenue>(20);
+        auto s1 = filter<Lineitem,lineitemFilter>(TABLE(Lineitem));
+        auto s2 = project<Lineitem,LineitemProjection,projectLineitem>(s1);
+        auto s3 = filter<Orders,orderRange>(TABLE(Orders));
+        auto s4 = project<Orders,OrdersProjection,projectOrders>(s3);
+        auto s5 = join<LineitemProjection,OrdersProjection,long,lineitemOrderKey,orderKey>(s2, s4, SCALE(1500000));
+        auto s6 = join<typeof(s5),Customer,int,orderCustomerKey,customerKey>(s5, TABLE(Customer), SCALE(150000));
+        auto s7 = join<typeof(s6),Nation,int,customerNationKey,nationKey>(s6, TABLE(Nation), 25);
+        auto s8 = mapReduce<typeof(s7),GroupBy,double,map,sum>(s7, 1000);
+        return top<Pair<GroupBy,double>,byRevenue>(s8, 20);
     }    
 }
 namespace Q12
@@ -1469,17 +1405,14 @@ namespace Q12
         return STRCMP(a->key.val, b->key.val);
     }
         
-    RDD< Pair<Key<shipmode_t>,LineCount> >* query() 
+    auto query() 
     { 
-        return
-            TABLE(Lineitem)->
-            filter<lineitemFilter>()->
-            project<LineitemProjection,projectLineitem>()->                        
-            join<OrdersProjection,long,lineitemOrderKey,orderKey>(TABLE(Orders)->
-                                                                  project<OrdersProjection,projectOrders>(), 
-                                                                  SCALE(1500000))->
-            mapReduce<Key<shipmode_t>,LineCount,map,reduce>(100)->
-            sort<byShipmode>(100);
+        auto s1 = filter<Lineitem,lineitemFilter>(TABLE(Lineitem));
+        auto s2 = project<Lineitem,LineitemProjection,projectLineitem>(s1);
+        auto s3 = project<Orders,OrdersProjection,projectOrders>(TABLE(Orders));
+        auto s4 = join<LineitemProjection,OrdersProjection,long,lineitemOrderKey,orderKey>(s2, s3, SCALE(1500000));
+        auto s5 = mapReduce<typeof(s4),Key<shipmode_t>,LineCount,map,reduce>(s4, 100);
+        return sort<Pair<Key<shipmode_t>,LineCount>,byShipmode>(s5, 100);
     }    
 }
 namespace Q13
@@ -1540,16 +1473,13 @@ namespace Q13
         
     RDD< Pair<int,int> >* query() 
     { 
-        return
-            TABLE(Orders)->
-            filter<orderFilter>()->
-            project<OrdersProjection, projectOrders>()->
-            join<CustomerProjection,int,orderCustomerKey,customerKey>(TABLE(Customer)->
-                                                                      project<CustomerProjection,projectCustomer>(),
-                                                                      SCALE(150000), OuterJoin)->
-            mapReduce<int,int,map1,count>(1000000)->
-            mapReduce<int,int,map2,count>(10000)->
-            sort<byCustDistCount>(10000);
+        auto s1 = filter<Orders,orderFilter>(TABLE(Orders));
+        auto s2 = project<Orders,OrdersProjection,projectOrders>(s1);
+        auto s3 = project<Customer,CustomerProjection,projectCustomer>(TABLE(Customer));
+        auto s4 = join<OrdersProjection,CustomerProjection,int,orderCustomerKey,customerKey>(s2, s3, SCALE(150000), OuterJoin);
+        auto s5 = mapReduce<typeof(s4),int,int,map1,count>(s4,1000000);
+        auto s6 = mapReduce<typeof(s5),int,int,map2,count>(s5, 10000);
+        return sort<Pair<int,int>,byCustDistCount>(s6,10000);
     }    
 }
 namespace Q14
@@ -1622,17 +1552,14 @@ namespace Q14
         result = 100*pr.promo/pr.revenue;
     }
 
-    RDD<double>* query() 
+    auto query() 
     { 
-        return
-            TABLE(Lineitem)->
-            filter<lineitemFilter>()->
-            project<LineitemProjection,projectLineitem>()->                        
-            join<PartProjection,int,lineitemPartKey,partKey>(TABLE(Part)->
-                                                             project<PartProjection,projectPart>(),
-                                                             SCALE(200000))->
-            reduce<PromoRevenue,promoRevenue,combineRevenue>(PromoRevenue(0,0))->
-            project<double,relation>();
+        auto s1 = filter<Lineitem,lineitemFilter>(TABLE(Lineitem));
+        auto s2 = project<Lineitem,LineitemProjection,projectLineitem>(s1);
+        auto s3 = project<Part,PartProjection,projectPart>(TABLE(Part));
+        auto s4 = join<LineitemProjection,PartProjection,int,lineitemPartKey,partKey>(s2, s3, SCALE(200000));
+        auto s5 = reduce<typeof(s4),PromoRevenue,promoRevenue,combineRevenue>(s4, PromoRevenue(0,0));
+        return project<PromoRevenue,double,relation>(s5);
     }    
 }
 namespace Q19
@@ -1713,15 +1640,13 @@ namespace Q19
         acc += r.l_extendedprice * (1 - r.l_discount);
     }
 
-    RDD<double>* query() 
+    auto query() 
     { 
-        return
-            TABLE(Lineitem)->
-            project<LineitemProjection,projectLineitem>()->                        
-            join<PartProjection,int,lineitemPartKey,partKey>(TABLE(Part)->
-                                                             project<PartProjection,projectPart>(), SCALE(200000))->
-            filter<brandFilter>()->
-            reduce<double,revenue,sum>(0);
+        auto s1 = project<Lineitem,LineitemProjection,projectLineitem>(TABLE(Lineitem));
+        auto s2 = project<Part,PartProjection,projectPart>(TABLE(Part));
+        auto s3 = join<LineitemProjection,PartProjection,int,lineitemPartKey,partKey>(s1, s2, SCALE(200000));
+        auto s4 = filter<typeof(s3), brandFilter>(s3);
+        return reduce<typeof(s4),double,revenue,sum>(s4, 0);
     }    
 }
     
@@ -1732,12 +1657,12 @@ static time_t getCurrentTime()
     return tv.tv_sec*1000 + tv.tv_usec/1000;
 }
 
-template<class T>
-void execute(char const* name, RDD<T>* (*query)()) 
+template<class Rdd>
+void execute(char const* name, Rdd* (*query)()) 
 {
     time_t start = getCurrentTime();
-    RDD<T>* result = query();
-    result->output(stdout);
+    Rdd* result = query();
+    output<typeof(result),Rdd>(result, stdout);
     delete result;
 
     if (Cluster::instance->nodeId == 0) {
@@ -1753,14 +1678,10 @@ void execute(char const* name, RDD<T>* (*query)())
 class TPCHJob : public Job
 {
     Cluster cluster;
-    bool useCache;
-    bool tileMode;
 
   public:
-    TPCHJob(size_t nodeId, size_t nHosts, char** hosts = NULL, size_t nQueues = 64, size_t bufferSize = 4*64*1024, size_t recvQueueSize = 4*64*1024*1024,  size_t sendQueueSize = 4*4*1024*1024, size_t syncInterval = 64*1024*1024, size_t broadcastJoinThreshold = 10000, size_t inmemJoinThreshold = 10000000, char const* tmp = "/tmp", bool sharedNothing = false, size_t split = 1, bool _useCache = false, bool _tileMode = false)
-    : cluster(nodeId, nHosts, hosts, nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, split),
-        useCache(_useCache),
-        tileMode(_tileMode)
+    TPCHJob(size_t nodeId, size_t nHosts, char** hosts = NULL, size_t nQueues = 64, size_t bufferSize = 4*64*1024, size_t recvQueueSize = 4*64*1024*1024,  size_t sendQueueSize = 4*4*1024*1024, size_t syncInterval = 64*1024*1024, size_t broadcastJoinThreshold = 10000, size_t inmemJoinThreshold = 10000000, char const* tmp = "/tmp", bool sharedNothing = false, size_t split = 1)
+    : cluster(nodeId, nHosts, hosts, nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, split)
     {}
     
   public:
@@ -1769,32 +1690,24 @@ class TPCHJob : public Job
         printf("Node %d started...\n", (int)cluster.nodeId);
 
         time_t start = getCurrentTime();
-        if (useCache) { 
-            cluster.userData = tileMode ? (void*)new TileCachedData() : (void*)new CachedData();;
-            printf("Elapsed time for loading all data in memory: %d milliseconds\n", (int)(getCurrentTime() - start));
-            cluster.barrier(); 
-        }
+        cluster.userData = (void*)new CachedData();
+        printf("Elapsed time for loading all data in memory: %d milliseconds\n", (int)(getCurrentTime() - start));
+        cluster.barrier(); 
     
-        if (tileMode) { 
-            execute("Q1",  Q1::tileQuery);
-            execute("Q6",  Q6::tileQuery);
-            delete (TileCachedData*)cluster.userData;
-        } else { 
-            execute("Q1",  Q1::query);
-            execute("Q3",  Q3::query);
-            execute("Q4",  Q4::query);
-            execute("Q5",  Q5::query);
-            execute("Q6",  Q6::query);
-            execute("Q7",  Q7::query);
-            execute("Q8",  Q8::query);
-            execute("Q9",  Q9::query);
-            execute("Q10", Q10::query);
-            execute("Q12", Q12::query);
-            execute("Q13", Q13::query);
-            execute("Q14", Q14::query);
-            execute("Q19", Q19::query);
-            delete (CachedData*)cluster.userData;
-        }
+        execute("Q1",  Q1::query);
+        execute("Q3",  Q3::query);
+        execute("Q4",  Q4::query);
+        execute("Q5",  Q5::query);
+        execute("Q6",  Q6::query);
+        execute("Q7",  Q7::query);
+        execute("Q8",  Q8::query);
+        execute("Q9",  Q9::query);
+        execute("Q10", Q10::query);
+        execute("Q12", Q12::query);
+        execute("Q13", Q13::query);
+        execute("Q14", Q14::query);
+        execute("Q19", Q19::query);
+        delete (CachedData*)cluster.userData;
 
         printf("Node %d finished.\n", (int)cluster.nodeId);
     }
@@ -1803,7 +1716,6 @@ class TPCHJob : public Job
 int main(int argc, char* argv[])
 {
     int i;
-    bool useCache = false;
     size_t nQueues = 64;
     size_t bufferSize = 4*64*1024;
     size_t recvQueueSize = 4*64*1024*1024;
@@ -1821,9 +1733,7 @@ int main(int argc, char* argv[])
     for (i = 1; i < argc; i++) { 
         if (*argv[i] == '-') { 
             option = argv[i]+1;
-            if (strcmp(option, "cache") == 0) { 
-                useCache = true;
-            } else if (strcmp(option, "dir") == 0) { 
+            if (strcmp(option, "dir") == 0) { 
                 dataDir = argv[++i];
             } else if (strcmp(option, "format") == 0) { 
                 dataFormat = argv[++i];
@@ -1854,7 +1764,6 @@ int main(int argc, char* argv[])
                       "Options:\n"
                       "-dir\tdata directory (.)\n"
                       "-format\tdata format: parquet, plain-file,... ()\n"
-                      "-cache\tCache all data in memory\n"
                       "-tmp DIR\ttemporary files location (/tmp)\n"
                       "-shared-nothing 0/1\tdata is located at executor nodes (1)\n"
                       "-queues N\tnumber of queues (64)\n"
@@ -1885,7 +1794,7 @@ int main(int argc, char* argv[])
         Cluster::nodes = new Cluster*[nNodes];
         Thread** clusterThreads = new Thread*[nNodes];
         for (nodeId = 0; nodeId < nNodes; nodeId++) {
-            clusterThreads[nodeId] = new Thread(new TPCHJob(nodeId, nNodes, NULL, nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, split, useCache), nodeId);
+            clusterThreads[nodeId] = new Thread(new TPCHJob(nodeId, nNodes, NULL, nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, split), nodeId);
         }
         for (nodeId = 0; nodeId < nNodes; nodeId++) {
             delete clusterThreads[nodeId];
@@ -1893,7 +1802,7 @@ int main(int argc, char* argv[])
         delete[] clusterThreads;
         delete[] Cluster::nodes;
     } else if (argc == i + nNodes) {
-        TPCHJob test(nodeId, nNodes, &argv[i], nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, split, useCache);
+        TPCHJob test(nodeId, nNodes, &argv[i], nQueues, bufferSize, recvQueueSize, sendQueueSize, syncInterval, broadcastJoinThreshold, inmemJoinThreshold, tmp, sharedNothing, split);
         test.run();
     } else {      
         fprintf(stderr, "At least one node has to be specified\n");
