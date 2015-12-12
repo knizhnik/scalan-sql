@@ -143,7 +143,9 @@ class RDD
     T elem;
 
     /**
-     * Main RDD method for iterating thoough records
+     * Main RDD method for iterating though records.
+     * To avoid virtual call overhead and make it possible for compiler to inline method calls implementation
+     * of each RDD defines its own version of next() method which is atatically invoked using template mechanism.
      * @param record [out] placeholder for the next record
      * @return true if there is next record, false otherwise
      */
@@ -153,7 +155,9 @@ class RDD
     }
 
     /**
-     * Main RDD method for iterating thoough records
+     * Virtual iteration method which should be overriden by derived classes.
+     * Because of virtual call overhead getNext method is not actually used in RDD implementations, instead of it them
+     * invokes next() method using template mechanism. But appliation can use this method to access arbitrary RDD.
      * @param record [out] placeholder for the next record
      * @return true if there is next record, false otherwise
      */
@@ -206,7 +210,7 @@ class RDD
     RDD<T>* top(size_t n);
 
     /**
-     * Left join two RDDs. Inner join returns pairs of matches records in outer and inner table.
+     * Join of two RDDs. Inner join returns pairs of matches records in outer and inner table.
      * Outer join also returns records from outer table for which there are matching in inner table.
      * @param with inner join table
      * @param estimation estimation for number of joined records
@@ -216,7 +220,7 @@ class RDD
     RDD< Join<T,I> >* join(RDD<I>* with, size_t estimation = UNKNOWN_ESTIMATION, JoinKind kind = InnerJoin);
 
     /**
-     * Left simijoin two RDDs. Semijoin find matched records in both tables but returns only records from outer table.
+     * Semijoin of two RDDs. Semijoin find matched records in both tables but returns only records from outer table.
      * Antijoin returns only this records of outer table for which there are no matching in inner table.
      * @param with inner join table
      * @param estimation estimation for number of joined records
@@ -417,7 +421,7 @@ public:
         return true;
     }
 
-    bool getNext(T& record) { 
+    bool getNext(T& record) override { 
         return next(record);
     }
 
@@ -450,7 +454,7 @@ class BufferRDD : public RDD<T>
         return true;
     }
     
-    bool getNext(T& record) { 
+    bool getNext(T& record) override { 
         return next(record);
     }
 
@@ -543,7 +547,7 @@ private:
  * and each node access its own part of the file.
  */
 template<class T>
-class FileRDD 
+class FileRDD : public RDD<T>
 {
   public:
     FileRDD(char* path) : f(fopen(path, "rb")), segno(Cluster::instance->nodeId), split(Cluster::instance->sharedNothing ? 1 : Cluster::instance->nNodes) {
@@ -568,7 +572,7 @@ class FileRDD
         return ++recNo <= nRecords && fread(&record, sizeof(T), 1, f) == 1;
     }
     
-    bool getNext(T& record) { 
+    bool getNext(T& record) override { 
         return next(record);
     }
 
@@ -587,7 +591,7 @@ class FileRDD
  * Each node is given its own set of fileds.
  */
 template<class T>
-class DirRDD 
+class DirRDD : public RDD<T>
 {
   public:
     DirRDD(char* path) : dir(path), segno(Cluster::instance->nodeId), step(Cluster::instance->nNodes), split(Cluster::instance->split), f(NULL) {}
@@ -629,7 +633,7 @@ class DirRDD
         }
     }
 
-    bool getNext(T& record) { 
+    bool getNext(T& record) override { 
         return next(record);
     }
 
@@ -691,7 +695,7 @@ class FilterRDD : public RDD<T>
         return false;
     }
 
-    bool getNext(T& record) { 
+    bool getNext(T& record) override { 
         return next(record);
     }
 
@@ -720,7 +724,7 @@ class ReduceRDD : public RDD<S>
         return false;
     }
 
-    bool getNext(S& record) { 
+    bool getNext(S& record) override { 
         return next(record);
     }
 
@@ -773,7 +777,7 @@ class MapReduceRDD : public RDD< Pair<K,V> >
         return true;
     }
 
-    bool getNext(Pair<K,V>& record) { 
+    bool getNext(Pair<K,V>& record) override { 
         return next(record);
     }
 
@@ -892,7 +896,7 @@ class ProjectRDD : public RDD<P>
         return false;
     }
 
-    bool getNext(P& record) {
+    bool getNext(P& record) override {
         return next(record);
     }
 
@@ -921,7 +925,7 @@ class SortRDD : public RDD<T>
         return false;
     }
     
-    bool getNext(T& record) {
+    bool getNext(T& record) override {
         return next(record);
     }
 
@@ -1004,7 +1008,7 @@ class TopRDD : public RDD<T>
         return false;
     }
     
-    bool getNext(T& record) {
+    bool getNext(T& record) override {
         return next(record);
     }
 
@@ -1118,7 +1122,7 @@ public:
         return true;
     }
 
-    bool getNext(Join<O,I>& record) 
+    bool getNext(Join<O,I>& record) override 
     {
         return next(record);
     }
@@ -1319,7 +1323,7 @@ public:
         return false;
     }
 
-    bool getNext(O& record) 
+    bool getNext(O& record) override
     {
         return next(record);
     }
@@ -1541,7 +1545,7 @@ public:
         return true;
     }
 
-    bool getNext(Join<O,I>& record)
+    bool getNext(Join<O,I>& record) override
     {
         return next(record);
     }
@@ -1695,7 +1699,7 @@ public:
         }
     }
 
-    bool getNext(Join<O,I>& record)
+    bool getNext(Join<O,I>& record) override
     {
         return next(record);
     }
@@ -1788,7 +1792,7 @@ class CachedRDD : public RDD<T>
         return true;
     }
 
-    bool getNext(T& record) { 
+    bool getNext(T& record) override { 
         return next(record);
     }
 
@@ -1931,47 +1935,96 @@ inline void output(Rdd* in, FILE* out)
     cluster->barrier();
 }
 
+/**
+ * Replicate data between all nodes.
+ * Broadcast local RDD data to all nodes and gather data from all nodes.
+ * As a result all nodes get the same replicas of input data
+ * @return replicated RDD, combining data from all nodes
+ */
 template<class T, class Rdd>
 inline auto replicate(Rdd* in) { 
     Queue* queue = Cluster::instance->getQueue();
     return new ReplicateRDD<T,Rdd>(in, queue);
 }
 
+/**
+ * Filter input RDD
+ * @return RDD with records matching predicate 
+ */
 template<class T, bool (*predicate)(T const&), class Rdd>
 inline auto filter(Rdd* in) { 
     return new FilterRDD<T,predicate,Rdd>(in);
 }
 
+/**
+ * Perform aggregation of input RDD 
+ * @param initState initial aggregate value
+ * @return RDD with aggregated value
+ */
 template<class T,class S,void (*accumulate)(S& state, T const& in), void(*combine)(S& state, S const& partial), class Rdd>
 inline auto reduce(Rdd* in, S const& initState) {
     return new ReduceRDD<T,S,accumulate,combine,Rdd>(in, initState);
 }
 
+/**
+ * Perfrom map-reduce
+ * @param estimation esimation for number of pairs
+ * @return RDD with &lt;key,value&gt; pairs
+ */
 template<class T,class K,class V,void (*map_f)(Pair<K,V>& out, T const& in), void (*reduce_f)(V& dst, V const& src), class Rdd>
 inline auto mapReduce(Rdd* in, size_t estimation = UNKNOWN_ESTIMATION) {
     return new MapReduceRDD<T,K,V,map_f,reduce_f,Rdd>(in, estimation);
 }
 
+/**
+ * Map records of input RDD
+ * @return projection of the input RDD. 
+ */
 template<class T,class P, void (*projection)(P& out, T const& in), class Rdd>
 inline auto project(Rdd* in) {
     return new ProjectRDD<T,P,projection,Rdd>(in);
 }
 
+/**
+ * Sort input RDD
+ * @param estimation estimation for number of records in RDD
+ * @return RDD with sorted records
+ */
 template<class T, int (*compare)(T const* a, T const* b), class Rdd> 
 inline auto sort(Rdd* in, size_t estimation = UNKNOWN_ESTIMATION) {
     return new SortRDD<T,compare,Rdd>(in, estimation);
 }
 
+/**
+ * Find top N records according to provided comparison function
+ * @param n number of returned top records
+ * @return RDD with up to N top records
+ */
 template<class T, int (*compare)(T const* a, T const* b), class Rdd> 
 inline auto top(Rdd* in, size_t n = UNKNOWN_ESTIMATION) {
     return new TopRDD<T,compare,Rdd>(in, n);
 }
 
+/**
+ * In-memory hash join of two RDDs. Inner join returns pairs of matches records in outer and inner table.
+ * Outer join also returns records from outer table for which there are matching in inner table.
+ * @param with inner join table
+ * @param estimation estimation for number of joined records
+ * @param kind join kind (inner/outer join)
+ */
 template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner), class ORdd, class IRdd>
 inline auto join(ORdd* outer, IRdd* inner, size_t estimation = UNKNOWN_ESTIMATION, JoinKind kind = InnerJoin) 
 {
     return new HashJoinRDD<O,I,K,outerKey,innerKey,ORdd,IRdd>(outer, inner, estimation, kind);
 }
+
+/**
+ * Disk shuffle join of two RDDs. Inner join returns pairs of matches records in outer and inner table.
+ * Outer join also returns records from outer table for which there are matching in inner table.
+ * @param with inner join table
+ * @param estimation estimation for number of joined records
+ * @param kind join kind (inner/outer join)
+ */
 template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner), class ORdd, class IRdd>
 inline auto shuffleJoin(ORdd* outer, IRdd* inner, size_t estimation = UNKNOWN_ESTIMATION, JoinKind kind = InnerJoin) 
 {
@@ -1980,12 +2033,26 @@ inline auto shuffleJoin(ORdd* outer, IRdd* inner, size_t estimation = UNKNOWN_ES
     return new ShuffleJoinRDD<O,I,K,outerKey,innerKey,ORdd,IRdd>(outer, inner, nFiles, estimation/nFiles, kind);
 }
 
+/**
+ * In-memory hash semijoin of two RDDs. Semijoin find matched records in both tables but returns only records from outer table.
+ * Antijoin returns only this records of outer table for which there are no matching in inner table.
+ * @param with inner join table
+ * @param estimation estimation for number of joined records
+ * @param kind join kind (inner/anti join)
+ */
 template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner), class ORdd, class IRdd>
 inline auto semijoin(ORdd* outer, IRdd* inner, size_t estimation = UNKNOWN_ESTIMATION, JoinKind kind = InnerJoin) 
 {
     return new HashSemiJoinRDD<O,I,K,outerKey,innerKey,ORdd,IRdd>(outer, inner, estimation, kind);
 }
 
+/**
+ * Disk shuffle  semijoin of two RDDs. Semijoin find matched records in both tables but returns only records from outer table.
+ * Antijoin returns only this records of outer table for which there are no matching in inner table.
+ * @param with inner join table
+ * @param estimation estimation for number of joined records
+ * @param kind join kind (inner/anti join)
+ */
 template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner), class ORdd, class IRdd>
 inline auto shuffleSemijoin(ORdd* outer, IRdd* inner, size_t estimation = UNKNOWN_ESTIMATION, JoinKind kind = InnerJoin) 
 {
