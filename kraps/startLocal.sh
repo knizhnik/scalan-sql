@@ -1,4 +1,4 @@
-n_nodes=64
+n_nodes=4
 nodes=""
 for ((i=0;i<n_nodes;i++))
 do
@@ -6,6 +6,6 @@ do
 done
 for ((i=0;i<n_nodes;i++))
 do
-    ./tpch -cache -dir /srv/remote/all-common/tpch/data -split 4 $i $n_nodes $nodes > node$i.log 2>&1 &
+    ./tpch -dir /home/knizhnik/tpch-dbgen $i $n_nodes $nodes > node$i.log 2>&1 &
 done
 wait

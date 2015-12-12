@@ -4,7 +4,7 @@
 #include "rdd.h"
 #include "tpch.h"
 
-const size_t SF = 100; // scale factor
+const size_t SF = 1; // scale factor
 
 #define STRCMP(s,p) strncmp(s, p, sizeof(s))
 #define STREQ(s,p)  (STRCMP(s, p) == 0)

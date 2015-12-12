@@ -1056,7 +1056,7 @@ class HashJoinRDD : public RDD< Join<O,I> >, MessageHandler
 {
 public:
     HashJoinRDD(ORdd* outerRDD, IRdd* innerRDD, size_t estimation, JoinKind joinKind) 
-    : kind(joinKind), table(NULL), size(hashTableSize(estimation)), innerSize(0), entry(NULL), inner(innerRDD), outer(outerRDD), scatter(NULL), innerIsShuffled(false) 
+    : kind(joinKind), table(NULL), size(hashTableSize(estimation)), innerSize(0), entry(NULL), inner(innerRDD), outer(outerRDD), scatter(NULL), gather(NULL), innerIsShuffled(false) 
     {
         assert(kind != AntiJoin);
 
@@ -1130,6 +1130,7 @@ public:
     ~HashJoinRDD() { 
         deleteHash();
         delete outer;
+        delete gather;
         delete scatter;
     }
 protected:
@@ -1155,10 +1156,10 @@ protected:
     Entry*  entry;
     IRdd*   inner;
     ORdd*   outer;
-    GatherRDD<O>* gather;
     Queue*  innerQueue;
     Queue*  outerQueue;
     Thread* scatter;
+    GatherRDD<O>* gather;
     bool    innerIsShuffled;
     BlockAllocator<Entry> allocator;
 
@@ -1167,6 +1168,7 @@ protected:
         if (!replicateInner) {
             scatter = new Thread(new ScatterJob<O,K,outerKey,ORdd>(outer, outerQueue));
             gather = new GatherRDD<O>(outerQueue);
+            outer = NULL;
         }
     }
 
@@ -1242,7 +1244,7 @@ protected:
             totalLen += chainLen;
             nChains += chainLen != 0;                
         }
-        printf("HashJoin: estimated size=%ld, real size=%ld, collitions=(%ld max, %f avg)\n", size, realSize, maxLen, nChains != 0 ? (double)totalLen/nChains : 0.0);
+        printf("HashJoin: estimated size=%ld, real size=%ld, collisions=(%ld max, %f avg)\n", size, realSize, maxLen, nChains != 0 ? (double)totalLen/nChains : 0.0);
 #endif
         delete gather;
     }
@@ -1272,7 +1274,7 @@ class HashSemiJoinRDD : public RDD<O>, MessageHandler
 {
 public:
     HashSemiJoinRDD(ORdd* outerRDD, IRdd* innerRDD, size_t estimation, JoinKind joinKind) 
-    : kind(joinKind), table(NULL), size(hashTableSize(estimation)), inner(innerRDD), outer(outerRDD), scatter(NULL), innerIsShuffled(false)
+    : kind(joinKind), table(NULL), size(hashTableSize(estimation)), inner(innerRDD), outer(outerRDD), scatter(NULL), gather(NULL), innerIsShuffled(false)
     {
         assert(kind != OuterJoin);
         Cluster* cluster = Cluster::instance.get();
@@ -1331,6 +1333,7 @@ public:
     ~HashSemiJoinRDD() { 
         deleteHash();
         delete outer;
+        delete gather;
         delete scatter;
     }
 protected:
@@ -1352,10 +1355,10 @@ protected:
     size_t  innerSize;
     IRdd*   inner;
     ORdd*   outer;
-    RDD<O>* gather;
     Queue*  innerQueue;
     Queue*  outerQueue;
     Thread* scatter;
+    GatherRDD<O>* gather;
     bool    innerIsShuffled;
     BlockAllocator<Entry> allocator;
 
@@ -1363,7 +1366,8 @@ protected:
     {
         if (!replicateInner) {
             scatter = new Thread(new ScatterJob<O,K,outerKey,ORdd>(outer, outerQueue));
-            outer = new GatherRDD<O>(outerQueue);
+            gather = new GatherRDD<O>(outerQueue);
+            outer = NULL;
         }
     }
 
@@ -1440,7 +1444,7 @@ protected:
             totalLen += chainLen;
             nChains += chainLen != 0;                
         }
-        printf("HashSemiJoin: estimated size=%ld, real size=%ld, collitions=(%ld max, %f avg)\n", size, realSize, maxLen, nChains != 0 ? (double)totalLen/nChains : 0.0);
+        printf("HashSemiJoin: estimated size=%ld, real size=%ld, collisions=(%ld max, %f avg)\n", size, realSize, maxLen, nChains != 0 ? (double)totalLen/nChains : 0.0);
 #endif
         delete gather;
     }
