@@ -23,8 +23,8 @@ DEFS=-DSHOW_HASH_STATISTIC
 #DEFS=-DUSE_ZLIB
 #DEFS=-Wno-unused-value -Wno-unused-variable -Wno-sign-compare -DUSE_ZLIB -DUSE_PARQUET -I $(PARQUET_CPP_HOME)/src -I $(PARQUET_CPP_HOME)/generated -I $(HADOOP_HOME)/include 
 
-#CPP=/usr/local/bin/g++-4.9 $(COMMON_FLAGS) $(OPT_FLAGS) $(DEFS)
-CPP=g++ $(COMMON_FLAGS) $(OPT_FLAGS) $(DEFS)
+CPP=/usr/local/bin/g++-4.9 $(COMMON_FLAGS) $(OPT_FLAGS) $(DEFS)
+#CPP=g++ $(COMMON_FLAGS) $(OPT_FLAGS) $(DEFS)
 
 JNI_INCLUDES = -I$(JAVA_HOME)/include -I$(JAVA_HOME)/include/linux -I$(JAVA_HOME)/include/darwin -I/usr/java/default/include -I/usr/java/default/include/linux -I/usr/java/include -I$(JAVA_HOME)/include -I$(JAVA_HOME)/include/linux -I/usr/lib/jvm/oracle-jdk-bin-1.8/include
 

@@ -980,7 +980,7 @@ class TopRDD : public RDD<T>
         if (cluster->isCoordinator()) {         
             GatherRDD<T> gather(queue);
             queue->putFirst(Buffer::eof(queue->qid)); // Coordinator already finished it's part of work
-            size = mergeTop(&gather, n, top);
+            size = loadTop(&gather, n, top);
         } else {
             assert(n*sizeof(T) < cluster->bufferSize);
             Buffer* msg = Buffer::create(queue->qid, n*sizeof(T));
@@ -1017,29 +1017,8 @@ class TopRDD : public RDD<T>
     size_t size;
     size_t i;
     
-    size_t loadTop(Rdd* input, size_t n, size_t top) { 
-        T record;
-        while (input->next(record)) {
-            size_t l = 0, r = n;
-            while (l < r) {
-                size_t m = (l + r) >> 1;
-                if (compare(&buf[m], &record) <= 0) {
-                    l = m + 1;
-                } else {
-                    r = m;
-                }
-            }
-            if (r < top) {
-                if (n < top) {
-                    n += 1;
-                }
-                memmove(&buf[r+1], &buf[r], (n-r-1)*sizeof(T));
-                buf[r] = record;
-            }
-        }
-        return n;
-    }
-    size_t mergeTop(RDD<T>* input, size_t n, size_t top) { 
+    template<class IRdd>
+    size_t loadTop(IRdd* input, size_t n, size_t top) { 
         T record;
         while (input->next(record)) {
             size_t l = 0, r = n;
