@@ -11,7 +11,7 @@ const size_t SF = 1; // scale factor
 #define STRCPY(d,s) strncpy(d,s,sizeof(d))
 #define SCALE(x)    ((x + Cluster::instance->nNodes - 1)*SF/(Cluster::instance->nNodes) + (x / 100)) // take in accoutn data skews
 
-#define TABLE(x) (RDD<x>*)((CachedData*)Cluster::instance->userData)->_##x.get() 
+#define TABLE(x) ((CachedData*)Cluster::instance->userData)->_##x.get() 
 
 char const* dataDir;
 char const* dataFormat;
@@ -1471,7 +1471,7 @@ namespace Q13
         return (diff != 0) ? diff : b->key - a->key;
     }
         
-    RDD< Pair<int,int> >* query() 
+    auto query() 
     { 
         auto s1 = filter<Orders,orderFilter>(TABLE(Orders));
         auto s2 = project<Orders,OrdersProjection,projectOrders>(s1);
@@ -1704,7 +1704,7 @@ class TPCHJob : public Job
         execute("Q9",  Q9::query);
         execute("Q10", Q10::query);
         execute("Q12", Q12::query);
-        execute("Q13", Q13::query);
+	execute("Q13", Q13::query);
         execute("Q14", Q14::query);
         execute("Q19", Q19::query);
         delete (CachedData*)cluster.userData;
