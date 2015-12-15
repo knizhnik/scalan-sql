@@ -1,5 +1,7 @@
 #include "rdd.h"
 #include "pack.h"
+#include "time.h"
+#include "sys/time.h"
 
 /**
  * Interface for accessing result of Kraps query exectiion from Spark
@@ -27,6 +29,13 @@ struct JavaContext
     JavaContext(JNIEnv* e, jobjectArray i) : env(e), inputs(i) {}
 };
 
+inline time_t getCurrentTime()
+{
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return tv.tv_sec*1000 + tv.tv_usec/1000;
+}
+
 /**
  * Proxy class for accessing Spark RDD from Kraps
  */
@@ -41,10 +50,13 @@ class SparkRDD : public RDD<T>
      */
     bool next(T& row)
     {
+        time_t start = getCurrentTime();
         JavaContext* ctx = (JavaContext*)Cluster::instance->userData;
         jobject input = ctx->env->GetObjectArrayElement(ctx->inputs, inputNo);
         bool rc = ctx->env->CallBooleanMethod(input, nextRow, (jlong)(size_t)&row);
         ctx->env->DeleteLocalRef(input);
+	elapsed += getCurrentTime() - start;
+	calls += 1;
         return rc;
     }
     
@@ -53,13 +65,20 @@ class SparkRDD : public RDD<T>
      * @param env JNI environment
      * @param no index of RDD in input array
      */ 
-    SparkRDD(JNIEnv* env, jint no) : inputNo(no)
+ SparkRDD(JNIEnv* env, jint no) : inputNo(no), elapsed(0), calls(0)
     {
         jclass rowIteratorClass = (jclass)env->FindClass("kraps/RowIterator");
         nextRow = env->GetMethodID(rowIteratorClass, "next", "(J)Z");
     } 
+    ~SparkRDD() {
+      FILE* log = fopen("SparkRDD.log", "w");
+      fprintf(log, "Elapsed time: %ld, total calls=%ld\n", elapsed, calls);
+      fclose(log);
+    }
     
   private:
     jmethodID nextRow;
     jint inputNo;
+    time_t elapsed;
+    jlong calls;
 };
