@@ -10,6 +10,6 @@ done
 rm -f node*.log
 for ((i=0;i<n_nodes;i++))
 do
-	ssh ${hosts[i % n_hosts]} "./tpch -tile -cache -dir /srv/remote/all-common/tpch/data -split $split $i $n_nodes $nodes" > node$i.log 2>&1 &
+	ssh ${hosts[i % n_hosts]} "./tpch -dir /srv/remote/all-common/tpch/data -split $split $i $n_nodes $nodes" > node$i.log 2>&1 &
 done
 wait

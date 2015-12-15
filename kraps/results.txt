@@ -1,135 +1,15 @@
 8x2 --------------------
-Elapsed time for loading all data in memory: 1027302 milliseconds
-Elapsed time for Q1: 1276 milliseconds
-Elapsed time for Q3: 7849 milliseconds
-Elapsed time for Q4: 5182 milliseconds
-Elapsed time for Q5: 15669 milliseconds
-Elapsed time for Q6: 956 milliseconds
-Elapsed time for Q7: 16916 milliseconds
-Elapsed time for Q8: 21742 milliseconds
-Elapsed time for Q9: 45220 milliseconds
-Elapsed time for Q10: 9641 milliseconds
-Elapsed time for Q12: 2262 milliseconds
-Elapsed time for Q13: 5746 milliseconds
-Elapsed time for Q14: 1203 milliseconds
-Elapsed time for Q19: 20048 milliseconds
-8x4 --------------------
-Elapsed time for loading all data in memory: 3375 milliseconds
-Elapsed time for Q1: 837 milliseconds
-Elapsed time for Q3: 7512 milliseconds
-Elapsed time for Q4: 4362 milliseconds
-Elapsed time for Q5: 14933 milliseconds
-Elapsed time for Q6: 620 milliseconds
-Elapsed time for Q7: 15426 milliseconds
-Elapsed time for Q8: 19347 milliseconds
-Elapsed time for Q9: 37932 milliseconds
-Elapsed time for Q10: 9761 milliseconds
-Elapsed time for Q12: 1649 milliseconds
-Elapsed time for Q13: 4800 milliseconds
-Elapsed time for Q14: 781 milliseconds
-Elapsed time for Q19: 17155 milliseconds
-4x4 --------------------
-Elapsed time for loading all data in memory: 9430 milliseconds
-Elapsed time for Q1: 1604 milliseconds
-Elapsed time for Q3: 10729 milliseconds
-Elapsed time for Q4: 6390 milliseconds
-Elapsed time for Q5: 24898 milliseconds
-Elapsed time for Q6: 1129 milliseconds
-Elapsed time for Q7: 24720 milliseconds
-Elapsed time for Q8: 29621 milliseconds
-Elapsed time for Q9: 59785 milliseconds
-Elapsed time for Q10: 11362 milliseconds
-Elapsed time for Q12: 2322 milliseconds
-Elapsed time for Q13: 7048 milliseconds
-Elapsed time for Q14: 1248 milliseconds
-Elapsed time for Q19: 25881 milliseconds
-8x8 --------------------
-Elapsed time for loading all data in memory: 1503 milliseconds
-Elapsed time for Q1: 625 milliseconds
-Elapsed time for Q3: 7708 milliseconds
-Elapsed time for Q4: 4266 milliseconds
-Elapsed time for Q5: 18052 milliseconds
-Elapsed time for Q6: 527 milliseconds
-Elapsed time for Q7: 15183 milliseconds
-Elapsed time for Q8: 18818 milliseconds
-Elapsed time for Q9: 37228 milliseconds
-Elapsed time for Q10: 9410 milliseconds
-Elapsed time for Q12: 1117 milliseconds
-Elapsed time for Q13: 4677 milliseconds
-Elapsed time for Q14: 666 milliseconds
-Elapsed time for Q19: 15047 milliseconds
-4x8 --------------------
-Elapsed time for loading all data in memory: 5110 milliseconds
-Elapsed time for Q1: 1286 milliseconds
-Elapsed time for Q3: 12369 milliseconds
-Elapsed time for Q4: 6871 milliseconds
-Elapsed time for Q5: 25342 milliseconds
-Elapsed time for Q6: 960 milliseconds
-Elapsed time for Q7: 26146 milliseconds
-Elapsed time for Q8: 29736 milliseconds
-Elapsed time for Q9: 60043 milliseconds
-Elapsed time for Q10: 11244 milliseconds
-Elapsed time for Q12: 1846 milliseconds
-Elapsed time for Q13: 5451 milliseconds
-Elapsed time for Q14: 1133 milliseconds
-Elapsed time for Q19: 24817 milliseconds
-8x16 -------------------
-Elapsed time for loading all data in memory: 813 milliseconds
-Elapsed time for Q1: 760 milliseconds
-Elapsed time for Q3: 10106 milliseconds
-Elapsed time for Q4: 4246 milliseconds
-Elapsed time for Q5: 17983 milliseconds
-Elapsed time for Q6: 507 milliseconds
-Elapsed time for Q7: 15974 milliseconds
-Elapsed time for Q8: 22156 milliseconds
-Elapsed time for Q9: 43143 milliseconds
-Elapsed time for Q10: 10211 milliseconds
-Elapsed time for Q12: 1503 milliseconds
-Elapsed time for Q13: 4283 milliseconds
-Elapsed time for Q14: 822 milliseconds
-Elapsed time for Q19: 15280 milliseconds
-4x16 -------------------
-Elapsed time for loading all data in memory: 1429 milliseconds
-Elapsed time for Q1: 1270 milliseconds
-Elapsed time for Q3: 12965 milliseconds
-Elapsed time for Q4: 7955 milliseconds
-Elapsed time for Q5: 26079 milliseconds
-Elapsed time for Q6: 1010 milliseconds
-Elapsed time for Q7: 24945 milliseconds
-Elapsed time for Q8: 30162 milliseconds
-Elapsed time for Q9: 61135 milliseconds
-Elapsed time for Q10: 12374 milliseconds
-Elapsed time for Q12: 1767 milliseconds
-Elapsed time for Q13: 5073 milliseconds
-Elapsed time for Q14: 1168 milliseconds
-Elapsed time for Q19: 22699 milliseconds
-8x32 -------------------
-Elapsed time for loading all data in memory: 516 milliseconds
-Elapsed time for Q1: 1198 milliseconds
-Elapsed time for Q3: 11091 milliseconds
-Elapsed time for Q4: 5680 milliseconds
-Elapsed time for Q5: 18495 milliseconds
-Elapsed time for Q6: 897 milliseconds
-Elapsed time for Q7: 17799 milliseconds
-Elapsed time for Q8: 27347 milliseconds
-Elapsed time for Q9: 52131 milliseconds
-Elapsed time for Q10: 12078 milliseconds
-Elapsed time for Q12: 2594 milliseconds
-Elapsed time for Q13: 5149 milliseconds
-Elapsed time for Q14: 3495 milliseconds
-Elapsed time for Q19: 18273 milliseconds
-4x32 -------------------
-Elapsed time for loading all data in memory: 737 milliseconds
-Elapsed time for Q1: 1488 milliseconds
-Elapsed time for Q3: 13889 milliseconds
-Elapsed time for Q4: 7868 milliseconds
-Elapsed time for Q5: 33929 milliseconds
-Elapsed time for Q6: 1011 milliseconds
-Elapsed time for Q7: 25563 milliseconds
-Elapsed time for Q8: 40369 milliseconds
-Elapsed time for Q9: 84936 milliseconds
-Elapsed time for Q10: 13797 milliseconds
-Elapsed time for Q12: 2604 milliseconds
-Elapsed time for Q13: 4663 milliseconds
-Elapsed time for Q14: 2241 milliseconds
-Elapsed time for Q19: 25207 milliseconds
+Elapsed time for loading all data in memory: 5600 milliseconds
+Elapsed time for Q1: 1183 milliseconds
+Elapsed time for Q3: 20284 milliseconds
+Elapsed time for Q4: 8362 milliseconds
+Elapsed time for Q5: 30786 milliseconds
+Elapsed time for Q6: 730 milliseconds
+Elapsed time for Q7: 31413 milliseconds
+Elapsed time for Q8: 33883 milliseconds
+Elapsed time for Q9: 80281 milliseconds
+Elapsed time for Q10: 15637 milliseconds
+Elapsed time for Q12: 4793 milliseconds
+Elapsed time for Q13: 5630 milliseconds
+Elapsed time for Q14: 991 milliseconds
+Elapsed time for Q19: 71098 milliseconds

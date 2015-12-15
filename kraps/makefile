@@ -15,7 +15,7 @@ JAVA_HOME?=/Library/Java/JavaVirtualMachines/jdk1.8.0_60.jdk/Contents/Home
 
 COMMON_FLAGS=-std=c++1y -g -pthread -fPIC -Wall 
 OPT_FLAGS=-O3
-DEFS=-DSHOW_HASH_STATISTIC
+DEFS=-DSHOW_HASH_STATISTIC -I ~/.nix-profile/include -DUSE_ZLIB
 #DEFS=-DUSE_MESSAGE_HANDLER -DSHOW_HASH_STATISTIC
 #DEFS=-DUSE_ZLIB -I $(HOME)/.nix-profile/include/
 #DEFS=-DUSE_LZH
