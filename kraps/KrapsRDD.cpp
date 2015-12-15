@@ -62,9 +62,9 @@ class KrapsCluster
         int nodeId = -1;
         int id = getExecutorId();
         for (int i = 0; i < nNodes; i++) { 
-            nodes[i] = new char[16];
             jstring host = (jstring)env->GetObjectArrayElement(hosts, i % nHosts);
             char const* hostName = env->GetStringUTFChars(host, 0);
+            nodes[i] = new char[strlen(hostName) + 8];
             sprintf(nodes[i], "%s:%d", hostName, 5001 + i); 
             env->ReleaseStringUTFChars(host, hostName);
             if (Socket::isLocalHost(nodes[i])) {
