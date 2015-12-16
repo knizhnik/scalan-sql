@@ -137,11 +137,14 @@ Socket* Socket::connect(char const* address, size_t maxAttempts)
             isLocal = false;
             sock_inet.sin_family = AF_INET;  
             sock_inet.sin_port = htons(port);
-            *sep = '\0';
-            if (!getAddrsByName(address, addrs, &n_addrs)) {
+            size_t hostLen = sep - address;
+            char* host = new char[hostLen+1];
+            memcpy(host, address, hostLen);
+            host[hostLen] = '\0';
+            if (!getAddrsByName(host, addrs, &n_addrs)) {
                 throw SocketError("Failed to resolve addresses");
             }
-            *sep = ':'; // restore ':' to make isLocalHost work correctly 
+            delete[] host;
 
             sd = socket(AF_INET, SOCK_STREAM, 0);
             if (sd < 0) { 
