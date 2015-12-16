@@ -57,7 +57,7 @@ object KrapsCluster {
     address 
   }
  
-  def start(driver: String): Unit = {
+  def start(driver: String): Long = {
      val col = driver.indexOf(':')
      val host = driver.substring(0, col)
      val port = Integer.parseInt(driver.substring(col+1))
@@ -68,8 +68,8 @@ object KrapsCluster {
      start(hosts, 1)
   }
   
-  @native def start(hosts: Array[String], nCores: Int): Unit
-  @native def stop(): Unit
+  @native def start(hosts: Array[String], nCores: Int): Long
+  @native def stop(cluster:Long): Unit
 }
 
 class KrapsRDD(
@@ -82,6 +82,7 @@ class KrapsRDD(
   deserializer: (Long, StructType) => InternalRow)
     extends RDD[InternalRow](sc, input.map(rdd => new OneToOneDependency(rdd))) {
 
+  var cluster:Long = 0
   val krapsDriver = KrapsCluster.configure(54321, nNodes)
 
   protected def getPartitions: Array[Partition] = {
@@ -97,9 +98,9 @@ class KrapsRDD(
       if (eof) {
          false
       } else {
-         if (row == 0) row = nextRow(krapsInput, scalaInput)
+         if (row == 0) row = nextRow(cluster, krapsInput, scalaInput)
          if (row == 0) {
-           KrapsCluster.stop()
+           KrapsCluster.stop(cluster)
            eof = true
            false
          } else {
@@ -117,18 +118,18 @@ class KrapsRDD(
   }
 
   def compute(split: Partition, context: TaskContext): Iterator[InternalRow] = {
-    KrapsCluster.start(krapsDriver)
+    cluster = KrapsCluster.start(krapsDriver)
     logInfo("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! compute !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
     val s = split.asInstanceOf[CombinePartition]
     val coalescedInput = Array.tabulate(input.size)(i =>
         new RowIterator(input(i), s.parts(i), split.index, nNodes, context, serializers(i)))
-    val it = createIterator(queryId, coalescedInput)
+    val it = createIterator(cluster, queryId, coalescedInput)
     //logInfo(s"!!!!!!!!!!!!!!!!!!!!!!!!!!!!! KrapsIterator($it) !!!!!!!!!!!!!!!!!!!")
     new KrapsIterator(it, coalescedInput)
   }
 
-  @native def createIterator(queryId: Int, scalaInput : Array[RowIterator]): Long
-  @native def nextRow(iterator: Long, scalaInput : Array[RowIterator]): Long
+  @native def createIterator(cluster: Long, queryId: Int, scalaInput : Array[RowIterator]): Long
+  @native def nextRow(cluster: Long, iterator: Long, scalaInput : Array[RowIterator]): Long
 }
 
 object Test extends App {
