@@ -1782,8 +1782,12 @@ template<class H, class V, class C>
 class ColumnarRDD : public RDD<V>
 {
   public:
-    ColumnarRDD(RDD<T>* input, size_t estimation) : cache(estimation) { 
-        cacheData(input);
+    ColumnarRDD(RDD<T>* input, size_t estimation) : cache(estimation), curr(0) { 
+        H record;
+        while (input->next(record)) { 
+            cache.append(record);
+        }
+        delete input;
     }
     bool next(V& record) { 
         if (curr == cache.used) { 
@@ -1800,16 +1804,6 @@ class ColumnarRDD : public RDD<V>
 
   private:
     ColumnarRDD(C const& _cache) : cache(_cache), curr(0) {}
-
-    void cacheData(RDD<H>* input) { 
-        H record;
-        while (input->next(record)) { 
-            cache.append(record);
-        }
-        curr = 0;
-        delete input;
-    }
-
     C cache;
 };
 

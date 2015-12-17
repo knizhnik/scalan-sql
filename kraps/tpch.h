@@ -101,19 +101,19 @@ typedef char shipmode_t[10];
 #define HORISONTAL(Class)                       \
     struct Class {                              \
         Class##Fields(VSTRUCT_FIELD)            \
-    }                                           \
+    };                                          \
     PACK(Class)                                 \
     UNPACK(Class)                               \
     PARQUET_UNPACK(Lineitem)                       
 
-HORISONTAL(Lineitem);
-HORISONTAL(Part);
-HORISONTAL(Partsupp);
-HORISONTAL(Orders);
-HORISONTAL(Supplier);
-HORISONTAL(Customer);
-HORISONTAL(Nation);
-HORISONTAL(Region);
+HORISONTAL(Lineitem)
+HORISONTAL(Part)
+HORISONTAL(Partsupp)
+HORISONTAL(Orders)
+HORISONTAL(Supplier)
+HORISONTAL(Customer)
+HORISONTAL(Nation)
+HORISONTAL(Region)
 
 
 
@@ -131,6 +131,9 @@ HORISONTAL(Region);
     delete[] NAME;                              \
     NAME = newBuf;                              \
 }
+
+#define HVSTRUCT_GETTER(NAME,TYPE)              \
+    struct { operator TYPE() { return data->NAME[pos]; } } NAME;
 
 #define VERTICAL(Class)                         \
 struct V##Class {                               \
@@ -155,15 +158,20 @@ struct V##Class {                               \
         Class##Fields(VSTRUCT_ASSIGN);          \
         used += 1;                              \
     }                                           \
-}
+};                                              \
+struct HV#Class {                               \
+    V##Class* data;                             \
+    size_t pos;                                 \
+    Class##Fields(HVSTRUCT_GETTER)              \
+};
 
-VERTICAL(Lineitem);
-VERTICAL(Part);
-VERTICAL(Partsupp);
-VERTICAL(Orders);
-VERTICAL(Supplier);
-VERTICAL(Customer);
-VERTICAL(Nation);
-VERTICAL(Region);
+VERTICAL(Lineitem)
+VERTICAL(Part)
+VERTICAL(Partsupp)
+VERTICAL(Orders)
+VERTICAL(Supplier)
+VERTICAL(Customer)
+VERTICAL(Nation)
+VERTICAL(Region)
         
 #endif
