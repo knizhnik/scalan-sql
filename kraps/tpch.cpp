@@ -11,7 +11,6 @@ const size_t SF = 100; // scale factor
 #define STRCPY(d,s) strncpy(d,s,sizeof(d))
 #define SCALE(x)    ((x + Cluster::instance->nNodes - 1)*SF/(Cluster::instance->nNodes) + (x / 100)) // take in accoutn data skews
 
-#define TABLE(x) (RDD<x>*)((CachedData*)Cluster::instance->userData)->_##x.get() 
 
 char const* dataDir;
 char const* dataFormat;
@@ -25,6 +24,38 @@ static char* filePath(char const* fileName)
     }
     return strdup(path);
 }
+
+#ifdef COLUMNAR_STORE
+
+#define TABLE(x) ((ColumnarStore*)Cluster::instance->userData)->_##x.get() 
+
+class ColumnarStore
+{
+  public:
+    ColumnarRDD<HLineitem,Lineitem,VLineitem> _Lineitem;
+    ColumnarRDD<HOrdersOrders,VOrders> _Orders;
+    ColumnarRDD<HSupplier,Supplier,VSupplier> _Supplier;
+    ColumnarRDD<HCustomer,Customer,VCustomer> _Customer;
+    ColumnarRDD<HPart,Part,VPart> _Part;
+    ColumnarRDD<HPartsupp,Partsupp,VPartsupp> _Partsupp;
+    ColumnarRDD<HNation,Nation,VNation> _Nation;
+    ColumnarRDD<HRegion,Region,VRegion> _Region;
+
+    ColumnarStore() : 
+    _Lineitem(FileManager::load<HLineitem>(filePath("Lineitem")), SCALE(6000000)),
+    _Orders(FileManager::load<HOrders>(filePath("Orders")),       SCALE(1500000)),
+    _Supplier(FileManager::load<HSupplier>(filePath("Supplier")), SCALE(10000)),
+    _Customer(FileManager::load<HCustomer>(filePath("Customer")), SCALE(150000)),
+    _Part(FileManager::load<HPart>(filePath("Part")),             SCALE(200000)),
+    _Partsupp(FileManager::load<HPartsupp>(filePath("Partsupp")), SCALE(800000)),
+    _Nation(FileManager::load<HNation>(filePath("Nation")),       25),
+    _Region(FileManager::load<HRegion>(filePath("Region")),       5) {}
+
+};
+
+#else
+
+#define TABLE(x) ((CachedData*)Cluster::instance->userData)->_##x.get() 
 
 class CachedData
 {
@@ -49,6 +80,7 @@ class CachedData
     _Region(FileManager::load<Region>(filePath("Region")),       5) {}
 
 };
+#endif
 
 inline void sum(double& dst, double const& src)
 {
@@ -1471,7 +1503,7 @@ namespace Q13
         return (diff != 0) ? diff : b->key - a->key;
     }
         
-    RDD< Pair<int,int> >* query() 
+    auto query() 
     { 
         auto s1 = filter<Orders,orderFilter>(TABLE(Orders));
         auto s2 = project<Orders,OrdersProjection,projectOrders>(s1);

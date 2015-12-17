@@ -1847,6 +1847,38 @@ class CachedRDD : public RDD<T>
     bool copy;
 };
 
+/**
+ * In-memory columnar store RDD
+ */
+template<class H, class V, class C>
+class ColumnarRDD : public RDD<V>
+{
+  public:
+    ColumnarRDD(RDD<T>* input, size_t estimation) : cache(estimation), curr(0) { 
+        H record;
+        while (input->next(record)) { 
+            cache.append(record);
+        }
+        delete input;
+    }
+    bool next(V& record) { 
+        if (curr == cache.used) { 
+            return false;
+        }
+        record.data = &cache;
+        record.pos = curr++;
+        return true;
+    }
+
+    ColumnarRDD* get() { 
+        return new ColumnarRDD(cache);
+    }
+
+  private:
+    ColumnarRDD(C const& _cache) : cache(_cache), curr(0) {}
+    C cache;
+};
+
 template<class T>
 void RDD<T>::output(FILE* out) 
 {
