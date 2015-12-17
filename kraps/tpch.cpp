@@ -11,7 +11,6 @@ const size_t SF = 100; // scale factor
 #define STRCPY(d,s) strncpy(d,s,sizeof(d))
 #define SCALE(x)    ((x + Cluster::instance->nNodes - 1)*SF/(Cluster::instance->nNodes) + (x / 100)) // take in accoutn data skews
 
-
 char const* dataDir;
 char const* dataFormat;
 
@@ -1509,7 +1508,7 @@ namespace Q13
         auto s2 = project<Orders,OrdersProjection,projectOrders>(s1);
         auto s3 = project<Customer,CustomerProjection,projectCustomer>(TABLE(Customer));
         auto s4 = join<OrdersProjection,CustomerProjection,int,orderCustomerKey,customerKey>(s2, s3, SCALE(150000), OuterJoin);
-        auto s5 = mapReduce<typeof(s4),int,int,map1,count>(s4,1000000);
+        auto s5 = mapReduce<typeof(s4),int,int,map1,count>(s4, 1000000);
         auto s6 = mapReduce<typeof(s5),int,int,map2,count>(s5, 10000);
         return sort<Pair<int,int>,byCustDistCount>(s6,10000);
     }    
@@ -1736,7 +1735,7 @@ class TPCHJob : public Job
         execute("Q9",  Q9::query);
         execute("Q10", Q10::query);
         execute("Q12", Q12::query);
-        execute("Q13", Q13::query);
+	execute("Q13", Q13::query);
         execute("Q14", Q14::query);
         execute("Q19", Q19::query);
         delete (CachedData*)cluster.userData;
