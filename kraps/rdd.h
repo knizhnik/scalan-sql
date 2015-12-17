@@ -66,35 +66,90 @@ struct Join : Outer, Inner
 };
 
 /**
- * Fixed size string key (used to wrap C char arrays)
+ * Fixed size string 
  */
-template<class T>
-struct Key
+template<size_t size>
+struct Char
 {
-    T val;
-    
-    bool operator==(Key const& other) const
+    char body[size];
+
+    int compare(Char const& other) const
     {
-        return strncmp(val, other.val, sizeof(val)) == 0;
-    }
-    
-    friend size_t hashCode(Key const& key)
-    {
-        return ::hashCode(key.val);
-    }
-    
-    friend void print(Key const& key, FILE* out) 
-    {
-        fprintf(out, "%.*s", (int)sizeof(key.val), key.val);
-    }
-    friend size_t unpack(Key& dst, char const* src)
-    {
-        return strcopy(dst.val, src, sizeof(dst.val));
+        return strncmp(body, other.body, size);
     }
 
-    friend size_t pack(Key const& src, char* dst)
+    int compare(char const* other) const
     {
-        return strcopy(dst, src.val, sizeof(src.val));
+        return strncmp(body, other, size);
+    }
+
+    bool operator<=(Char const& other) const
+    {
+        return compare(other)<= 0;
+    }
+    bool operator<(Char const& other) const
+    {
+        return compare(other)< 0;
+    }
+    bool operator>=(Char const& other) const
+    {
+        return compare(other)>= 0;
+    }
+    bool operator>(Char const& other) const
+    {
+        return compare(other)> 0;
+    }
+    bool operator==(Char const& other) const
+    {
+        return compare(other)== 0;
+    }
+    bool operator!=(Char const& other) const
+    {
+        return compare(other) != 0;
+    }
+    
+    bool operator<=(char const* other) const
+    {
+        return compare(other)<= 0;
+    }
+    bool operator<(char const* other) const
+    {
+        return compare(other)< 0;
+    }
+    bool operator>=(char const* other) const
+    {
+        return compare(other)>= 0;
+    }
+    bool operator>(char const* other) const
+    {
+        return compare(other)> 0;
+    }
+    bool operator==(char const* other) const
+    {
+        return compare(other)== 0;
+    }
+    bool operator!=(char const* other) const
+    {
+        return compare(other)!= 0;
+    }
+
+    friend size_t hashCode(Char const& key)
+    {
+        return ::hashCode(key.body);
+    }
+    
+    friend void print(Char const& key, FILE* out) 
+    {
+        fprintf(out, "%.*s", (int)size, key.body);
+    }
+    friend size_t unpack(Char& dst, char const* src)
+    {
+        return strcopy(dst.body, src, size);
+    }
+
+    friend size_t pack(Char const& src, char* dst)
+    {
+        return strcopy(dst, src.body, size);
     }
 };
 
@@ -1843,7 +1898,7 @@ template<class H, class V, class C>
 class ColumnarRDD : public RDD<V>
 {
   public:
-    ColumnarRDD(RDD<T>* input, size_t estimation) : cache(estimation), curr(0) { 
+    ColumnarRDD(RDD<H>* input, size_t estimation) : cache(estimation), curr(0) { 
         H record;
         while (input->next(record)) { 
             cache.append(record);
@@ -1858,6 +1913,9 @@ class ColumnarRDD : public RDD<V>
         record.pos = curr++;
         return true;
     }
+    bool getNext(V& record) override { 
+        return next(record);
+    }
 
     ColumnarRDD* get() { 
         return new ColumnarRDD(cache);
@@ -1866,6 +1924,7 @@ class ColumnarRDD : public RDD<V>
   private:
     ColumnarRDD(C const& _cache) : cache(_cache), curr(0) {}
     C cache;
+    size_t curr;
 };
 
 template<class T>

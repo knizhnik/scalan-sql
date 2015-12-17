@@ -10,9 +10,9 @@
 
 
 typedef unsigned date_t;
-typedef char name_t[25];
-typedef char priority_t[15];
-typedef char shipmode_t[10];
+typedef Char<25> name_t;
+typedef Char<15> priority_t;
+typedef Char<10> shipmode_t;
 
 #define LineitemFields(FIELD) \
     FIELD(l_orderkey,long)        \
@@ -57,7 +57,7 @@ typedef char shipmode_t[10];
 
 #define SupplierFields(FIELD) \
     FIELD(s_suppkey,int)         \
-    FIELD(s_name,s_name)               \
+    FIELD(s_name,name_t)               \
     FIELD(s_address,Char<40>)                  \
     FIELD(s_nationkey,int)                     \
     FIELD(s_phone,Char<15>)                            \
@@ -84,7 +84,7 @@ typedef char shipmode_t[10];
     FIELD(n_comment,Char<152>)
 
 
-#define PartFields(FIELD) \
+#define PartFields(FIELD)    \
     FIELD(p_partkey,int)     \
     FIELD(p_name,Char<55>)           \
     FIELD(p_mfgr,Char<25>)                   \
@@ -98,25 +98,8 @@ typedef char shipmode_t[10];
 
 #define HSTRUCT_FIELD(NAME,TYPE) TYPE NAME;
 
-#define HORISONTAL(Class)                       \
-    struct Class {                              \
-        Class##Fields(VSTRUCT_FIELD)            \
-    };                                          \
-    PACK(Class)                                 \
-    UNPACK(Class)                               \
-    PARQUET_UNPACK(Lineitem)                       
 
-HORISONTAL(Lineitem)
-HORISONTAL(Part)
-HORISONTAL(Partsupp)
-HORISONTAL(Orders)
-HORISONTAL(Supplier)
-HORISONTAL(Customer)
-HORISONTAL(Nation)
-HORISONTAL(Region)
-
-
-
+#ifdef COLUMNAR_STORE
 
 #define VSTRUCT_FIELD(NAME,TYPE) TYPE* NAME;
 #define VSTRUCT_CONS(NAME,TYPE) NAME = new TYPE[size];
@@ -132,10 +115,17 @@ HORISONTAL(Region)
     NAME = newBuf;                              \
 }
 
-#define HVSTRUCT_GETTER(NAME,TYPE)              \
-    struct { operator TYPE() { return data->NAME[pos]; } } NAME;
+#define STRUCT_GETTER(NAME,TYPE) struct {       \
+    operator TYPE() const {                                         \
+        Self* self = (Self*)((char*)this - (char*)&((Self*)0)->NAME);   \
+        return self->data->NAME[self->pos];     \
+    }                                           \
+} NAME;
 
-#define VERTICAL(Class)                         \
+#define SCHEMA(Class)                           \
+struct H##Class {                               \
+    Class##Fields(HSTRUCT_FIELD)                \
+};                                              \
 struct V##Class {                               \
     Class##Fields(VSTRUCT_FIELD)                \
     size_t used, size;                          \
@@ -150,7 +140,7 @@ struct V##Class {                               \
             Class##Fields(VSTRUCT_DELETE);      \
         }                                       \
     }                                           \
-    void append(Class const& other) {           \
+    void append(H##Class const& other) {        \
         if (used == size) {                     \
             size *= 2;                          \
             Class##Fields(VSTRUCT_EXTEND);      \
@@ -159,19 +149,36 @@ struct V##Class {                               \
         used += 1;                              \
     }                                           \
 };                                              \
-struct HV#Class {                               \
+struct Class {                                  \
     V##Class* data;                             \
     size_t pos;                                 \
-    Class##Fields(HVSTRUCT_GETTER)              \
-};
+    typedef Class Self;                         \
+    Class##Fields(STRUCT_GETTER)                \
+};                                              \
+PACK(Class)                                     \
+UNPACK(Class)                                   \
+PARQUET_UNPACK(Class)                       
 
-VERTICAL(Lineitem)
-VERTICAL(Part)
-VERTICAL(Partsupp)
-VERTICAL(Orders)
-VERTICAL(Supplier)
-VERTICAL(Customer)
-VERTICAL(Nation)
-VERTICAL(Region)
+#else
+
+#define SCHEMA(Class)                           \
+struct Class {                                  \
+    Class##Fields(HSTRUCT_FIELD)                \
+};                                              \
+PACK(Class)                                     \
+UNPACK(Class)                                   \
+PARQUET_UNPACK(Class)                       
+
+
+#endif
+
+SCHEMA(Lineitem)
+SCHEMA(Part)
+SCHEMA(Partsupp)
+SCHEMA(Orders)
+SCHEMA(Supplier)
+SCHEMA(Customer)
+SCHEMA(Nation)
+SCHEMA(Region)
         
 #endif
