@@ -37,9 +37,12 @@ class RowIterator(
 case class CombinePartition(index: Int, parts: Array[Array[Partition]]) extends Partition
 
 object KrapsCluster {
-  def configure(port: Int, nWorkers: Int): String = {
+  var port = 54321
+
+  def configure(nWorkers: Int): String = {
     val server = new ServerSocket(port)
     val address = server.getInetAddress().getHostName() + ":" + port
+    port += 1
     val t = new Thread(new Runnable {
       def run() {
         val sockets = Array.tabulate(nWorkers)(i => server.accept())
@@ -83,7 +86,7 @@ class KrapsRDD(
     extends RDD[InternalRow](sc, input.map(rdd => new OneToOneDependency(rdd))) {
 
   var cluster:Long = 0
-  val krapsDriver = KrapsCluster.configure(54321, nNodes)
+  val krapsDriver = KrapsCluster.configure(nNodes)
 
   protected def getPartitions: Array[Partition] = {
     val parts: Array[Array[Partition]] = input.map(_.partitions)
