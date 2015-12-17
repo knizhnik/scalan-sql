@@ -2,18 +2,18 @@
 #include <time.h>
 #include <sys/time.h>
 
-#define N_ELEMS 1LL*1024*1024*1024
+#define N_ELEMS 2LL*1024*1024*1024
 
 #define TILE_SIZE 16
 
 template<class T>
 class Iterator {
 public:
-  //  virtual bool next(T& val) = 0;
+  virtual bool next(T& val) = 0;
 };
 
 
-template<class T, class I, bool(*predicate)(T const&)>
+template<class T, class I, void(*predicate)(T& dst)>
 class Filter : public Iterator<T>
 {
   I* in;
@@ -21,7 +21,8 @@ public:
   Filter(I* input) : in(input) {}
   bool next(T& val) {
     while (in->next(val)) {
-      if (predicate(val)) {
+      predicate(val);
+      if (val.size != 0) {
 	return true;
       }
     }
@@ -41,18 +42,17 @@ public:
     if (!first) {
       return false;
     }
-    double agg = 0;
+    val = 0;
     T x; 
     while (in->next(x)) {
-      fold(agg, x);
+      fold(val, x);
     }
-    val = agg;
     first = false;
     return true;
   }
 };
 
-template<class T, class C, size_t(*fetch)(T&dst, C const& src, size_t i, size_t n)>
+template<class T, class C, void(*fetch)(T&dst, C const& src, size_t i, size_t n)>
 class Cache : public Iterator<T>
 {
   C const& data;
@@ -63,14 +63,17 @@ public:
 
   bool next(T& val) {
     if (curr < size) {
-      curr = fetch(val, data, curr, size);
+      size_t n = curr + TILE_SIZE > size ? size - curr : TILE_SIZE;
+      fetch(val, data, curr, n);
+      val.size = n;
+      curr += n;
       return true;
     }
     return false;
   }
 };
 
-template<class T, bool (*predicate)(T const& tile), class I>
+template<class T, void (*predicate)(T& tile), class I>
 inline Filter<T, I, predicate>* filter(I* in)
 {
   return new Filter<T, I, predicate>(in);
@@ -98,27 +101,51 @@ struct Lineitem
 
 
 struct LineitemTile {
-  Lineitem const* data;
-  size_t pos;
-};
+    double l_quantity[TILE_SIZE];
+    double l_extendedprice[TILE_SIZE];
+    double l_discount[TILE_SIZE];
+    double l_tax[TILE_SIZE];
+    date_t l_shipdate[TILE_SIZE];
+    size_t size;
+} __attribute__((aligned(16)));
 
-bool predicate(LineitemTile const& tile) {
-    return tile.data->l_shipdate[tile.pos] >= N_ELEMS/3;
+void predicate(LineitemTile& tile) {
+    bool   bitmap[TILE_SIZE];
+    size_t n = tile.size;
+    for (size_t i = 0; i < n; i++) {
+      bitmap[i] = tile.l_shipdate[i] >= N_ELEMS/3;
+    }
+    n = 0;
+    for (size_t i = 0; i < tile.size; i++) {
+      if (bitmap[i]) {
+	tile.l_quantity[n] = tile.l_quantity[i];
+	tile.l_extendedprice[n] = tile.l_extendedprice[i];
+	tile.l_discount[n] = tile.l_discount[i];
+	tile.l_tax[n] = tile.l_tax[i];
+	n++;
+      }
+    }
+    tile.size = n;
 }
 
 void sum(double& dst, LineitemTile const& tile)
 {
   double total = 0;
-  Lineitem const* l = tile.data;
-  size_t i = tile.pos;
-  dst += l->l_quantity[i]*l->l_extendedprice[i]*(1-l->l_discount[i])*(1+l->l_tax[i]);
+  for (size_t i = 0, n = tile.size; i < n; i++) { 
+    total += tile.l_quantity[i]*tile.l_extendedprice[i]*(1-tile.l_discount[i])*(1+tile.l_tax[i]);
+  }
+  dst += total;
 }
 
-size_t fetch(LineitemTile& tile, Lineitem const& l, size_t i, size_t n)
+void fetch(LineitemTile& tile, Lineitem const& l, size_t i, size_t n)
 {
-  tile.data = &l;
-  tile.pos = i;
-  return i + 1;
+  for (size_t j = 0; j < n; j++) {
+    tile.l_quantity[j] = l.l_quantity[i+j];
+    tile.l_extendedprice[j] = l.l_extendedprice[i+j];
+    tile.l_discount[j] = l.l_discount[i+j];
+    tile.l_tax[j] = l.l_tax[i+j];
+    tile.l_shipdate[j] = l.l_shipdate[i+j];
+  }
 }
 
 static time_t getCurrentTime()
@@ -146,7 +173,7 @@ int main()
     lineitem.l_quantity[i] = i;
     lineitem.l_shipdate[i] = i;
   }
-  if (1) {
+  if (0) {
     time_t start = getCurrentTime();
     double sum = 0;
     for (size_t i = 0; i < N_ELEMS; i++) {
