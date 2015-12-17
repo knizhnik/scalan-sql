@@ -62,9 +62,9 @@ class KrapsCluster
         int nodeId = -1;
         int id = getExecutorId();
         for (int i = 0; i < nNodes; i++) { 
-            nodes[i] = new char[16];
             jstring host = (jstring)env->GetObjectArrayElement(hosts, i % nHosts);
             char const* hostName = env->GetStringUTFChars(host, 0);
+            nodes[i] = new char[strlen(hostName) + 8];
             sprintf(nodes[i], "%s:%d", hostName, 5001 + i); 
             env->ReleaseStringUTFChars(host, hostName);
             if (Socket::isLocalHost(nodes[i])) {
@@ -88,11 +88,9 @@ class KrapsCluster
     }
 };
 
-static KrapsCluster kraps;
-
 extern "C" {
 
-JNIEXPORT jlong Java_kraps_KrapsRDD_createIterator(JNIEnv* env, jobject self, jint queryId, jobjectArray sparkInputs)
+JNIEXPORT jlong Java_kraps_KrapsRDD_createIterator(JNIEnv* env, jobject self, jlong kraps, jint queryId, jobjectArray sparkInputs)
 {
     char buf[256];
     sprintf(buf, "libQ%d.so", queryId);
@@ -114,7 +112,7 @@ JNIEXPORT jlong Java_kraps_KrapsRDD_createIterator(JNIEnv* env, jobject self, ji
     JavaContext ctx(env, sparkInputs);
     Cluster* cluster = Cluster::instance.get();
     if (cluster == NULL) { 
-        cluster = kraps.cluster;
+        cluster = ((KrapsCluster*)kraps)->cluster;
         Cluster::instance.set(cluster);
     }
     cluster->userData = &ctx;
@@ -122,13 +120,13 @@ JNIEXPORT jlong Java_kraps_KrapsRDD_createIterator(JNIEnv* env, jobject self, ji
     return (jlong)(size_t)new KrapsRDD(dll, constructor(env));
 }
 
-JNIEXPORT jlong Java_kraps_KrapsRDD_nextRow(JNIEnv* env, jobject self, jlong iterator, jobjectArray sparkInputs)
+JNIEXPORT jlong Java_kraps_KrapsRDD_nextRow(JNIEnv* env, jobject self, jlong kraps, jlong iterator, jobjectArray sparkInputs)
 {
     KrapsRDD* rdd = (KrapsRDD*)iterator;
     JavaContext ctx(env, sparkInputs);
     Cluster* cluster = Cluster::instance.get();
     if (cluster == NULL) { 
-        cluster = kraps.cluster;
+        cluster = ((KrapsCluster*)kraps)->cluster;
         Cluster::instance.set(cluster);
     }
     cluster->userData = &ctx;
@@ -141,14 +139,18 @@ JNIEXPORT jlong Java_kraps_KrapsRDD_nextRow(JNIEnv* env, jobject self, jlong ite
     return 0;
 }
 
-JNIEXPORT void Java_kraps_KrapsCluster_00024_start(JNIEnv* env, jobject self, jobjectArray hosts, jint nCores)
+JNIEXPORT jlong Java_kraps_KrapsCluster_00024_start(JNIEnv* env, jobject self, jobjectArray hosts, jint nCores)
 {
-    kraps.start(env, hosts, nCores);
+    KrapsCluster* cluster = new KrapsCluster();
+    cluster->start(env, hosts, nCores);
+    return (jlong)(size_t)cluster;
 }
 
-JNIEXPORT void Java_kraps_KrapsCluster_00024_stop(JNIEnv* env, jobject self)
+JNIEXPORT void Java_kraps_KrapsCluster_00024_stop(JNIEnv* env, jobject self, jlong kraps)
 {
-    kraps.stop();
+    KrapsCluster* cluster = (KrapsCluster*)kraps;
+    cluster->stop();
+    delete cluster;
 }
 
 }
