@@ -43,7 +43,7 @@ inline size_t unpack(char* dst, char const* src, size_t size)
 }
 
 #if 0
-#define PACK_FIELD(x) size += ::pack(src.x, dst + size, sizeof(src.x));
+#define PACK_FIELD(name,typr) size += ::pack(src.name, dst + size, sizeof(src.name));
 
 #define PACK(Class)                                 \
 inline size_t pack(Class const& src, char* dst, size_t size = 0)    \
@@ -53,7 +53,7 @@ inline size_t pack(Class const& src, char* dst, size_t size = 0)    \
     return size;                                    \
 }
 
-#define UNPACK_FIELD(x) size += ::unpack(dst.x, src + size, sizeof(dst.x));
+#define UNPACK_FIELD(name,type) size += ::unpack(dst.name, src + size, sizeof(dst.name));
 
 #define UNPACK(Class)                               \
 inline size_t unpack(Class& dst, char const* src, size_t size = 0)  \
@@ -77,12 +77,16 @@ inline size_t unpack(Class& dst, char const* src, size_t size = 0)  \
 }
 #endif
 
-#define PARQUET_FIELD(x) unpackParquet(dst.x, reader.columns[i++].reader, sizeof(dst.x)) && 
+#if USE_PARQUET
+#define PARQUET_FIELD(name,type) unpackParquet(dst.name, reader.columns[i++].reader, sizeof(dst.name)) && 
 #define PARQUET_UNPACK(Class)                       \
 inline bool unpackParquet(Class& dst, ParquetReader& reader)   \
 {                                                   \
     size_t i = 0;                                   \
     return Class##Fields(PARQUET_FIELD) true;       \
 }
+#else
+#define PARQUET_UNPACK(Class)  
+#endif
 
 #endif

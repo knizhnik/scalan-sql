@@ -66,6 +66,41 @@ struct Join : Outer, Inner
 };
 
 /**
+ * Fixed size char array
+ */
+template<size_t n>
+struct Char
+{
+    char body[n];
+    
+    bool operator==(Key const& other) const
+    {
+        return strncmp(body, other.body, sizeof(body)) == 0;
+    }
+    
+    friend size_t hashCode(Key const& key)
+    {
+        return ::hashCode(key.body);
+    }
+    
+    friend void print(Key const& key, FILE* out) 
+    {
+        fprintf(out, "%.*s", (int)sizeof(key.body), key.body);
+    }
+    friend size_t unpack(Key& dst, char const* src)
+    {
+        return strcopy(dst.body, src, sizeof(dst.body));
+    }
+
+    friend size_t pack(Key const& src, char* dst)
+    {
+        return strcopy(dst, src.body, sizeof(src.body));
+    }
+};
+
+
+
+/**
  * Fixed size string key (used to wrap C char arrays)
  */
 template<class T>
@@ -1738,6 +1773,46 @@ class CachedRDD : public RDD<T>
     size_t size;
     bool copy;
 };
+
+
+/**
+ * Cache RDD in memory
+ */
+template<class H, class V, class C>
+class ColumnarRDD : public RDD<V>
+{
+  public:
+    ColumnarRDD(RDD<T>* input, size_t estimation) : cache(estimation) { 
+        cacheData(input);
+    }
+    bool next(V& record) { 
+        if (curr == cache.used) { 
+            return false;
+        }
+        record.data = &cache;
+        record.pos = curr++;
+        return true;
+    }
+
+    ColumnarRDD* get() { 
+        return new ColumnarRDD(cache);
+    }
+
+  private:
+    ColumnarRDD(C const& _cache) : cache(_cache), curr(0) {}
+
+    void cacheData(RDD<H>* input) { 
+        H record;
+        while (input->next(record)) { 
+            cache.append(record);
+        }
+        curr = 0;
+        delete input;
+    }
+
+    C cache;
+};
+
 
 template<class T>
 void RDD<T>::output(FILE* out) 

@@ -14,209 +14,156 @@ typedef char name_t[25];
 typedef char priority_t[15];
 typedef char shipmode_t[10];
 
-
-struct Lineitem
-{
-    long   l_orderkey;
-    int    l_partkey;
-    int    l_suppkey;
-    int    l_linenumber;
-    double l_quantity;
-    double l_extendedprice;
-    double l_discount;
-    double l_tax;
-    char   l_returnflag;
-    char   l_linestatus;
-    date_t l_shipdate;
-    date_t l_commitdate;
-    date_t l_receiptdate;
-    char   l_shipinstruct[25];
-    shipmode_t l_shipmode;
-    char   l_comment[44];
-};
-
 #define LineitemFields(FIELD) \
-    FIELD(l_orderkey) \
-    FIELD(l_partkey) \
-    FIELD(l_suppkey) \
-    FIELD(l_linenumber) \
-    FIELD(l_quantity) \
-    FIELD(l_extendedprice) \
-    FIELD(l_discount) \
-    FIELD(l_tax) \
-    FIELD(l_returnflag) \
-    FIELD(l_linestatus) \
-    FIELD(l_shipdate) \
-    FIELD(l_commitdate) \
-    FIELD(l_receiptdate) \
-    FIELD(l_shipinstruct) \
-    FIELD(l_shipmode) \
-    FIELD(l_comment) 
+    FIELD(l_orderkey,long)        \
+    FIELD(l_partkey,int)             \
+    FIELD(l_suppkey,int)                \
+    FIELD(l_linenumber,int)               \
+    FIELD(l_quantity,double)                     \
+    FIELD(l_extendedprice,double)                      \
+    FIELD(l_discount,double)                                 \
+    FIELD(l_tax,double)                                            \
+    FIELD(l_returnflag,char)                                           \
+    FIELD(l_linestatus,char)                                               \
+    FIELD(l_shipdate,date_t)                                                  \
+    FIELD(l_commitdate,date_t)                                                \
+    FIELD(l_receiptdate,date_t)                                               \
+    FIELD(l_shipinstruct,Char<25>)                                              \
+    FIELD(l_shipmode,shipmode_t)                                                  \
+    FIELD(l_comment,Char<44>) 
 
-
-   
-struct Orders
-{
-    long o_orderkey;
-    int o_custkey;
-    char o_orderstatus;
-    double o_totalprice;
-    date_t o_orderdate;
-    priority_t o_orderpriority;
-    char o_clerk[15];
-    int o_shippriority;
-    char o_comment[79];
-};
 
 #define OrdersFields(FIELD) \
-    FIELD(o_orderkey) \
-    FIELD(o_custkey) \
-    FIELD(o_orderstatus) \
-    FIELD(o_totalprice) \
-    FIELD(o_orderdate) \
-    FIELD(o_orderpriority) \
-    FIELD(o_clerk) \
-    FIELD(o_shippriority) \
-    FIELD(o_comment)
-
-struct Customer
-{
-    int c_custkey;
-    name_t c_name;
-    char c_address[40];
-    int c_nationkey;
-    char c_phone[15];
-    double c_acctball;
-    char c_mktsegment[10];
-    char c_comment[117];
-};
+    FIELD(o_orderkey,long)      \
+    FIELD(o_custkey,int)           \
+    FIELD(o_orderstatus,char)          \
+    FIELD(o_totalprice,double)               \
+    FIELD(o_orderdate,date_t)                      \
+    FIELD(o_orderpriority,priority_t)                        \
+    FIELD(o_clerk,Char<15>)                                          \
+    FIELD(o_shippriority,int)                                           \
+    FIELD(o_comment,Char<79>)
 
 #define CustomerFields(FIELD) \
-    FIELD(c_custkey) \
-    FIELD(c_name) \
-    FIELD(c_address) \
-    FIELD(c_nationkey) \
-    FIELD(c_phone) \
-    FIELD(c_acctball) \
-    FIELD(c_mktsegment) \
-    FIELD(c_comment) 
+    FIELD(c_custkey,int)         \
+    FIELD(c_name,name_t)               \
+    FIELD(c_address,Char<40>)                  \
+    FIELD(c_nationkey,int)                        \
+    FIELD(c_phone,Char<15>)                               \
+    FIELD(c_acctball,double)                                    \
+    FIELD(c_mktsegment,Char<10>)                                        \
+    FIELD(c_comment,Char<117>) 
 
-struct Supplier
-{
-    int s_suppkey;
-    name_t s_name;
-    char s_address[40];
-    int s_nationkey;
-    char s_phone[15];
-    double s_acctbal;
-    char s_comment[101];
-};
 
 #define SupplierFields(FIELD) \
-    FIELD(s_suppkey) \
-    FIELD(s_name) \
-    FIELD(s_address) \
-    FIELD(s_nationkey) \
-    FIELD(s_phone) \
-    FIELD(s_acctbal) \
-    FIELD(s_comment)
+    FIELD(s_suppkey,int)         \
+    FIELD(s_name,s_name)               \
+    FIELD(s_address,Char<40>)                  \
+    FIELD(s_nationkey,int)                     \
+    FIELD(s_phone,Char<15>)                            \
+    FIELD(s_acctbal,double)                                  \
+    FIELD(s_comment,Char<101>)
 
-struct Partsupp
-{
-    int ps_partkey;
-    int ps_suppkey;
-    int ps_availqty;
-    double ps_supplycost;
-    char ps_comment[199];
-};
 
 #define PartsuppFields(FIELD) \
-    FIELD(ps_partkey) \
-    FIELD(ps_suppkey) \
-    FIELD(ps_availqty) \
-    FIELD(ps_supplycost) \
-    FIELD(ps_comment)
-
-struct Region
-{
-    int r_regionkey;
-    name_t r_name;
-    char r_comment[152];
-};
+    FIELD(ps_partkey,int)        \
+    FIELD(ps_suppkey,int)           \
+    FIELD(ps_availqty,int)             \
+    FIELD(ps_supplycost,double)              \
+    FIELD(ps_comment,Char<199>)
 
 #define RegionFields(FIELD) \
-    FIELD(r_regionkey) \
-    FIELD(r_name) \
-    FIELD(r_comment)
-
-struct Nation
-{
-    int n_nationkey;
-    name_t n_name;
-    int n_regionkey;
-    char n_comment[152];
-};
-
+    FIELD(r_regionkey,int)     \
+    FIELD(r_name,name_t)             \
+    FIELD(r_comment,Char<152>)
 
 #define NationFields(FIELD) \
-    FIELD(n_nationkey) \
-    FIELD(n_name) \
-    FIELD(n_regionkey) \
-    FIELD(n_comment)
+    FIELD(n_nationkey,int)     \
+    FIELD(n_name,name_t)             \
+    FIELD(n_regionkey,int)              \
+    FIELD(n_comment,Char<152>)
 
-
-struct Part
-{
-    int p_partkey;
-    char p_name[55];
-    char p_mfgr[25];
-    char p_brand[10];
-    char p_type[25];
-    int p_size;
-    char p_container[10];
-    double p_retailprice;
-    char p_comment[23];
-};
 
 #define PartFields(FIELD) \
-    FIELD(p_partkey) \
-    FIELD(p_name) \
-    FIELD(p_mfgr) \
-    FIELD(p_brand) \
-    FIELD(p_type) \
-    FIELD(p_size) \
-    FIELD(p_container) \
-    FIELD(p_retailprice) \
-    FIELD(p_comment) 
+    FIELD(p_partkey,int)     \
+    FIELD(p_name,Char<55>)           \
+    FIELD(p_mfgr,Char<25>)                   \
+    FIELD(p_brand,Char<10>)                          \
+    FIELD(p_type,Char<25>)                                   \
+    FIELD(p_size,int)                                           \
+    FIELD(p_container,Char<10>)                                         \
+    FIELD(p_retailprice,double)                                               \
+    FIELD(p_comment,Char<23>) 
 
 
-PACK(Lineitem)
-PACK(Orders)
-PACK(Customer)
-PACK(Supplier)
-PACK(Partsupp)
-PACK(Region)
-PACK(Nation)
-PACK(Part)
+#define HSTRUCT_FIELD(NAME,TYPE) TYPE NAME;
 
-UNPACK(Lineitem)
-UNPACK(Orders)
-UNPACK(Customer)
-UNPACK(Supplier)
-UNPACK(Partsupp)
-UNPACK(Region)
-UNPACK(Nation)
-UNPACK(Part)
+#define HORISONTAL(Class)                       \
+    struct Class {                              \
+        Class##Fields(VSTRUCT_FIELD)            \
+    }                                           \
+    PACK(Class)                                 \
+    UNPACK(Class)                               \
+    PARQUET_UNPACK(Lineitem)                       
 
-#if USE_PARQUET
-PARQUET_UNPACK(Lineitem)
-PARQUET_UNPACK(Orders)
-PARQUET_UNPACK(Customer)
-PARQUET_UNPACK(Supplier)
-PARQUET_UNPACK(Partsupp)
-PARQUET_UNPACK(Region)
-PARQUET_UNPACK(Nation)
-PARQUET_UNPACK(Part)
-#endif
+HORISONTAL(Lineitem);
+HORISONTAL(Part);
+HORISONTAL(Partsupp);
+HORISONTAL(Orders);
+HORISONTAL(Supplier);
+HORISONTAL(Customer);
+HORISONTAL(Nation);
+HORISONTAL(Region);
 
+
+
+
+#define VSTRUCT_FIELD(NAME,TYPE) TYPE* NAME;
+#define VSTRUCT_CONS(NAME,TYPE) NAME = new TYPE[size];
+#define VSTRUCT_ASSIGN(NAME,TYPE) NAME[used] = other.NAME;
+#define VSTRUCT_COPY(NAME,TYPE) NAME = other.NAME;
+#define VSTRUCT_DELETE(NAME,TYPE) delete[] NAME;
+#define VSTRUCT_EXTEND(NAME,TYPE) {             \
+    TYPE* newBuf = new TYPE[size];              \
+    for (size_t i = 0; i < used; i++) {         \
+        newBuf[i] = NAME[i];                    \
+    }                                           \
+    delete[] NAME;                              \
+    NAME = newBuf;                              \
+}
+
+#define VERTICAL(Class)                         \
+struct V##Class {                               \
+    Class##Fields(VSTRUCT_FIELD)                \
+    size_t used, size;                          \        
+    V##Class(size_t estimation) : used(0), size(estimation) { \
+        Class##Fields(VSTRUCT_CONS);            \
+    }                                           \
+    V##Class(V##Class const& other) : used(other.used), size(0) {   \
+        Class##Fields(VSTRUCT_COPY);            \
+    }                                           \
+    ~V##Class() {                               \
+        if (size != 0) {                        \
+            Class##Fields(VSTRUCT_DELETE);      \
+        }                                       \
+    }                                           \
+    void append(Class const& other) {           \
+        if (used == size) {                     \
+            size *= 2;                          \
+            Class##Fields(VSTRUCT_EXTEND);      \
+        }                                       \
+        Class##Fields(VSTRUCT_ASSIGN);          \
+        used += 1;                              \
+    }                                           \
+}
+
+VERTICAL(Lineitem);
+VERTICAL(Part);
+VERTICAL(Partsupp);
+VERTICAL(Orders);
+VERTICAL(Supplier);
+VERTICAL(Customer);
+VERTICAL(Nation);
+VERTICAL(Region);
+        
 #endif
