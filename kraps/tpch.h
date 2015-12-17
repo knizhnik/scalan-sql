@@ -138,7 +138,7 @@ HORISONTAL(Region)
 #define VERTICAL(Class)                         \
 struct V##Class {                               \
     Class##Fields(VSTRUCT_FIELD)                \
-    size_t used, size;                          \        
+    size_t used, size;                          \
     V##Class(size_t estimation) : used(0), size(estimation) { \
         Class##Fields(VSTRUCT_CONS);            \
     }                                           \
