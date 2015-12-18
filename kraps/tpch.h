@@ -96,11 +96,11 @@ typedef Char<10> shipmode_t;
     FIELD(p_comment,Char<23>) 
 
 
-#define HSTRUCT_FIELD(NAME,TYPE) TYPE NAME;
 
 
 #ifdef COLUMNAR_STORE
 
+#define HSTRUCT_FIELD(NAME,TYPE) TYPE NAME;
 #define VSTRUCT_FIELD(NAME,TYPE) TYPE* NAME;
 #define VSTRUCT_CONS(NAME,TYPE) NAME = new TYPE[size];
 #define VSTRUCT_ASSIGN(NAME,TYPE) NAME[used] = other.NAME;
@@ -115,12 +115,7 @@ typedef Char<10> shipmode_t;
     NAME = newBuf;                              \
 }
 
-#define STRUCT_GETTER(NAME,TYPE) struct {       \
-    operator TYPE() const {                                         \
-        Self* self = (Self*)((char*)this - (char*)&((Self*)0)->NAME);   \
-        return self->data->NAME[self->pos];     \
-    }                                           \
-} NAME;
+#define STRUCT_GETTER(NAME,TYPE) TYPE const& NAME() const { return data->NAME[pos]; }
 
 #define SCHEMA(Class)                           \
 struct H##Class {                               \
@@ -160,6 +155,8 @@ UNPACK(Class)                                   \
 PARQUET_UNPACK(Class)                       
 
 #else
+
+#define HSTRUCT_FIELD(NAME,TYPE) TYPE _##NAME; TYPE NAME() const { return _##NAME; }
 
 #define SCHEMA(Class)                           \
 struct Class {                                  \

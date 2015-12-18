@@ -73,6 +73,14 @@ struct Char
 {
     char body[size];
 
+    operator char const*() const { 
+        return body;
+    }
+
+    char const* cstr() const { 
+        return body;
+    }
+
     int compare(Char const& other) const
     {
         return strncmp(body, other.body, size);
