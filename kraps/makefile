@@ -15,14 +15,14 @@ JAVA_HOME?=/Library/Java/JavaVirtualMachines/jdk1.8.0_60.jdk/Contents/Home
 
 COMMON_FLAGS=-std=c++1y -g -pthread -fPIC -Wall 
 OPT_FLAGS=-O3
-DEFS=-DSHOW_HASH_STATISTIC -DCOLUMNAR_STORE
+#DEFS=-DSHOW_HASH_STATISTIC -DCOLUMNAR_STORE
 #DEFS=-DSHOW_HASH_STATISTIC -I ~/.nix-profile/include -DUSE_ZLIB -DCOLUMNAR_STORE
 #DEFS=-DUSE_MESSAGE_HANDLER -DSHOW_HASH_STATISTIC
 #DEFS=-DUSE_ZLIB -I $(HOME)/.nix-profile/include/
 #DEFS=-DUSE_LZH
 #DEFS=-DUSE_SIMDCOMP -I $(SIMDCOMP_HOME)/include
 #DEFS=-DUSE_ZLIB
-#DEFS=-Wno-unused-value -Wno-unused-variable -Wno-sign-compare -DUSE_ZLIB -DUSE_PARQUET -I $(PARQUET_CPP_HOME)/src -I $(PARQUET_CPP_HOME)/generated -I $(HADOOP_HOME)/include 
+DEFS=-Wno-unused-value -Wno-unused-variable -Wno-sign-compare -DUSE_ZLIB -DUSE_PARQUET -DCOLUMNAR_STORE -I $(PARQUET_CPP_HOME)/src -I $(PARQUET_CPP_HOME)/generated -I $(HADOOP_HOME)/include 
 
 #CPP=/usr/local/bin/g++-4.9  $(COMMON_FLAGS) $(OPT_FLAGS) $(DEFS)
 CPP=g++ $(COMMON_FLAGS) $(OPT_FLAGS) $(DEFS)
@@ -45,10 +45,10 @@ parquet.o: parquet.cpp rdd.h cluster.h
 	$(CPP) -c parquet.cpp
 
 tpch: tpch.o cluster.o sockio.o compress.o parquet.o 
-	$(CPP) -static -o tpch tpch.o cluster.o sockio.o compress.o -L$(HOME)/.nix-profile/lib -lz
+#	$(CPP) -static -o tpch tpch.o cluster.o sockio.o compress.o -L$(HOME)/.nix-profile/lib -lz
 #	$(CPP) -o tpch tpch.o cluster.o sockio.o compress.o -lz
 #	$(CPP) -o tpch tpch.o cluster.o sockio.o compress.o -L $(SIMDCOMP_HOME) -lsimdcomp 
-#	$(CPP) -o tpch tpch.o cluster.o sockio.o compress.o  parquet.o $(PARQUET_CPP_HOME)/build/libParquet.a $(PARQUET_CPP_HOME)/build/libParquetCompression.a $(PARQUET_CPP_HOME)/build/libThriftParquet.a $(PARQUET_CPP_HOME)/thirdparty/installed/lib/libsnappy.a  $(PARQUET_CPP_HOME)/thirdparty/installed/lib/liblz4.a /usr/local/lib/libthrift.a $(HADOOP_HOME)/lib/native/libhdfs.a -L/usr/lib/jvm/oracle-jdk-bin-1.8/jre/lib/amd64/server -lz -ljvm
+	$(CPP) -o tpch tpch.o cluster.o sockio.o compress.o  parquet.o $(PARQUET_CPP_HOME)/build/libParquet.a $(PARQUET_CPP_HOME)/build/libParquetCompression.a $(PARQUET_CPP_HOME)/build/libThriftParquet.a $(PARQUET_CPP_HOME)/thirdparty/installed/lib/libsnappy.a  $(PARQUET_CPP_HOME)/thirdparty/installed/lib/liblz4.a /usr/local/lib/libthrift.a $(HADOOP_HOME)/lib/native/libhdfs.a -L/usr/lib/jvm/oracle-jdk-bin-1.8/jre/lib/amd64/server -L/usr/lib/jvm/jdk1.8.0_60/jre/lib/amd64/server/ -lz -ljvm
 
 kraps: libkraps.so kraps.jar libkrapsrdd.so
 q1: libq1rdd.so q1rdd.jar

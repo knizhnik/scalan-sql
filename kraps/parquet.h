@@ -30,18 +30,20 @@ public:
     bool loadLocalFile(char const* dir, size_t partNo, bool& eof);
 
     template<class T>
-    void unpack(T& dst, size_t colNo)
-    {
-        return unpackParquet(dst, columns[colNo].reader, sizeof(T));
-    };
+    void unpack(T& dst, size_t colNo);
 
-    bool hasNext() const
+    bool moveNext()
     { 
-        return columns[0].reader->HasNext();
+        assert(columnPos[lastColumn] == currPos);
+        currPos += 1;
+        return columns[lastColumn].reader->HasNext();
     }
     
     FileMetaData metadata;
     vector<ParquetColumnReader> columns;
+    vector<size_t> columnPos;
+    size_t currPos;
+    size_t lastColumn;
 };
 
 template<class T>
@@ -49,6 +51,11 @@ class ParquetRoundRobinRDD : public RDD<T>
 {
   public:
     ParquetRoundRobinRDD(char* path) : dir(path), segno(Cluster::instance->nodeId), step(Cluster::instance->nNodes), nextPart(true) {}
+
+    virtual bool getNext(T& record) 
+    {
+        return next(record);
+    }
 
     bool next(T& record) {
         while (true) {
@@ -83,6 +90,11 @@ class ParquetLocalRDD : public RDD<T>
 {
   public:
     ParquetLocalRDD(char* path) : dir(path), segno(0), nextPart(true) {}
+
+    virtual bool getNext(T& record) 
+    {
+        return next(record);
+    }
 
     bool next(T& record) {
         while (true) {
@@ -121,6 +133,11 @@ class LazyParquetRoundRobinRDD : public RDD<T>
   public:
     LazyParquetRoundRobinRDD(char* path) : dir(path), segno(Cluster::instance->nodeId), step(Cluster::instance->nNodes), nextPart(true) {}
 
+    virtual bool getNext(T& record) 
+    {
+        return next(record);
+    }
+
     bool next(T& record) {
         while (true) {
             if (nextPart) { 
@@ -129,8 +146,9 @@ class LazyParquetRoundRobinRDD : public RDD<T>
                 }
                 nextPart = false;
             } 
-            if (reader.hasNext()) {
-  	        record.reader = &reader;
+            if (reader.moveNext()) {
+                record._reader = &reader;
+                record._mask = 0;
                 return true;
             } else { 
                 segno += step;
@@ -156,6 +174,11 @@ class LazyParquetLocalRDD : public RDD<T>
   public:
     LazyParquetLocalRDD(char* path) : dir(path), segno(0), nextPart(true) {}
 
+    virtual bool getNext(T& record) 
+    {
+        return next(record);
+    }
+
     bool next(T& record) {
         while (true) {
             if (nextPart) { 
@@ -169,8 +192,9 @@ class LazyParquetLocalRDD : public RDD<T>
                 }
                 nextPart = false;
             } 
-            if (reader.hasNext()) {
-  	        record.reader = &reader;
+            if (reader.moveNext()) {
+                record._reader = &reader;
+                record._mask = 0;
                 return true;
             } else { 
                 nextPart = true;
@@ -303,6 +327,15 @@ inline bool unpackParquet(char* dst, ColumnReader* reader, size_t size)
     return false;
 }
 
+template<class T>
+void ParquetReader::unpack(T& dst, size_t colNo)
+{
+    assert(columnPos[colNo] < currPos);
+    lastColumn = colNo;
+    do { 
+        unpackParquet(dst, columns[colNo].reader, sizeof(T));
+    } while (++columnPos[colNo] < currPos);
+}
 
     
 #endif

@@ -149,7 +149,7 @@ struct Class {                                  \
     Class##Fields(STRUCT_GETTER)                \
 };                                              \
 PACK(Class)                                     \
-UNPACK(Class)                                   \
+PARQUET_UNPACK(Class)                           \
 PARQUET_LAZY_UNPACK(Class)                       
 
 #else

@@ -65,119 +65,6 @@ struct Join : Outer, Inner
     }
 };
 
-/**
- * Fixed size string 
- */
-template<size_t size>
-struct Char
-{
-    char body[size];
-
-    operator char const*() const { 
-        return body;
-    }
-
-    char const* cstr() const { 
-        return body;
-    }
-
-    int compare(Char const& other) const
-    {
-        return strncmp(body, other.body, size);
-    }
-
-    int compare(char const* other) const
-    {
-        return strncmp(body, other, size);
-    }
-
-    bool operator<=(Char const& other) const
-    {
-        return compare(other)<= 0;
-    }
-    bool operator<(Char const& other) const
-    {
-        return compare(other)< 0;
-    }
-    bool operator>=(Char const& other) const
-    {
-        return compare(other)>= 0;
-    }
-    bool operator>(Char const& other) const
-    {
-        return compare(other)> 0;
-    }
-    bool operator==(Char const& other) const
-    {
-        return compare(other)== 0;
-    }
-    bool operator!=(Char const& other) const
-    {
-        return compare(other) != 0;
-    }
-    
-    bool operator<=(char const* other) const
-    {
-        return compare(other)<= 0;
-    }
-    bool operator<(char const* other) const
-    {
-        return compare(other)< 0;
-    }
-    bool operator>=(char const* other) const
-    {
-        return compare(other)>= 0;
-    }
-    bool operator>(char const* other) const
-    {
-        return compare(other)> 0;
-    }
-    bool operator==(char const* other) const
-    {
-        return compare(other)== 0;
-    }
-    bool operator!=(char const* other) const
-    {
-        return compare(other)!= 0;
-    }
-
-    friend size_t hashCode(Char const& key)
-    {
-        return ::hashCode(key.body);
-    }
-    
-    friend void print(Char const& key, FILE* out) 
-    {
-        fprintf(out, "%.*s", (int)size, key.body);
-    }
-    friend size_t unpack(Char& dst, char const* src)
-    {
-        return strcopy(dst.body, src, size);
-    }
-
-    friend size_t pack(Char const& src, char* dst)
-    {
-        return strcopy(dst, src.body, size);
-    }
-#if USE_PARQUET
-    friend bool unpackParquet(Char const& dst, ColumnReader* reader, size_t)
-    {
-        if (reader->HasNext()) {
-	    int def_level, rep_level;
-	    ByteArray arr = reader->GetByteArray(&def_level, &rep_level);
-	    assert(def_level >= rep_level);
-	    assert(arr.len <= size);
-	    memcpy(dst.body, arr.ptr, arr.len);
-	    if (arr.len < size) {
-	        dst[arr.len] = '\0';
-	    }
-	    return true;
-	}
-	return false;
-    }
-#endif
-      
-};
 
 /**
  * Print functions for scalars
@@ -2181,5 +2068,118 @@ inline auto shuffleSemijoin(ORdd* outer, IRdd* inner, size_t estimation = UNKNOW
     size_t nFiles = (estimation + cluster->inmemJoinThreshold - 1) / cluster->inmemJoinThreshold;
     return new ShuffleSemiJoinRDD<O,I,K,outerKey,innerKey,ORdd,IRdd>(outer, inner, nFiles, estimation/nFiles, kind);
 }
+
+/**
+ * Fixed size string 
+ */
+template<size_t size>
+struct Char
+{
+    char body[size];
+
+    operator char const*() const { 
+        return body;
+    }
+
+    char const* cstr() const { 
+        return body;
+    }
+
+    int compare(Char const& other) const
+    {
+        return strncmp(body, other.body, size);
+    }
+
+    int compare(char const* other) const
+    {
+        return strncmp(body, other, size);
+    }
+
+    bool operator<=(Char const& other) const
+    {
+        return compare(other)<= 0;
+    }
+    bool operator<(Char const& other) const
+    {
+        return compare(other)< 0;
+    }
+    bool operator>=(Char const& other) const
+    {
+        return compare(other)>= 0;
+    }
+    bool operator>(Char const& other) const
+    {
+        return compare(other)> 0;
+    }
+    bool operator==(Char const& other) const
+    {
+        return compare(other)== 0;
+    }
+    bool operator!=(Char const& other) const
+    {
+        return compare(other) != 0;
+    }
+    
+    bool operator<=(char const* other) const
+    {
+        return compare(other)<= 0;
+    }
+    bool operator<(char const* other) const
+    {
+        return compare(other)< 0;
+    }
+    bool operator>=(char const* other) const
+    {
+        return compare(other)>= 0;
+    }
+    bool operator>(char const* other) const
+    {
+        return compare(other)> 0;
+    }
+    bool operator==(char const* other) const
+    {
+        return compare(other)== 0;
+    }
+    bool operator!=(char const* other) const
+    {
+        return compare(other)!= 0;
+    }
+
+    friend size_t hashCode(Char const& key)
+    {
+        return ::hashCode(key.body);
+    }
+    
+    friend void print(Char const& key, FILE* out) 
+    {
+        fprintf(out, "%.*s", (int)size, key.body);
+    }
+    friend size_t unpack(Char& dst, char const* src)
+    {
+        return strcopy(dst.body, src, size);
+    }
+
+    friend size_t pack(Char const& src, char* dst)
+    {
+        return strcopy(dst, src.body, size);
+    }
+#if USE_PARQUET
+    friend bool unpackParquet(Char& dst, parquet_cpp::ColumnReader* reader, size_t)
+    {
+        if (reader->HasNext()) {
+            int def_level, rep_level;
+            ByteArray arr = reader->GetByteArray(&def_level, &rep_level);
+            assert(def_level >= rep_level);
+            assert(arr.len <= size);
+            memcpy(dst.body, arr.ptr, arr.len);
+            if (arr.len < size) {
+                dst.body[arr.len] = '\0';
+            }
+            return true;
+        }
+        return false;
+    }
+#endif
+};
 
 #endif

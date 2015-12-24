@@ -51,17 +51,17 @@ class ParquetFile {
             *path = '/';
         }
         char*** hosts = hdfsGetHosts(fs, path, 0, 0);//FOOTER_SIZE); 
-	if (hosts == NULL) { 
-	    eof = true;
-	    return false;
-	}
-	eof = false;
-	printf("%s -> %s\n", hosts[0][0], url);
-	bool my = Cluster::instance->isLocalNode(hosts[0][0]);
+        if (hosts == NULL) { 
+            eof = true;
+            return false;
+        }
+        eof = false;
+        printf("%s -> %s\n", hosts[0][0], url);
+        bool my = Cluster::instance->isLocalNode(hosts[0][0]);
         hdfsFreeHosts(hosts);
         return my;
     }
-
+    
     bool exists() { 
         return hf != NULL || f != NULL;
     }
@@ -130,15 +130,19 @@ bool GetFileMetadata(ParquetFile& file, FileMetaData* metadata)
         return false;
     }
 
-    uint8_t footer_buffer[FOOTER_SIZE];
+    union { 
+        uint8_t  body[FOOTER_SIZE];
+        uint32_t size;
+    } footer_buffer;
+
     file.seek(file_len - FOOTER_SIZE);
-    file.read(footer_buffer, FOOTER_SIZE);
-    if (memcmp(footer_buffer + 4, PARQUET_MAGIC, 4) != 0) {
+    file.read(footer_buffer.body, FOOTER_SIZE);
+    if (memcmp(footer_buffer.body + 4, PARQUET_MAGIC, 4) != 0) {
         cerr << "Invalid parquet file. Corrupt footer." << endl;
         return false;
     }
 
-    uint32_t metadata_len = *reinterpret_cast<uint32_t*>(footer_buffer);
+    uint32_t metadata_len = footer_buffer.size;
     size_t metadata_start = file_len - FOOTER_SIZE - metadata_len;
     if (metadata_start < 0) {
         cerr << "Invalid parquet file. File is less than file metadata size." << endl;
@@ -173,7 +177,11 @@ bool ParquetReader::loadFile(char const* dir, size_t partNo)
     }
     columns.resize(0); // do cleanup
     columns.resize(nColumns);
+    columnPos.resize(0);
+    columnPos.resize(nColumns);
+    currPos = 0;
     nColumns = 0;
+    lastColumn = 0;
     
     for (size_t i = 0; i < metadata.row_groups.size(); ++i) {
         const RowGroup& row_group = metadata.row_groups[i];
@@ -207,9 +215,9 @@ bool ParquetReader::loadLocalFile(char const* dir, size_t partNo, bool& eof)
     size_t nHosts = cluster->nNodes / nExecutors;
     if (ParquetFile::isLocal(url, eof) && cluster->nodeId / nHosts == partNo % nExecutors) { 
         printf("Node %ld loads file %s\n", cluster->nodeId,url);
-	fflush(stdout);
-	
-	ParquetFile file(url);
+        fflush(stdout);
+        
+        ParquetFile file(url);
         if (!GetFileMetadata(file, &metadata)) { 
             return false;
         }
@@ -220,7 +228,11 @@ bool ParquetReader::loadLocalFile(char const* dir, size_t partNo, bool& eof)
         }
         columns.resize(0); // do cleanup
         columns.resize(nColumns);
+        columnPos.resize(0);
+        columnPos.resize(nColumns);
+        currPos = 0;
         nColumns = 0;
+        lastColumn = 0;
         
         for (size_t i = 0; i < metadata.row_groups.size(); ++i) {
             const RowGroup& row_group = metadata.row_groups[i];
@@ -242,7 +254,7 @@ bool ParquetReader::loadLocalFile(char const* dir, size_t partNo, bool& eof)
                 cr.reader = new ColumnReader(&col.meta_data, &metadata.schema[c + 1], cr.stream);
             }
         }
-	return true;
+        return true;
     }
     return false;
 }
