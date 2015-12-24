@@ -85,8 +85,20 @@ inline bool unpackParquet(Class& dst, ParquetReader& reader)   \
     size_t i = 0;                                   \
     return Class##Fields(PARQUET_FIELD) true;       \
 }
+#define ENUM_FIELD(NAME,TYPE) __field_##NAME,
+#define PARQUET_GETTER(NAME, TYPE) TYPE NAME() const { TYPE dst; reader->unpack(dst,__field_##NAME); return dst; }
+#define PARQUET_LAZY_UNPACK(Class)                  \
+struct P##Class {				    \
+    ParquetReader* reader;			    \
+    enum {					    \
+        Class##Fields(ENUM_FIELD)		    \
+        __end_of_fields				    \
+    };						    \
+    Class##Fields(PARQUET_GETTER)		    \
+};
 #else
 #define PARQUET_UNPACK(Class)  
+#define PARQUET_LAZY_UNPACK(Class)                 
 #endif
 
 #endif

@@ -102,20 +102,19 @@ typedef Char<10> shipmode_t;
 
 #define HSTRUCT_FIELD(NAME,TYPE) TYPE NAME;
 #define VSTRUCT_FIELD(NAME,TYPE) TYPE* NAME;
-#define VSTRUCT_CONS(NAME,TYPE) NAME = new TYPE[size];
-#define VSTRUCT_ASSIGN(NAME,TYPE) NAME[used] = other.NAME;
+#define VSTRUCT_CONS(NAME,TYPE) NAME = new TYPE[_size];
+#define VSTRUCT_ASSIGN(NAME,TYPE) NAME[_used] = other.NAME;
 #define VSTRUCT_COPY(NAME,TYPE) NAME = other.NAME;
 #define VSTRUCT_DELETE(NAME,TYPE) delete[] NAME;
-#define VSTRUCT_EXTEND(NAME,TYPE) {             \
-    TYPE* newBuf = new TYPE[size];              \
-    for (size_t i = 0; i < used; i++) {         \
-        newBuf[i] = NAME[i];                    \
-    }                                           \
-    delete[] NAME;                              \
-    NAME = newBuf;                              \
+#define VSTRUCT_EXTEND(NAME,TYPE) {            \
+    TYPE* _new = new TYPE[_size];              \
+    for (size_t _i = 0; _i < _used; _i++) {    \
+        _new[_i] = NAME[_i];                   \
+    }                                          \
+    delete[] NAME;                             \
+    NAME = _new;                               \
 }
-
-#define STRUCT_GETTER(NAME,TYPE) TYPE const& NAME() const { return data->NAME[pos]; }
+#define STRUCT_GETTER(NAME,TYPE) TYPE const& NAME() const { return _data->NAME[_pos]; }
 
 #define SCHEMA(Class)                           \
 struct H##Class {                               \
@@ -123,36 +122,35 @@ struct H##Class {                               \
 };                                              \
 struct V##Class {                               \
     Class##Fields(VSTRUCT_FIELD)                \
-    size_t used, size;                          \
-    V##Class(size_t estimation) : used(0), size(estimation) { \
+    size_t _used, _size;                        \
+    V##Class(size_t estimation) : _used(0), _size(estimation) { \
         Class##Fields(VSTRUCT_CONS);            \
     }                                           \
-    V##Class(V##Class const& other) : used(other.used), size(0) {   \
+    V##Class(V##Class const& other) : _used(other._used), _size(0) {   \
         Class##Fields(VSTRUCT_COPY);            \
     }                                           \
     ~V##Class() {                               \
-        if (size != 0) {                        \
+        if (_size != 0) {                       \
             Class##Fields(VSTRUCT_DELETE);      \
         }                                       \
     }                                           \
     void append(H##Class const& other) {        \
-        if (used == size) {                     \
-            size *= 2;                          \
+        if (_used == _size) {                   \
+            _size *= 2;                         \
             Class##Fields(VSTRUCT_EXTEND);      \
         }                                       \
         Class##Fields(VSTRUCT_ASSIGN);          \
-        used += 1;                              \
+        _used += 1;                             \
     }                                           \
 };                                              \
 struct Class {                                  \
-    V##Class* data;                             \
-    size_t pos;                                 \
-    typedef Class Self;                         \
+    V##Class* _data;                            \
+    size_t _pos;                                \
     Class##Fields(STRUCT_GETTER)                \
 };                                              \
 PACK(Class)                                     \
 UNPACK(Class)                                   \
-PARQUET_UNPACK(Class)                       
+PARQUET_LAZY_UNPACK(Class)                       
 
 #else
 

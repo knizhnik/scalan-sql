@@ -29,6 +29,17 @@ public:
     bool loadFile(char const* dir, size_t partNo);
     bool loadLocalFile(char const* dir, size_t partNo, bool& eof);
 
+    template<class T>
+    void unpack(T& dst, size_t colNo)
+    {
+        return unpackParquet(dst, columns[colNo].reader, sizeof(T));
+    };
+
+    bool hasNext() const
+    { 
+        return columns[0].reader->HasNext();
+    }
+    
     FileMetaData metadata;
     vector<ParquetColumnReader> columns;
 };
@@ -95,6 +106,79 @@ class ParquetLocalRDD : public RDD<T>
     }
 
     ~ParquetLocalRDD() {
+        delete[] dir;
+    }
+  private:
+    ParquetReader reader;
+    char* dir;
+    size_t segno;
+    bool nextPart;
+};
+
+template<class T>
+class LazyParquetRoundRobinRDD : public RDD<T>
+{
+  public:
+    LazyParquetRoundRobinRDD(char* path) : dir(path), segno(Cluster::instance->nodeId), step(Cluster::instance->nNodes), nextPart(true) {}
+
+    bool next(T& record) {
+        while (true) {
+            if (nextPart) { 
+                if (!reader.loadFile(dir, segno)) { 
+                    return false;
+                }
+                nextPart = false;
+            } 
+            if (reader.hasNext()) {
+  	        record.reader = &reader;
+                return true;
+            } else { 
+                segno += step;
+                nextPart = true;
+            }
+        }
+    }
+
+    ~LazyParquetRoundRobinRDD() {
+        delete[] dir;
+    }
+  private:
+    ParquetReader reader;
+    char* dir;
+    size_t segno;
+    size_t step;
+    bool nextPart;
+};
+
+template<class T>
+class LazyParquetLocalRDD : public RDD<T>
+{
+  public:
+    LazyParquetLocalRDD(char* path) : dir(path), segno(0), nextPart(true) {}
+
+    bool next(T& record) {
+        while (true) {
+            if (nextPart) { 
+                bool eof;
+                if (!reader.loadLocalFile(dir, segno++, eof)) { 
+                    if (eof) { 
+                        return false;
+                    } else { 
+                        continue;
+                    }
+                }
+                nextPart = false;
+            } 
+            if (reader.hasNext()) {
+  	        record.reader = &reader;
+                return true;
+            } else { 
+                nextPart = true;
+            }
+        }
+    }
+
+    ~LazyParquetLocalRDD() {
         delete[] dir;
     }
   private:

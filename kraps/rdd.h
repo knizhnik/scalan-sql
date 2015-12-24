@@ -159,6 +159,24 @@ struct Char
     {
         return strcopy(dst, src.body, size);
     }
+#if USE_PARQUET
+    friend bool unpackParquet(Char const& dst, ColumnReader* reader, size_t)
+    {
+        if (reader->HasNext()) {
+	    int def_level, rep_level;
+	    ByteArray arr = reader->GetByteArray(&def_level, &rep_level);
+	    assert(def_level >= rep_level);
+	    assert(arr.len <= size);
+	    memcpy(dst.body, arr.ptr, arr.len);
+	    if (arr.len < size) {
+	        dst[arr.len] = '\0';
+	    }
+	    return true;
+	}
+	return false;
+    }
+#endif
+      
 };
 
 /**
@@ -1914,11 +1932,11 @@ class ColumnarRDD : public RDD<V>
         delete input;
     }
     bool next(V& record) { 
-        if (curr == cache.used) { 
+        if (curr == cache._used) { 
             return false;
         }
-        record.data = &cache;
-        record.pos = curr++;
+        record._data = &cache;
+        record._pos = curr++;
         return true;
     }
     bool getNext(V& record) override { 
