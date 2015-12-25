@@ -29,37 +29,11 @@ class KrapsCluster
   public:
     Cluster* cluster;
     char** nodes;
-    int executorId;
-    pthread_mutex_t mutex;
-
-    int getExecutorId()
-    {
-#ifdef SMP_SUPPORT    
-        pthread_mutex_lock(&mutex);
-        int id = ++executorId;
-        pthread_mutex_unlock(&mutex);
-        return id;
-#else
-        return 1;
-#endif
-    }
 
   public:
-    KrapsCluster() : executorId(0) 
-    {
-        pthread_mutex_init(&mutex, NULL);
-    }
-     
-    ~KrapsCluster() 
-    {
-        pthread_mutex_destroy(&mutex);
-    }
-
-    void start(JNIEnv* env, jobjectArray hosts, jint nCores) {
-        int nHosts = env->GetArrayLength(hosts);
-        int nNodes = nHosts*nCores;
+    void start(JNIEnv* env, jobjectArray hosts, jint nodeId) {
+        int nNodes = env->GetArrayLength(hosts);
         nodes = new char*[nNodes];
-        int nodeId = -1;
         int id = getExecutorId();
         for (int i = 0; i < nNodes; i++) { 
             jstring host = (jstring)env->GetObjectArrayElement(hosts, i % nHosts);
@@ -67,13 +41,7 @@ class KrapsCluster
             nodes[i] = new char[strlen(hostName) + 8];
             sprintf(nodes[i], "%s:%d", hostName, 5001 + i); 
             env->ReleaseStringUTFChars(host, hostName);
-            if (Socket::isLocalHost(nodes[i])) {
-                if (--id == 0) { 
-                    nodeId = i;
-                }
-            }
         }
-        assert(nodeId >= 0);
         cluster = new Cluster(nodeId, nNodes, nodes);
         cluster->userData = env;
     }

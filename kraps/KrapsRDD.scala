@@ -42,17 +42,17 @@ object KrapsCluster {
   def configure(nWorkers: Int): String = {
     val server = new ServerSocket(port)
     val address = server.getInetAddress().getHostName() + ":" + port
-    port += 1
     val t = new Thread(new Runnable {
       def run() {
         val sockets = Array.tabulate(nWorkers)(i => server.accept())
         val hosts = sockets.map(s => s.getInetAddress().getHostName())
-        sockets.map(s => {      
-          val out = new DataOutputStream(s.getOutputStream())
+        for (i <- 0 until sockets.size) { 
+          val out = new DataOutputStream(sockets(i).getOutputStream())
+          out.writeInt(i)
           out.writeInt(hosts.size)
-          hosts.map(h => out.writeUTF(h))
-          s.close()
-        })
+          hosts.map(h => out.write(out.writeUTF(h))
+          out.close()
+        }
         server.close()
       }
     })
@@ -66,12 +66,14 @@ object KrapsCluster {
      val port = Integer.parseInt(driver.substring(col+1))
      val s = new Socket(InetAddress.getByName(host), port)
      val in = new DataInputStream(s.getInputStream())
-     val hosts = Array.tabulate(in.readInt())(i => in.readUTF())
+     val nodeId = in.readInt()
+     val nNodes = in.readInt()
+     val hosts = Array.tabulate(nNodes)(i => in.readUTF())
      s.close()
-     start(hosts, 1)
+     start(hosts, nodeId)
   }
   
-  @native def start(hosts: Array[String], nCores: Int): Long
+  @native def start(hosts: Array[String], nodeId: Int): Long
   @native def stop(cluster:Long): Unit
 }
 
