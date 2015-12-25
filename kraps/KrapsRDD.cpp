@@ -107,10 +107,10 @@ JNIEXPORT jlong Java_kraps_KrapsRDD_nextRow(JNIEnv* env, jobject self, jlong kra
     return 0;
 }
 
-JNIEXPORT jlong Java_kraps_KrapsCluster_00024_start(JNIEnv* env, jobject self, jobjectArray hosts, jint nCores)
+JNIEXPORT jlong Java_kraps_KrapsCluster_00024_start(JNIEnv* env, jobject self, jobjectArray hosts, jint nodeId)
 {
     KrapsCluster* cluster = new KrapsCluster();
-    cluster->start(env, hosts, nCores);
+    cluster->start(env, hosts, nodeId);
     return (jlong)(size_t)cluster;
 }
 
