@@ -34,9 +34,8 @@ class KrapsCluster
     void start(JNIEnv* env, jobjectArray hosts, jint nodeId) {
         int nNodes = env->GetArrayLength(hosts);
         nodes = new char*[nNodes];
-        int id = getExecutorId();
         for (int i = 0; i < nNodes; i++) { 
-            jstring host = (jstring)env->GetObjectArrayElement(hosts, i % nHosts);
+            jstring host = (jstring)env->GetObjectArrayElement(hosts, i % nNodes);
             char const* hostName = env->GetStringUTFChars(host, 0);
             nodes[i] = new char[strlen(hostName) + 8];
             sprintf(nodes[i], "%s:%d", hostName, 5001 + i); 
