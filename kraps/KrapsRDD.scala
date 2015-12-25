@@ -50,7 +50,7 @@ object KrapsCluster {
           val out = new DataOutputStream(sockets(i).getOutputStream())
           out.writeInt(i)
           out.writeInt(hosts.size)
-          hosts.map(h => out.write(out.writeUTF(h))
+          hosts.foreach(h => out.writeUTF(h))
           out.close()
         }
         server.close()
