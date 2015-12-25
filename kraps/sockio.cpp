@@ -55,11 +55,11 @@ Socket* Socket::createGlobal(int port, size_t listenQueueSize)
     setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, (char*)&on, sizeof on);
 
     if (bind(sd, (sockaddr*)&sock, sizeof(sock)) < 0) {
-        throw SocketError("Failed to bind socket");
-    }    
+        throw SocketError("Failed to bind global socket");
+    }
     if (listen(sd, listenQueueSize) < 0) {
-        throw SocketError("Failed to listen socket");
-    }            
+        throw SocketError("Failed to listen global socket");
+    }
     setGlobalSocketOptions(sd);
     return new Socket(sd, false);
 }
@@ -71,15 +71,15 @@ Socket* Socket::createLocal(int port, size_t listenQueueSize)
     size_t len = ((char*)sock.sa_data - (char*)&sock) + sprintf(sock.sa_data, "%sp%u", unixSocketDir, port);
     unlink(sock.sa_data); /* remove file if existed */
     int sd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (sd < 0) { 
+    if (sd < 0) {
         throw SocketError("Failed to create local socket");
-    }       
+    }
     if (bind(sd, &sock, len) < 0) {
-        throw SocketError("Failed to bind socket");
-    }    
+        throw SocketError("Failed to bind local socket");
+    }
     if (listen(sd, listenQueueSize) < 0) {
-        throw SocketError("Failed to listen socket");
-    }            
+        throw SocketError("Failed to listen local socket");
+    }
     return new Socket(sd, true);
 }
 
