@@ -22,7 +22,7 @@ CPP=g++ -pthread -fPIC -O3 -g -Wall -DUSE_ZLIB -I $(HOME)/.nix-profile/include/
 #CPP=g++ -pthread -fPIC -O3 -g -Wall -DUSE_ZLIB
 #CPP=g++ -pthread -fPIC -O0 -g -Wall -Wno-unused-value -Wno-unused-variable -Wno-sign-compare -DUSE_ZLIB -DUSE_PARQUET -I $(PARQUET_CPP_HOME)/src -I $(PARQUET_CPP_HOME)/generated -I $(HADOOP_HOME)/include 
 
-JNI_INCLUDES = -I$(JAVA_HOME)/include -I$(JAVA_HOME)/include/linux -I$(JAVA_HOME)/include/darwin -I/usr/java/default/include -I/usr/java/default/include/linux -I/usr/java/include -I$(JAVA_HOME)/include -I$(JAVA_HOME)/include/linux -I/usr/lib/jvm/oracle-jdk-bin-1.8/include
+JNI_INCLUDES = -I$(JAVA_HOME)/include -I$(JAVA_HOME)/include/linux -I$(JAVA_HOME)/include/darwin -I/usr/java/default/include -I/usr/java/default/include/linux -I/usr/java/include -I$(JAVA_HOME)/include -I$(JAVA_HOME)/include/linux -I/usr/lib/jvm/oracle-jdk-bin-1.8/include -I/usr/lib/jvm/jdk1.8.0_60/include -I/usr/lib/jvm/jdk1.8.0_60/include/linux
 
 tpch.o: tpch.cpp rdd.h cluster.h tpch.h sync.h sockio.h
 	$(CPP) -c tpch.cpp
