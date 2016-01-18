@@ -20,6 +20,30 @@ class RowIterator(
   var iter: Iterator[InternalRow] = null
   var i = index
 
+  def nextTile(row: Long, tileSize: Int): Int = {
+    var j = 0
+    var done = false
+    while (j != tileSize && !done) {
+      while ((iter == null || !iter.hasNext) && i < partitions.length) {
+        iter = input.compute(partitions(i), context)
+        partitions(i) = null
+        i = i + nNodes
+      }
+      if (iter != null && iter.hasNext) {
+        val rowSize = serialize(row, iter.next)
+        if (rowSize != 0) {
+          row += rowSize
+          j += 1	  
+      	} else {
+          done = true
+	    }
+      } else {
+        done = true
+      }
+    }
+    j
+  }
+  
   def next(row: Long): Boolean = {
     while ((iter == null || !iter.hasNext) && i < partitions.length) {
       iter = input.compute(partitions(i), context)
