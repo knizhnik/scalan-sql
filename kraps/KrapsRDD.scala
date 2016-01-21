@@ -102,7 +102,7 @@ object KrapsCluster {
       val hosts = Array.tabulate(nNodes)(i => in.readUTF())
       s.close()
       cluster = start(hosts, nodeId)
-	  clusterMap(Thread.currentThread(), cluster)
+	  clusterMap(Thread.currentThread()) = cluster
     }
     cluster
   }
