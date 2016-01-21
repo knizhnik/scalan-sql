@@ -7,6 +7,7 @@ import java.net._
 import java.io._
 
 import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable.Map
 import scala.annotation.meta.param
 
 class RowIterator(
@@ -102,7 +103,7 @@ object KrapsCluster {
       val hosts = Array.tabulate(nNodes)(i => in.readUTF())
       s.close()
       cluster = start(hosts, nodeId)
-	  clusterMap(Thread.currentThread()) = cluster
+	  clusterMap.put(Thread.currentThread(), cluster)
     }
     cluster
   }
