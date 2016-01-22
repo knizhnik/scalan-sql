@@ -7,6 +7,7 @@ import java.net._
 import java.io._
 
 import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable.Map
 import scala.annotation.meta.param
 
 class RowIterator(
@@ -63,7 +64,7 @@ case class CombinePartition(index: Int, parts: Array[Array[Partition]]) extends 
 object KrapsCluster {
   var port = 54321
   var masterAddress:String = null
-  var cluster:Long = 0
+  val clusterMap = new Map[Thread,Long]
 
   def configure(nWorkers: Int): String = {
     if (masterAddress == null) {
@@ -90,6 +91,7 @@ object KrapsCluster {
   }
  
   def start(driver: String): Long = {
+    var cluster = clusterMap.getOrElse(0)
     if (cluster == 0) {     
       val col = driver.indexOf(':')
       val host = driver.substring(0, col)
@@ -101,12 +103,15 @@ object KrapsCluster {
       val hosts = Array.tabulate(nNodes)(i => in.readUTF())
       s.close()
       cluster = start(hosts, nodeId)
+	  clusterMap.put(Thread.currentThread(), cluster)
     }
     cluster
   }
 
   def stop(): Unit = {
-    stop(cluster)
+    for (cluster <- clusterMap.values) {
+      stop(cluster)
+    }
   }
   
   @native def start(hosts: Array[String], nodeId: Int): Long
