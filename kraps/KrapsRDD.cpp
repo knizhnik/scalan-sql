@@ -42,7 +42,7 @@ class KrapsCluster
             env->ReleaseStringUTFChars(host, hostName);
         }
         cluster = new Cluster(nodeId, nNodes, nodes);
-        cluster->userData = env;
+        cluster->userData = NULL;
     }
 
     void stop()
@@ -81,7 +81,9 @@ JNIEXPORT jlong Java_kraps_KrapsRDD_createIterator(JNIEnv* env, jobject self, jl
     if (cluster == NULL) { 
         cluster = ((KrapsCluster*)kraps)->cluster;
         Cluster::instance.set(cluster);
-    }
+    } else {
+		assert(cluster == ((KrapsCluster*)kraps)->cluster);
+	}
     cluster->userData = &ctx;
 
     return (jlong)(size_t)new KrapsRDD(dll, constructor(env));

@@ -85,6 +85,7 @@ class SparkRDD : public RDD<T>
     {
         jclass rowIteratorClass = (jclass)env->FindClass("kraps/RowIterator");
         nextTile = env->GetMethodID(rowIteratorClass, "nextTile", "(JI)I");
+		assert(nextTile);
     } 
     ~SparkRDD() {
         #ifdef MEASURE_SPARK_TIME
