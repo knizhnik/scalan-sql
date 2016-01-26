@@ -16,6 +16,14 @@
 #include <errno.h>
 #include "sockio.h"
  
+#ifndef USE_EPOLL
+#define USE_EPOLL 1
+#endif
+
+#if USE_EPOLL
+#include <sys/epoll.h>
+#endif
+
 char const* Socket::unixSocketDir = "/tmp/";
 
 static void setGlobalSocketOptions(int sd)
@@ -226,7 +234,28 @@ Socket* Socket::accept()
 Socket* Socket::select(size_t nSockets, Socket** sockets)
 {
     static size_t rr = 0;
+	int rc;
     while (true) { 
+#if USE_EPOLL
+        struct epoll_event event;
+		event.events = EPOLLIN;
+		int epollfd = epoll_create(1);
+		assert(epollfd >= 0);			
+        for (size_t i = 0; i < nSockets; i++) { 
+            if (sockets[i] != NULL) {
+				event.data.ptr = (void*)sockets[i];
+				rc = epoll_ctl(epollfd, EPOLL_CTL_ADD, sockets[i]->sd, &event);
+				assert(rc == 0);
+			}
+		}
+        rc = epoll_wait(epollfd, &event, 1, -1);        
+		close(epollfd);
+        if (rc < 0) { 
+			throw SocketError("Failed to select socket");
+        } else if (rc != 0) {                         
+			return (Socket*)event.data.ptr;
+		}
+#else
         fd_set events;
         FD_ZERO(&events);
         int max_sd = 0;
@@ -241,7 +270,7 @@ Socket* Socket::select(size_t nSockets, Socket** sockets)
         }
         int rc = ::select(max_sd+1, &events, NULL, NULL, NULL);
         if (rc < 0) { 
-            if (rc != EINTR) {
+            if (errno != EINTR) {
                 throw SocketError("Failed to select socket");
             }
         } else {                         
@@ -253,6 +282,7 @@ Socket* Socket::select(size_t nSockets, Socket** sockets)
                 }
             }
         }
+#endif
     }
 }
 
