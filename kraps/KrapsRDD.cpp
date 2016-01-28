@@ -63,9 +63,6 @@ class KrapsCluster
 extern "C" {
 
 
-JNIEXPORT
-JavaVM* 
-
 JNIEXPORT jint JNICALL
 JNI_OnLoad(JavaVM *vm, void *reserved)
 {
