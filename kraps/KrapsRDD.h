@@ -29,6 +29,8 @@ struct JavaContext
     JavaContext(JNIEnv* e, jobjectArray i) : env(e), inputs(i) {}
 };
 
+extern JavaVM* jvm;
+
 inline time_t getCurrentTime()
 {
     struct timeval tv;
@@ -47,6 +49,7 @@ class SparkRDD : public RDD<T>
     T tile[TILE_SIZE];
     int size;
     int used;
+    ThreadLocal<JNIEnv> context;
  public:
     /**
      * Get next row
@@ -59,16 +62,21 @@ class SparkRDD : public RDD<T>
             #ifdef MEASURE_SPARK_TIME
             time_t start = getCurrentTime();
             #endif
+            JNIEnv* env = context.get();
+            if (env == NULL) {
+                jvm->AttachCurrentThread((void**)&env, NULL);
+            }
             JavaContext* ctx = (JavaContext*)Cluster::instance->userData;
-            jobject input = ctx->env->GetObjectArrayElement(ctx->inputs, inputNo);
-            size = ctx->env->CallIntMethod(input, nextTile, (jlong)(size_t)tile, TILE_SIZE);
+            jobject input = env->GetObjectArrayElement(ctx->inputs, inputNo);
+            size = env->CallIntMethod(input, nextTile, (jlong)(size_t)tile, TILE_SIZE);
             used = 0;
-            ctx->env->DeleteLocalRef(input);
+            env->DeleteLocalRef(input);
             #ifdef MEASURE_SPARK_TIME
             elapsed += getCurrentTime() - start;
             calls += 1;
             #endif
             if (size == 0) {
+                jvm->DetachCurrentThread();                
                 return false;
             }
         }

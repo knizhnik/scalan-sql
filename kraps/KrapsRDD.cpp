@@ -7,6 +7,8 @@
 
 typedef KrapsIterator* (*iterator_constructor_t)(JNIEnv* env);
 
+JavaVM* jvm;
+
 struct KrapsRDD 
 {
     void* dll;
@@ -56,6 +58,14 @@ class KrapsCluster
 };
 
 extern "C" {
+
+JNIEXPORT jint JNICALL
+JNI_OnLoad(JavaVM *vm, void *reserved)
+{
+    jvm = vm;
+    return JNI_VERSION_1_2;
+}
+
 
 JNIEXPORT jlong Java_kraps_KrapsRDD_createIterator(JNIEnv* env, jobject self, jlong kraps, jint queryId, jobjectArray sparkInputs)
 {
