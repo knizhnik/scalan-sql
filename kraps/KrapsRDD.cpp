@@ -1,9 +1,12 @@
 #define _JNI_IMPLEMENTATION_ 1
 #include <jni.h>
 #include <dlfcn.h>
+#include <pthread.h>
 #include <assert.h>
 #include "KrapsRDD.h"
 #include <unistd.h>
+
+static pthread_mutex_t dllMutex = PTHREAD_MUTEX_INITIALIZER;
 
 typedef KrapsIterator* (*iterator_constructor_t)(JNIEnv* env);
 
@@ -44,7 +47,7 @@ class KrapsCluster
             env->ReleaseStringUTFChars(host, hostName);
         }
         cluster = new Cluster(nodeId, nNodes, nodes);
-        cluster->userData = env;
+        cluster->userData = NULL;
     }
 
     void stop()
@@ -79,19 +82,23 @@ JNIEXPORT jlong Java_kraps_KrapsRDD_createIterator(JNIEnv* env, jobject self, jl
 //	else
 //	   perror("getcwd() error");
 
+	pthread_mutex_lock(&dllMutex);
     void* dll = dlopen(buf, RTLD_NOW | RTLD_GLOBAL);
 
     assert(dll != NULL);
     sprintf(buf, "getQ%dIterator", queryId);
     iterator_constructor_t constructor = (iterator_constructor_t)dlsym(dll, buf);
     assert(constructor != NULL);
+	pthread_mutex_unlock(&dllMutex);
 
     JavaContext ctx(env, sparkInputs);
     Cluster* cluster = Cluster::instance.get();
     if (cluster == NULL) { 
         cluster = ((KrapsCluster*)kraps)->cluster;
         Cluster::instance.set(cluster);
-    }
+    } else {
+		assert(cluster == ((KrapsCluster*)kraps)->cluster);
+	}
     cluster->userData = &ctx;
 
     return (jlong)(size_t)new KrapsRDD(dll, constructor(env));

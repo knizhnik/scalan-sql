@@ -89,10 +89,11 @@ class SparkRDD : public RDD<T>
      * @param env JNI environment
      * @param no index of RDD in input array
      */ 
-    SparkRDD(JNIEnv* env, jint no) : inputNo(no), elapsed(0), calls(0)
+    SparkRDD(JNIEnv* env, jint no) : size(0), used(0), inputNo(no), elapsed(0), calls(0)
     {
         jclass rowIteratorClass = (jclass)env->FindClass("kraps/RowIterator");
         nextTile = env->GetMethodID(rowIteratorClass, "nextTile", "(JI)I");
+		assert(nextTile);
     } 
     ~SparkRDD() {
         #ifdef MEASURE_SPARK_TIME

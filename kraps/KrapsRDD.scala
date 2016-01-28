@@ -7,6 +7,7 @@ import java.net._
 import java.io._
 
 import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable.Map
 import scala.annotation.meta.param
 
 class RowIterator(
@@ -62,39 +63,55 @@ case class CombinePartition(index: Int, parts: Array[Array[Partition]]) extends 
 
 object KrapsCluster {
   var port = 54321
+  var masterAddress:String = null
+  val clusterMap = new Map[Thread,Long]
 
   def configure(nWorkers: Int): String = {
-    val server = new ServerSocket(port)
-    val address = server.getInetAddress().getHostName() + ":" + port
-    val t = new Thread(new Runnable {
-      def run() {
-        val sockets = Array.tabulate(nWorkers)(i => server.accept())
-        val hosts = sockets.map(s => s.getInetAddress().getHostName())
-        for (i <- 0 until sockets.size) { 
-          val out = new DataOutputStream(sockets(i).getOutputStream())
-          out.writeInt(i)
-          out.writeInt(hosts.size)
-          hosts.foreach(h => out.writeUTF(h))
-          out.close()
+    if (masterAddress == null) {
+      val server = new ServerSocket(port)
+      val address = server.getInetAddress().getHostName() + ":" + port
+      val t = new Thread(new Runnable {
+        def run() {
+          val sockets = Array.tabulate(nWorkers)(i => server.accept())
+          val hosts = sockets.map(s => s.getInetAddress().getHostName())
+          for (i <- 0 until sockets.size) { 
+            val out = new DataOutputStream(sockets(i).getOutputStream())
+            out.writeInt(i)
+            out.writeInt(hosts.size)
+            hosts.foreach(h => out.writeUTF(h))
+            out.close()
+          }
+          server.close()
         }
-        server.close()
-      }
-    })
-    t.start
-    address 
+      })
+      t.start
+      masterAddress = address
+    }
+	masterAddress
   }
  
   def start(driver: String): Long = {
-     val col = driver.indexOf(':')
-     val host = driver.substring(0, col)
-     val port = Integer.parseInt(driver.substring(col+1))
-     val s = new Socket(InetAddress.getByName(host), port)
-     val in = new DataInputStream(s.getInputStream())
-     val nodeId = in.readInt()
-     val nNodes = in.readInt()
-     val hosts = Array.tabulate(nNodes)(i => in.readUTF())
-     s.close()
-     start(hosts, nodeId)
+    var cluster = clusterMap.getOrElse(0)
+    if (cluster == 0) {     
+      val col = driver.indexOf(':')
+      val host = driver.substring(0, col)
+      val port = Integer.parseInt(driver.substring(col+1))
+      val s = new Socket(InetAddress.getByName(host), port)
+      val in = new DataInputStream(s.getInputStream())
+      val nodeId = in.readInt()
+      val nNodes = in.readInt()
+      val hosts = Array.tabulate(nNodes)(i => in.readUTF())
+      s.close()
+      cluster = start(hosts, nodeId)
+	  clusterMap.put(Thread.currentThread(), cluster)
+    }
+    cluster
+  }
+
+  def stop(): Unit = {
+    for (cluster <- clusterMap.values) {
+      stop(cluster)
+    }
   }
   
   @native def start(hosts: Array[String], nodeId: Int): Long
@@ -129,7 +146,8 @@ class KrapsRDD(
       } else {
          if (row == 0) row = nextRow(cluster, krapsInput, scalaInput)
          if (row == 0) {
-           KrapsCluster.stop(cluster)
+//         Cluster should be explictly stopped by application
+//         KrapsCluster.stop(cluster)
            eof = true
            false
          } else {
@@ -165,7 +183,7 @@ object Test extends App {
 
   System.loadLibrary("krapsrdd")
 
-  KrapsCluster.start(Array("localhost"), 4)
+  KrapsCluster.start(Array("localhost"), 0)
   println("start")
 
   Thread.sleep(500)
