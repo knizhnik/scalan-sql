@@ -24,12 +24,11 @@ class KrapsIterator
 struct JavaContext 
 {
     JNIEnv* env;
+	JavaVM* jvm;
     jobjectArray inputs;
 
-    JavaContext(JNIEnv* e, jobjectArray i) : env(e), inputs(i) {}
+    JavaContext(JNIEnv* e, JavaVM* vm, jobjectArray i) : env(e), jvm(vm), inputs(i) {}
 };
-
-extern JavaVM* jvm;
 
 inline time_t getCurrentTime()
 {
@@ -62,12 +61,12 @@ class SparkRDD : public RDD<T>
             #ifdef MEASURE_SPARK_TIME
             time_t start = getCurrentTime();
             #endif
+            JavaContext* ctx = (JavaContext*)Cluster::instance->userData;
             JNIEnv* env = context.get();
             if (env == NULL) {
-                jvm->AttachCurrentThread((void**)&env, NULL);
+                ctx->jvm->AttachCurrentThread((void**)&env, NULL);
 				context = env;
             }
-            JavaContext* ctx = (JavaContext*)Cluster::instance->userData;
             jobject input = env->GetObjectArrayElement(ctx->inputs, inputNo);
             size = env->CallIntMethod(input, nextTile, (jlong)(size_t)tile, TILE_SIZE);
             used = 0;
@@ -77,7 +76,7 @@ class SparkRDD : public RDD<T>
             calls += 1;
             #endif
             if (size == 0) {
-                jvm->DetachCurrentThread();                
+                ctx->jvm->DetachCurrentThread();                
                 return false;
             }
         }

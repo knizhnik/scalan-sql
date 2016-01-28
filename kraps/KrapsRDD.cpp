@@ -10,7 +10,7 @@ static pthread_mutex_t dllMutex = PTHREAD_MUTEX_INITIALIZER;
 
 typedef KrapsIterator* (*iterator_constructor_t)(JNIEnv* env);
 
-JavaVM* jvm;
+static JavaVM* jvm;
 
 struct KrapsRDD 
 {
@@ -62,6 +62,10 @@ class KrapsCluster
 
 extern "C" {
 
+
+JNIEXPORT
+JavaVM* 
+
 JNIEXPORT jint JNICALL
 JNI_OnLoad(JavaVM *vm, void *reserved)
 {
@@ -91,7 +95,7 @@ JNIEXPORT jlong Java_kraps_KrapsRDD_createIterator(JNIEnv* env, jobject self, jl
     assert(constructor != NULL);
 	pthread_mutex_unlock(&dllMutex);
 
-    JavaContext ctx(env, sparkInputs);
+    JavaContext ctx(env, jvm, sparkInputs);
     Cluster* cluster = Cluster::instance.get();
     if (cluster == NULL) { 
         cluster = ((KrapsCluster*)kraps)->cluster;
@@ -107,7 +111,7 @@ JNIEXPORT jlong Java_kraps_KrapsRDD_createIterator(JNIEnv* env, jobject self, jl
 JNIEXPORT jlong Java_kraps_KrapsRDD_nextRow(JNIEnv* env, jobject self, jlong kraps, jlong iterator, jobjectArray sparkInputs)
 {
     KrapsRDD* rdd = (KrapsRDD*)iterator;
-    JavaContext ctx(env, sparkInputs);
+    JavaContext ctx(env, jvm, sparkInputs);
     Cluster* cluster = Cluster::instance.get();
     if (cluster == NULL) { 
         cluster = ((KrapsCluster*)kraps)->cluster;
