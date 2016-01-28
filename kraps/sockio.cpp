@@ -14,6 +14,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
+#include <assert.h>
 #include "sockio.h"
  
 #ifndef USE_EPOLL
