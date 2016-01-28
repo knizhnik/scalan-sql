@@ -65,6 +65,7 @@ class SparkRDD : public RDD<T>
             JNIEnv* env = context.get();
             if (env == NULL) {
                 jvm->AttachCurrentThread((void**)&env, NULL);
+				context = env;
             }
             JavaContext* ctx = (JavaContext*)Cluster::instance->userData;
             jobject input = env->GetObjectArrayElement(ctx->inputs, inputNo);
