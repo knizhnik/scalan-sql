@@ -98,6 +98,63 @@ enum JoinKind
 
 #define typeof(rdd) decltype((rdd)->elem)
 
+template<class T>
+class Reactor
+{
+  public:
+    void react(T const& record) {}
+};
+
+
+class StepByStepScheduler : public Scheduler
+{
+    vector< vector<Job> > jobs;
+    Mutex  mutex;
+    Event  stepDone;
+    size_t currStep;
+    size_t currJob;
+    size_t activeJobs;
+    time_t stepStartTime;
+    
+  public:
+    StepByStepScheduler() : currStep(0), currJob(0), activeJobs(0), stepStartTime(getCurrentTime()) {}
+    
+    void schedule(unsigned step, Job* job)
+    {
+        assert(step > 0);
+        if (step >= jobs.size()) {
+            jobs.resize(step+1);
+        }
+        jobs[step].push_back(job);
+    }
+
+    Job* getJob() { 
+        CriticalSection cs(mutex);
+        while (currStep < jobs.size()) {
+            if (currJob < jobs[currStep].size()) {
+                nActiveJobs += 1;
+                return jobs[currStep][currJob++];
+            }
+            while (nActiveJobs != 0) {
+                stepDone.wait(mutex);
+            }
+            stepStartTime = getCurrentTime();
+            currStep += 1;
+            currJob = 0;
+        }
+        return NULL;
+    }
+
+    void jobFinished(Job* job) {
+        CriticalSection cs(mutex);
+        assert(nActiveJobs == 0);
+        if (--nActiveJobs == 0) {
+            printf("Step %d  finisihed in %ld microseconds\n", stepStartTime - getCurrentTime());
+            event.signal();
+        }
+    }
+};
+        
 /**
  * Abstract RDD (Resilient Distributed Dataset)
  */
@@ -105,31 +162,8 @@ template<class T>
 class RDD
 {
   public:
-    /**
-     * RDD element. It is used for getting RDD elementtype using typeof macro
-     */
-    T elem;
-
-    /**
-     * Main RDD method for iterating though records.
-     * To avoid virtual call overhead and make it possible for compiler to inline method calls implementation
-     * of each RDD defines its own version of next() method which is atatically invoked using template mechanism.
-     * @param record [out] placeholder for the next record
-     * @return true if there is next record, false otherwise
-     */
-    bool next(T& record) 
-    {
-        return getNext(record);
-    }
-
-    /**
-     * Virtual iteration method which should be overriden by derived classes.
-     * Because of virtual call overhead getNext method is not actually used in RDD implementations, instead of it them
-     * invokes next() method using template mechanism. But appliation can use this method to access arbitrary RDD.
-     * @param record [out] placeholder for the next record
-     * @return true if there is next record, false otherwise
-     */
-    virtual bool getNext(T& record) = 0;
+    template<class R>
+    virtual void schedule(Scheduler& scheduler, unsigned step, R& reactor);
 
     /**
      * Filter input RDD
@@ -205,14 +239,30 @@ class RDD
      */
     virtual RDD<T>* replicate();
 
+    class Singleton : public Reactor
+    {
+      public:
+        T value;
+        Singleton(T const& defaultValue) : value(defautlValue) {}
+        void react(T const& record) {
+            value = record;
+        }
+    };
+        
+    
     /**
      * Get single record from input RDD or substitute it with default value of RDD is empty.
      * This method is usful for obtaining aggregation result
      * @return Single record from input RDD or substitute it with default value of RDD is empty.
      */
-    T result(T const& defaultValue) {
-        T record;
-        return next(record) ? record : defaultValue;
+    T result(T const& defaultValue)
+    {
+        Singleton singleton(defaultValue);
+        StepByStepSheduler scheduler;
+        Cluster* cluster = Cluster::instance.get();
+        schedule(scheduler, 1, singleton);
+        cluster->threadPool.run(scheduler);
+        return singleton.value;
     }
 
     /**
@@ -224,8 +274,9 @@ class RDD
     virtual~RDD() {}
 };
 
-template<class T, class Rdd>
-auto replicate(Rdd* in);
+
+
+// ------------------------------------
 
 /**
  * Tranfer data from RDD to queue
@@ -506,6 +557,7 @@ private:
     Thread thread;
 };
     
+// ---------------------------------
 
 /**
  * Read data from OS plain file.
@@ -517,41 +569,61 @@ private:
 template<class T>
 class FileRDD : public RDD<T>
 {
-  public:
-    FileRDD(char* path) : f(fopen(path, "rb")), segno(Cluster::instance->nodeId), split(Cluster::instance->sharedNothing ? 1 : Cluster::instance->nNodes) {
-        assert(f != NULL);
-        delete[] path;
-        fseek(f, 0, SEEK_END);
-        nRecords = (ftell(f)/sizeof(T)+split-1)/split;
-        recNo = fseek(f, nRecords*segno*sizeof(T), SEEK_SET) == 0 ? 0 : nRecords;
+  public:   
+    FileRDD(char* filePath) : path(filePath), segno(Cluster::instance->nodeId), split(Cluster::instance->sharedNothing ? 1 : Cluster::instance->nNodes)
+    {
     }
 
-    RDD<T>* replicate() { 
-        if (split != 1) { 
-            nRecords *= split;
-            recNo = 0;
-            fseek(f, 0, SEEK_SET);
-            return this;
+    template<class R>
+    class ReadJob : public Job {        
+        FILE* f;
+        R& reactor;
+      public:
+        ReadJob(FileRDD& file, R& jobReactor, size_t id, size_t concurrency) : reactor(jobReactor)
+        {
+            f = fopen(file.path, "rb");
+            assert(f != NULL);
+            fseek(f, 0, SEEK_END);
+            size_t segmentSize = (ftell(f)/sizeof(T)+file.split-1)/file.split;
+            size_t segmentOffs = segmentSize*file.segno*sizeof(T);
+            jobSize = (segmentSize + concurrency - 1) / concurrency;
+            if (jobSize*(id+1) > segmentSize) {
+                jobSize = segmentSize - jobSize*id;
+            }
+            jobOffs = fseek(f, segmentOffs + jobSize, SEEK_SET) == 0 ? 0 : jobSize;
         }
-        return RDD<T>::replicate();
-    }
-
-    bool next(T& record) {
-        return ++recNo <= nRecords && fread(&record, sizeof(T), 1, f) == 1;
-    }
+            
+        void run() {
+            T record;
+            while (++jobOffs <= jobSize && fread(&record, sizeof(T), 1, f) == 1) {
+                reactor.react(record);
+            }
+        }
+        ~ReadJob() {
+            fclose(f);
+        }
+      private:
+        FILE* f;
+        size_t jobOffs;
+        size_t jobSize;
+    };   
     
-    bool getNext(T& record) override { 
-        return next(record);
+    template<class R>
+    void schedule(Scheduler& scheduler, unsigned step, R& reactor) {
+        size_t concurrecy = Cluster::instance()->threadPool.defaultConcurrency();
+        for (size_t i = 0; i < concurrency; i++) {
+            scheduler.schedule(step, new Job(*this, reactor, i, concurrency));
+        }
     }
 
-    ~FileRDD() { fclose(f); }
+    ~FileRDD() {
+        delete[] path;
+    }
 
   private:
-    FILE* const f;    
+    char* path;    
     size_t segno;
     size_t split;
-    long recNo;
-    long nRecords;
 };
 
 /**
@@ -562,61 +634,69 @@ template<class T>
 class DirRDD : public RDD<T>
 {
   public:
-    DirRDD(char* path) : dir(path), segno(Cluster::instance->nodeId), step(Cluster::instance->nNodes), split(Cluster::instance->split), f(NULL) {}
+    DirRDD(char* dirPath)
+    : path(dirPath), segno(Cluster::instance->nodeId), step(Cluster::instance->nNodes), split(Cluster::instance->split) {}
 
-    RDD<T>* replicate() {
-        if (Cluster::instance->sharedNothing) {
-            return RDD<T>::replicate();
-        }
-        nRecords *= split;
-        segno = 0;
-        step = 1;
-        split = 1;
-        recNo = 0;
-        return this;
-    }
+    template<class R>
+    class ReadJob : public Job {        
+        char* path;
+        R& reactor;
+        size_t segno;
+        size_t split;
+        size_t step;
+      public:
+        ReadJob(DirRDD& dir, R& jobReactor, size_t id, size_t concurrency)
+        : path(dir.path), reactor(jobReactor), segno(dir.segno*concurrency + id), split(dir.split*concurrency), step(dir.step*concurrency) {}
 
-    bool next(T& record) {
-        while (true) {
-            if (f == NULL) { 
+        void run() {
+            T record;
+            
+            while (true) {
                 char path[MAX_PATH_LEN];
                 sprintf(path, "%s/%ld.rdd", dir, segno/split);
-                f = fopen(path, "rb");
+                FILE* f = fopen(path, "rb");
                 if (f == NULL) { 
-                    return false;
+                    break;
                 }
                 fseek(f, 0, SEEK_END);
-                nRecords = (ftell(f)/sizeof(T)+split-1)/split;
-                recNo = 0;
+                size_t nRecords = (ftell(f)/sizeof(T)+split-1)/split;
+                size_t recNo = 0;
                 int rc = fseek(f, nRecords*(segno%split)*sizeof(T), SEEK_SET);
                 assert(rc == 0);
-            }
-            if (++recNo <= nRecords && fread(&record, sizeof(T), 1, f) == 1) { 
-                return true;
-            } else { 
+
+                while (nRecords-- != 0 && fread(&record, sizeof(T), 1, f) == 1) {
+                    reactor.react(record);
+                }
                 fclose(f);
                 segno += step;
-                f = NULL;
             }
         }
-    }
-
-    bool getNext(T& record) override { 
-        return next(record);
+        ~ReadJob() {
+            fclose(f);
+        }
+      private:
+        FILE* f;
+        size_t jobOffs;
+        size_t jobSize;
+    };   
+    
+    template<class R>
+    void schedule(Scheduler& scheduler, unsigned step, R& reactor) {
+        size_t concurrecy = Cluster::instance()->threadPool.defaultConcurrency();
+        for (size_t i = 0; i < concurrency; i++) {
+            scheduler.schedule(step, new Job(*this, reactor, i, concurrency));
+        }
     }
 
     ~DirRDD() {
-        delete[] dir;
+        delete[] path;
     }
     
   private:
-    char* dir;
+    char* path;
     size_t segno;
     size_t step;
     size_t split;
-    long recNo;
-    long nRecords;
-    FILE* f;    
 };
 
 #if USE_PARQUET
@@ -648,29 +728,33 @@ public:
 /**
  * Filter resutls using provided condition
  */
-template<class T, bool (*predicate)(T const&), class Rdd = RDD<T> >
+template<class T, bool (*predicate)(T const&)>
 class FilterRDD : public RDD<T>
 {
   public:
-    FilterRDD(Rdd* input) : in(input) {}
+    FilterRDD(RDD<T>* input) : in(input) {}
 
-    bool next(T& record) {
-        while (in->next(record)) { 
+    template<class R>
+    class FilterReactor {
+        R& reactor;
+
+        void react(T const& record) {
             if (predicate(record)) {
-                return true;
+                reactor.react(record);
             }
         }
-        return false;
-    }
-
-    bool getNext(T& record) override { 
-        return next(record);
+    };
+        
+    template<class R>
+    void schedule(Scheduler& scheduler, unsigned step, R& reactor) {
+        FilterReactor filter(reactor);
+        in->shedule(scheduler, step, filter);
     }
 
     ~FilterRDD() { delete in; }
 
   private:
-    Rdd* const in;
+    RDD<T>* const in;
 };
     
 /**

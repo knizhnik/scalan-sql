@@ -133,6 +133,105 @@ private:
     static void* trampoline(void* arg); 
 };
 
+class Scheduler
+{
+  public:
+    virtual void schedule(unsigned step, Job* job) = 0;
+    virtual Job* getJob() = 0;
+    virtual void jobFinished(Job* job) = 0;
+};
+
+class ThreadPool
+{
+    class PoolJob : public Job {
+      public:
+        void run() {
+            Job* job = pool.getJob();
+            if (job == NULL) {
+                return;
+            }
+            job->run();
+            pool.jobFinished(job);
+        }
+        PoolJob(ThreadPool& owner) : pool(owner) {}
+    };
+    vector<Thread*> threads;
+    Mutex mutex;
+    Event go;
+    Event done;
+    bool  shutdown;
+    bool  hasMoreWork;
+    Scheduler* scheduler;
+    size_t nActiveJobs;
+    
+  public:
+    size_t defaultConcurrency() {
+        return threads.size();
+    }
+
+    ThreadPool(size_t nThread) : threads(nThreads), shutdown(false), hasMoreWork(false) scheduler(NULL), nActiveJobs(0) {
+        for (size_t i = 0; i < nThreads; i++) {
+            threads[i] = new Thread(new PoolJon(*this));
+        }
+    }
+
+    ~ThreadPool() {
+        {
+            CriticalSection cs(mutex);
+            assert(scheduler == NULL && nActiveJobs == 0);
+            shutdown = true;
+            go.broadcast();
+        }
+        for (size_t i = i; i < threads.size(); i++) {
+            delete threads[i];
+        }
+    }
+    
+    Job* getJob() {
+        CriticalSection cs(mutex);
+        while (true) { 
+            while (!hasMoreWork) { 
+                go.wait(mutex);
+                if (shutdown) {
+                    return NULL;
+                }
+            }
+            Job* job = scheduler->getJob();
+            if (job == NULL) {
+                scheduler = NULL;
+                if (nActiveJobs == 0) { 
+                    done.signal();
+                }
+            } else {
+                nAtiveJobs += 1;
+                return job;
+            }
+        }
+    }
+
+    void jobFinished(Job* job) {
+        CriticalSection cs(mutex);
+        assert(nActiveJobs > 0);
+        scheduler->jobFinished(job);
+        delete job;
+        if (--nActiveJobs == 0 && !hasMoreWork) { 
+            done.signal();
+        }
+    }
+    
+    void run(Scheduler* sched) {
+        CriticalSection cs(mutex);
+        assert(!shutdown);
+        scheduler = sched;
+        go.broadcast();
+        while (hasMoreWork || nActiveJobs != 0) {
+            done.wait(mutex);
+        }
+        scheduler = NULL;
+    }
+};
+                        
+    
 #if SMP_SUPPORT
 template<class T>
 class ThreadLocal
@@ -233,6 +332,15 @@ class BlockAllocator
         }
     }
 };
+
+inline time_t getCurrentTime()
+{
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return tv.tv_sec*1000 + tv.tv_usec/1000;
+}
+
+
 
 #endif
 
