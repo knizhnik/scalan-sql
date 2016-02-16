@@ -103,6 +103,7 @@ class Reactor
 {
   public:
     void react(T const& record) {}
+	void end() {} 
 };
 
 
@@ -247,6 +248,7 @@ class RDD
         void react(T const& record) {
             value = record;
         }
+		void end() {}
     };
         
     
@@ -598,6 +600,7 @@ class FileRDD : public RDD<T>
             while (++jobOffs <= jobSize && fread(&record, sizeof(T), 1, f) == 1) {
                 reactor.react(record);
             }
+			reactor.end();
         }
         ~ReadJob() {
             fclose(f);
@@ -670,6 +673,7 @@ class DirRDD : public RDD<T>
                 fclose(f);
                 segno += step;
             }
+			reactor.end();
         }
         ~ReadJob() {
             fclose(f);
@@ -738,11 +742,18 @@ class FilterRDD : public RDD<T>
     class FilterReactor {
         R& reactor;
 
+	  public:
+		FilterReactor(R& r) : reactor(r) {}
+
         void react(T const& record) {
             if (predicate(record)) {
                 reactor.react(record);
             }
         }
+
+		void end() { 
+			reactor.end();
+		}
     };
         
     template<class R>
@@ -760,13 +771,39 @@ class FilterRDD : public RDD<T>
 /**
  * Perform aggregation of input data (a-la Scala fold)
  */
-template<class T, class S,void (*accumulate)(S& state, T const& in),void (*combine)(S& state, S const& in), class Rdd = RDD<T> >
+template<class T, class S,void (*accumulate)(S& state, T const& in),void (*combine)(S& state, S const& in) >
 class ReduceRDD : public RDD<S> 
 {    
   public:
-    ReduceRDD(Rdd* input, S const& initState) : state(initState), first(true) {
+    ReduceRDD(RDD<T>* input, S const& initState) : state(initState), in(input) {
         aggregate(input);
     }
+
+    template<class R>
+    class ReduceReactor {
+        R& reactor;
+		S state;
+
+	  public:
+		ReduceReator(R& r,  S const& initState) : reactor(r), state(initState) {}
+
+        void react(T const& record) {
+			accumulate(state, record);
+        }
+
+		void end() { 
+			reactor.react(state);
+		}
+    };
+
+    template<class R>
+    void schedule(Scheduler& scheduler, unsigned step, R& reactor) {
+        ReduceReactor filter(reactor, initState);
+        in->shedule(scheduler, step, filter);
+    }
+
+
+
     bool next(S& record) {
         if (first) { 
             record = state;
