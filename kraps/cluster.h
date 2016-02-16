@@ -253,6 +253,7 @@ class Cluster
     void* userData;
     Mutex mutex;
     Event cond;
+    ThreadPool threadPool;
     static Cluster** nodes; 
     
     FILE* openTempFile(char const* prefix, qid_t qid, size_t no, char const* mode = "r");
