@@ -110,17 +110,17 @@ class Reactor
 class StepByStepScheduler : public Scheduler
 {
     vector< vector<Job> > jobs;
-    Mutex  mutex;
-    Event  stepDone;
-    size_t currStep;
-    size_t currJob;
-    size_t activeJobs;
-    time_t stepStartTime;
+    Mutex    mutex;
+    Event    stepDone;
+    stepid_t currStep;
+    size_t   currJob;
+    size_t   activeJobs;
+    time_t   stepStartTime;
     
   public:
     StepByStepScheduler() : currStep(0), currJob(0), activeJobs(0), stepStartTime(getCurrentTime()) {}
     
-    void schedule(unsigned step, Job* job)
+    void schedule(stepid_t step, Job* job)
     {
         assert(step > 0);
         if (step >= jobs.size()) {
@@ -150,12 +150,13 @@ class StepByStepScheduler : public Scheduler
         CriticalSection cs(mutex);
         assert(nActiveJobs == 0);
         if (--nActiveJobs == 0) {
-            printf("Step %d  finisihed in %ld microseconds\n", stepStartTime - getCurrentTime());
+            printf("Step %u finisihed in %ld microseconds\n", currStep, stepStartTime - getCurrentTime());
             event.signal();
         }
     }
 };
         
+
 /**
  * Abstract RDD (Resilient Distributed Dataset)
  */
@@ -164,7 +165,7 @@ class RDD
 {
   public:
     template<class R>
-    virtual void schedule(Scheduler& scheduler, unsigned step, R& reactor);
+    virtual stepid_t schedule(Scheduler& scheduler, stepid_t step, R& reactor);
 
     /**
      * Filter input RDD
@@ -561,6 +562,45 @@ private:
     
 // ---------------------------------
 
+template<class T>
+class Scatter 
+{
+public:
+	void send(size_t nodeId, T const& record);
+	Scatter(Channel* channel);
+};
+
+
+template<class T>
+class Sender : public Reactor
+{
+
+public:
+	void react(T const& record) { 
+		if (msg->size + sizeof(T) > cluster->bufferSize) { 
+			cluster->send(node, channel, msg);
+			msg = Buffer::create(channel->id, cluster->bufferSize);
+			msg->size = 0;
+		}
+		msg->size += pack(record, msg->data + msg->size);
+	}
+
+	void end() {
+		cluster->send(node, channel, msg);
+		cluster->send(node, channel, Buffer::eof(queue->qid));
+	}
+	
+	Sender(Channel* chan, size_t destination = COORDINATOR) : cluster(Cluster::instance.get()), channe(chan), node(destination) { 
+		msg = Buffer::create(channel->id, cluster->bufferSize);
+		msg->size = 0;
+	}
+ private:
+	Cluster* cluster;
+	Channel* channel;
+	Buffer* msg;
+	size_t node;
+};
+
 /**
  * Read data from OS plain file.
  * File can be used in two modes. In shared-nothing mode each node is expected to access its own local file.
@@ -612,11 +652,12 @@ class FileRDD : public RDD<T>
     };   
     
     template<class R>
-    void schedule(Scheduler& scheduler, unsigned step, R& reactor) {
+    stepid_t schedule(Scheduler& scheduler, stepid_t step, R& reactor) {
         size_t concurrecy = Cluster::instance()->threadPool.defaultConcurrency();
         for (size_t i = 0; i < concurrency; i++) {
             scheduler.schedule(step, new Job(*this, reactor, i, concurrency));
         }
+		return step;
     }
 
     ~FileRDD() {
@@ -685,11 +726,12 @@ class DirRDD : public RDD<T>
     };   
     
     template<class R>
-    void schedule(Scheduler& scheduler, unsigned step, R& reactor) {
+    stepid_t schedule(Scheduler& scheduler, stepid_t step, R& reactor) {
         size_t concurrecy = Cluster::instance()->threadPool.defaultConcurrency();
         for (size_t i = 0; i < concurrency; i++) {
             scheduler.schedule(step, new Job(*this, reactor, i, concurrency));
         }
+		return step;
     }
 
     ~DirRDD() {
@@ -757,9 +799,9 @@ class FilterRDD : public RDD<T>
     };
         
     template<class R>
-    void schedule(Scheduler& scheduler, unsigned step, R& reactor) {
+    stepid_t schedule(Scheduler& scheduler, stepid_t step, R& reactor) {
         FilterReactor filter(reactor);
-        in->shedule(scheduler, step, filter);
+        return in->shedule(scheduler, step, filter);
     }
 
     ~FilterRDD() { delete in; }
@@ -774,73 +816,81 @@ class FilterRDD : public RDD<T>
 template<class T, class S,void (*accumulate)(S& state, T const& in),void (*combine)(S& state, S const& in) >
 class ReduceRDD : public RDD<S> 
 {    
-  public:
-    ReduceRDD(RDD<T>* input, S const& initState) : state(initState), in(input) {
-        aggregate(input);
-    }
-
     template<class R>
     class ReduceReactor {
-        R& reactor;
+        ReduceRDD& reduce;
 		S state;
 
 	  public:
-		ReduceReator(R& r,  S const& initState) : reactor(r), state(initState) {}
+		ReduceReator(ReduceRDD& reduce) : rdd(reduce), state(reduce.state) {}
 
         void react(T const& record) {
 			accumulate(state, record);
         }
 
 		void end() { 
-			reactor.react(state);
+			CriticalSection cs(rdd.mutex);
+			combine(rdd.state, state);
 		}
     };
 
     template<class R>
-    void schedule(Scheduler& scheduler, unsigned step, R& reactor) {
-        ReduceReactor filter(reactor, initState);
-        in->shedule(scheduler, step, filter);
+	class ReduceReactor { 
+	public:
+		void react(S const& partialState) { 			
+			combine(state, partialState);
+		}
+
+		void end() { 
+			if (++getResponses == nNodes) { 
+				reactor.react(state);
+				reactor.end();
+			}
+		}
+
+		ReduceReactor(R& r, S& s) : reator(r), state(s), nResponses(0), nNodes(Cluster::instance->nNodes-1) {}
+
+	private:
+		R& reactor;
+		S& state;
+		size_t nResponses;
+		size_t nNodes;
+	};	
+		
+	template<class R>
+	class SendJob : public Job
+	{
+	public:
+		void run() {
+			sender->react(rdd.state);
+			sender->end();
+		}
+
+		SendJob(R* to) : reactor(to) {}
+		~SendJob() { delete reactor; }
+	private:
+		R* reactor;
+	};
+		
+
+  public:
+    template<class R>
+    stepid_t schedule(Scheduler& scheduler, stepid_t step, R& reactor) {
+        step = in->shedule(scheduler, step, filter);
+        Cluster* cluster = Cluster::instance.get();
+		Channel* channel = cluster->getChannel(new ReduceReactor(reactor, state));
+		if (!Cluster::instance->isCoordinator()) {
+			scheduler.shedule(++step, new SendJob(new Sender(channel)));
+		}
+		return step;
     }
 
-
-
-    bool next(S& record) {
-        if (first) { 
-            record = state;
-            first = false;
-            return true;
-        }
-        return false;
-    }
-
-    bool getNext(S& record) override { 
-        return next(record);
-    }
-
+    ReduceRDD(RDD<T>* input, S const& initState) : state(initState), in(input)
 
   private:
-    void aggregate(Rdd* input) { 
-        T record;
-        while (input->next(record)) { 
-            accumulate(state, record);
-        }
-        Cluster* cluster = Cluster::instance.get();
-        Queue* queue = cluster->getQueue();
-        if (cluster->isCoordinator()) {
-            S partialState;
-            GatherRDD<S> gather(queue);
-            queue->putFirst(Buffer::eof(queue->qid)); // do not wait for self node
-            while (gather.next(partialState)) {
-                combine(state, partialState);
-            }
-        } else {
-            sendToCoordinator<S,ReduceRDD>(this, queue);            
-        }
-        delete input;
-    }
-    
     S state;
-    bool first;
+	RDD<T>* in;
+	Mutex mutex;
 };
         
 /**
