@@ -12,7 +12,7 @@ const size_t MAX_SIZE_T = (size_t)~0;
 
 class Cluster;
 
-typedef size_t qid_t;
+typedef uint32_t cid_t;
 
 enum MessageKind 
 { 
@@ -33,58 +33,28 @@ struct Buffer
 { 
     uint32_t compressedSize; // compressed size 
     uint32_t size;  // size without header
+	cid_t    cid;   // identifier of destination channel
     uint16_t node;  // sender
-    uint16_t qid;   // identifier of destination queue
     uint16_t kind;  // message kind
-    uint16_t refCount; // reference count
     char     data[1];
     
     /**
      * Create new buffer of specified kind and size
-     * @param qid queue ID (needed to locate recipient queue at target node)
+     * @param cid channel ID (needed to locate recipient channel at target node)
      * @param size buffer data size (not including header)
      * @param type message type 
      * @return created buffer
      */
-    static Buffer* create(qid_t qid, size_t size, MessageKind type = MSG_DATA) {
-        return new (size) Buffer(type, qid, size);
+    static Buffer* create(cid_t cid, size_t size, MessageKind type = MSG_DATA) {
+        return new (size) Buffer(type, cid, size);
     }
-
-    /**
-     * Create buffer with EOF (End-Of-File) message
-     * @param qid queue ID (needed to locate recipient queue at target node)
-     * @return new EOF message
-     */
-    static Buffer* eof(qid_t qid) { 
-        return create(qid, 0, MSG_EOF);
-    }
-
-    /**
-     * Create buffer with barries message
-     * @param qid queue ID (needed to locate recipient queue at target node)
-     * @return new barrier message
-     */
-    static Buffer* barrier(qid_t qid) { 
-        return create(qid, 0, MSG_BARRIER);
-    }
-
-    /**
-     * Create buffer with ping message. Ping messages are used to synchronize data consumers and produces and so
-     * avoid queueus overflow
-     * @param qid queue ID (needed to locate recipient queue at target node)
-     * @return new ping message
-     */
-    static Buffer* ping(qid_t qid) { 
-        return create(qid, 0, MSG_PING);
-    }
-
     /**
      * Buffer constructor
      * @param type message type 
-     * @param id queue ID (needed to locate recipient queue at target node)
+     * @param id channel ID (needed to locate recipient channel at target node)
      * @param len buffer data size (not including header)
      */
-    Buffer(MessageKind type, qid_t id, size_t len = 0) : compressedSize((uint32_t)len), size((uint32_t)len), qid((uint16_t)id), kind((uint16_t)type), refCount(1) {}
+    Buffer(MessageKind type, cid_t id, size_t len = 0) : compressedSize((uint32_t)len), size((uint32_t)len), cid(id), kind((uint16_t)type) {}
 
     void* operator new(size_t hdrSize, size_t bufSize) {
         return malloc(BUF_HDR_SIZE + bufSize);
@@ -97,132 +67,31 @@ struct Buffer
     void operator delete(void* ptr) { 
         free(ptr);
     }
-
-    /**
-     * Release buffer. Flint associates reference counter with each buffer to impkement shared pointers to the buffers.
-     * This method allows to delete buffer when it is not needed to anybody (there are no more references to the buffer).
-     */
-    void release() { 
-        if (__sync_add_and_fetch(&refCount, -1) == 0) {
-            free(this);
-        }
-    }
 };
 
-/**
- * Message handler inteface is needed to implement push-style handling of buffers (used only for local multithreaded
- * configuration of Flint).
- */
-class MessageHandler
+class ChannelProcessor
 {
   public:
-    virtual void handle(Buffer* buf) = 0;
-    virtual ~MessageHandler() {}
+	virtual void process(Buffer* buf) = 0;
+	virtual ~ChannelProcessor() {}
 };
+	
 
-/**
- * FIFO blocking queue, multiple consumers/producers
- */
-class Queue
+class Channel
 {
-    friend class Cluster;
   public:
-    qid_t const qid;
+	cid_t const cid;
+	Cluster* const cluster;
+	ChannelProcessor* processor;
 
-    /**
-     * Place message at the queue head
-     * @param buf buffer to be prepended to queue
-     */
-    void putFirst(Buffer* buf);
+	void done() { 
+		return __sync_add_and_fetch(&nConnections, -1) == 0;
+	}
 
-    /** 
-     * Place message at queue tail
-     * @param buf buffer to be appended to queue
-     */
-    void put(Buffer* buf);
-    
-    /** 
-     * Get message from queue head
-     * @return head of queue
-     */
-    Buffer* get();
-
-    /**
-     * Wait N notifications
-     * @param n number of signals to wait for
-     */
-    void wait(size_t n) { 
-        semaphore.wait(mutex, n);
-    }
-    
-    /**
-     * Send notification
-     */
-    void signal() { 
-        semaphore.signal(mutex);
-    }
-    
-    /** 
-     * Send message handler for this queue. 
-     * It is used by push-style processing 
-     */
-    void setHandler(MessageHandler* hnd) { 
-        handler = hnd;
-    }
-
-    /**
-     * Queue onstructor
-     * @param id Identifer of queue. It is expected that queues are created in the same order by all nodes, so
-     * them are given same queue identifiers. This is why it is possible to use QID to identify recipient at target node.
-     * @param maxSize maximal queue size, when amounbt of pending message exceeds this value put will be blocked
-     */
-    Queue(qid_t id, size_t maxSize) 
-    : qid(id), head(NULL), tail(&head), size(0), limit(maxSize), nSignals(0), blockedPut(false), blockedGet(false), handler(NULL) {}
+	Channel(cid_t id, Cluster* clu, ChannelProcessor* cp) : cid(id), cluster(clu), processor(cp), nConnections(cluster->nNodes-1) {}
 
   private:
-    struct Message { 
-        Message* next;
-        Buffer* buf;
-        
-        Message(Buffer* msgBuf) : next(NULL), buf(msgBuf) {}
-    };
-
-    Message* head;
-    Message** tail;
-    Mutex mutex;
-    Event empty;
-    Event full;
-    Event sync;
-    size_t size;
-    size_t limit;
-    size_t nSignals;
-    bool blockedPut;
-    bool blockedGet;
-    Semaphore semaphore;
-    MessageHandler* handler;
-};
-       
-/**
- * Job for receiving data. There is single receive thread in process.
- */
-class ReceiveJob : public Job
-{
-  public:
-    void run();
-};
-
-/**
- * Job for sending data. There is separate send thread for each connected node with dedicated queue.
- */
-class SendJob : public Job
-{
-public:
-    void run();
-    SendJob(size_t id) : node(id), sent(0) {}
-
-private:
-    size_t const node;
-    size_t sent;
+	int nConnections;
 };
 
 /**
@@ -230,9 +99,15 @@ private:
  */
 class Cluster 
 {
+	struct Node { 
+		Mutex   mutex;
+		Socket* socket;
+		
+		Node() : socket(NULL) {}
+		~Node() { delete socket; }		
+	};
   public:
     size_t const nNodes;
-    size_t const maxQueues;
     size_t const nodeId;
     size_t const bufferSize;
     size_t const syncInterval;
@@ -241,21 +116,16 @@ class Cluster
     size_t const split;
     bool   const sharedNothing;
     char const* tmpDir;
-    Socket** sockets;
-    Queue** recvQueues;
-    Queue** sendQueues;
-    Thread** senders;
+
     char** hosts;
-    qid_t qid;
+    cid_t cid;
     Thread* receiver;
     bool shutdown;
-    size_t nExecutorsPerHost;
     void* userData;
-    Mutex mutex;
-    Event cond;
     ThreadPool threadPool;
-    static Cluster** nodes; 
-    
+	Vector<Node> nodes;
+	Vector<Channel> channels;
+	
     FILE* openTempFile(char const* prefix, qid_t qid, size_t no, char const* mode = "r");
     
     /**
@@ -265,11 +135,11 @@ class Cluster
     bool isCoordinator() { return nodeId == COORDINATOR; }
 
     /** 
-     * Get new queue. It is expected that queues are created in the same order by all nodes, so
-     * them are given same queue identifiers. This is why it is possible to use QID to identify recipient at target node.
+     * Get new channel. It is expected that channels are created in the same order by all nodes, so
+     * them are given same identifiers. This is why it is possible to use CID to identify recipient at target node.
      * @param hnd optional message handler used for push-style processing for this queue
      */
-    Queue* getQueue(MessageHandler* hnd = NULL);
+    Channel* getChannel(ChannelProcessor* proc);
 
     /**
      * Set barrier: syncronize execution of all nodes
@@ -283,8 +153,10 @@ class Cluster
      * the remote node with qid (queue identifier) taken from this queue
      * @param buf message to be delivered
      */
-    void send(size_t node, Queue* queue, Buffer* buf);
+    void send(size_t node, Buffer* buf);
     
+	void sendEof(size_t node);
+
     /**
      * Check if sepcified address corresponds to local node
      * @param host host address

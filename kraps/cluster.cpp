@@ -69,47 +69,37 @@ Buffer* Queue::get()
     return buf;
 }
 
-void Cluster::send(size_t node, Queue* queue, Buffer* buf)
+void Cluster::send(size_t node, Channel* channel, Buffer* buf)
 {
-#ifdef USE_MESSAGE_HANDLER
+	CriticalSection cs(nodes[node].mutex);
     if (node == nodeId) {
-        queue->put(buf);
+        channel->processor->process(buf);
     } else {
-        if (hosts) { 
-            sendQueues[node]->put(buf);
-        } else {
-            Cluster* dst = nodes[node];
-            if (queue->handler) { 
-                CriticalSection cs(dst->mutex);
-                while (dst->qid <= buf->qid) { 
-                    dst->cond.wait(dst->mutex);
-                }
-            }
-            dst->recvQueues[buf->qid]->put(buf);
-        }
+		buf->node = (uint16_t)nodeId;
+		nodes[node].socket->write(buf, BUF_HDR_SIZE + buf->size);
+		sent += BUF_HDR_SIZE + buf->size;
     }
-#else
-    if (node == nodeId) {
-        queue->put(buf);
-    } else {
-        if (hosts) { 
-            sendQueues[node]->put(buf);
-        } else {
-            nodes[node]->recvQueues[buf->qid]->put(buf);
-        }
-    }
-#endif
 }
 
-Queue* Cluster::getQueue(MessageHandler* hnd)
+void Cluster::sendEof(size_t node, Channel* channel)
 {
-#ifdef USE_MESSAGE_HANDLER
-    CriticalSection cs(mutex);    
-    cond.broadcast();
-#endif
-    assert(qid < maxQueues);
-    Queue* q = recvQueues[qid++];
-    q->setHandler(hnd);
+    if (node == nodeId) {
+		Buffer buf(MSG_EOF, channel->cid);
+        channel->processor->process(buf);
+    } else {
+		Buffer buf(MSG_EOF, channel->cid);
+		buf.node  = (uint16_t)nodeId;
+		CriticalSection cs(nodes[node].mutex);
+		nodes[node].socket->write(&buf, BUF_HDR_SIZE);
+		sent += BUF_HDR_SIZE;
+    }
+}
+
+Channel* Cluster::getChannel(ChanelProcessor* processor)
+{
+    assert(cid < channels.size());
+    Channel* c = channels[cid++];
+	c->processor = processor;
     return q;
 
 }
@@ -131,40 +121,23 @@ bool Cluster::isLocalNode(char const* host)
 }
 
     
-Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nQueues, size_t bufSize, size_t recvQueueSize, size_t sendQueueSize, size_t syncPeriod, size_t broadcastThreshold, size_t inmemThreshold, char const* tmp, bool sharedNothingDFS, size_t fileSplit) 
-: nNodes(nHosts), maxQueues(nQueues), nodeId(selfId), bufferSize(bufSize), syncInterval(hosts ? syncPeriod : MAX_SIZE_T), broadcastJoinThreshold(broadcastThreshold), inmemJoinThreshold(inmemThreshold), split(fileSplit), sharedNothing(sharedNothingDFS), tmpDir(tmp), shutdown(false), userData(NULL)
+Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nChannels, size_t bufSize, size_t recvQueueSize, size_t sendQueueSize, size_t syncPeriod, size_t broadcastThreshold, size_t inmemThreshold, char const* tmp, bool sharedNothingDFS, size_t fileSplit) 
+: nNodes(nHosts), nodeId(selfId), bufferSize(bufSize), broadcastJoinThreshold(broadcastThreshold), inmemJoinThreshold(inmemThreshold), split(fileSplit), sharedNothing(sharedNothingDFS), tmpDir(tmp), shutdown(false), userData(NULL), nodes(nNodes), channels(nQueues)
 {
     instance.set(this);
     this->hosts = hosts;
 
-    qid = 0;
-    recvQueues = new Queue*[nQueues];
-    for (size_t i = 0; i < nQueues; i++) { 
-        recvQueues[i] = new Queue((qid_t)i, recvQueueSize);
-    }
+    cid = 0;
     if (hosts == NULL) {
         nodes[nodeId] = this;
         return;
     }
-    sendQueues = new Queue*[nHosts];
-    senders = new Thread*[nHosts];
-    for (size_t i = 0; i < nHosts; i++) { 
-        if (i != selfId) { 
-            sendQueues[i] = new Queue((qid_t)i, sendQueueSize);
-            senders[i] = new Thread(new SendJob(i));
-        }
-    }
-    sendQueues[selfId] = NULL;
     receiver = NULL;
     
-    sockets = new Socket*[nHosts];
-    memset(sockets, 0, nHosts*sizeof(Socket*));
-
     for (size_t i = 0; i < selfId; i++) { 
-        sockets[i] = Socket::connect(hosts[i]);
-        sockets[i]->write(&nodeId, sizeof nodeId);
+        nodes[i].sockets[i] = Socket::connect(hosts[i]);
+        nodes[i].socket->write(&nodeId, sizeof nodeId);
     }
-    sockets[selfId] = NULL;
 
     char* sep = strchr(hosts[selfId], ':');
     int port = atoi(sep+1);
@@ -181,16 +154,13 @@ Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nQueues, siz
             ? localGateway->accept()
             : globalGateway->accept();
         s->read(&node, sizeof node);
-        assert(sockets[node] == NULL);
-        sockets[node] = s;
+        assert(nodes[node] == NULL);
+        nodes[node].socket = s;
     }
     delete localGateway;
     delete globalGateway;
     
-    if (nHosts != 1) {
-        receiver = new Thread(new ReceiveJob());
-    }
-        
+	receiver = (nHosts != 1) ? new Thread(new ReceiveJob()) : NULL;
 }
 
 Cluster::~Cluster()
@@ -199,31 +169,9 @@ Cluster::~Cluster()
         Buffer shutdownMsg(MSG_SHUTDOWN, 0);
         shutdown = true;
         sleep(shutdownDelay);
-        for (size_t i = 0; i < nNodes; i++) { 
-            if (i != nodeId) { 
-                sendQueues[i]->put(&shutdownMsg);
-                delete senders[i];
-                delete sendQueues[i];
-            }
-        }
         delete receiver;
-        // at this moment all threads should finish
-    
-        delete[] senders;
-    }
-    for (size_t i = 0; i < maxQueues; i++) { 
-        delete recvQueues[i];
     }
     delete[] recvQueues;
-
-    if (hosts != NULL) { 
-        for (size_t i = 0; i < nNodes; i++) { 
-            if (i != nodeId) { 
-                delete sockets[i];
-            }
-        }
-        delete[] sockets;
-    }
 }
      
 void Cluster::barrier()
@@ -259,7 +207,7 @@ void* Thread::trampoline(void* arg)
 
 void ReceiveJob::run()
 {
-    Buffer* ioBuf = Buffer::create(0, cluster->bufferSize);
+    Buffer* buf = Buffer::create(0, cluster->bufferSize);
     size_t totalReceived = 0;
     try { 
         while (true) {
@@ -267,41 +215,21 @@ void ReceiveJob::run()
             if (cluster->shutdown) {
                 break;
             }
-            socket->read(ioBuf, BUF_HDR_SIZE);
-            totalReceived += BUF_HDR_SIZE;
+            socket->read(buf, BUF_HDR_SIZE);
+            totalReceived += BUF_HDR_SIZE + buf->size;
             
-            Buffer* buf = Buffer::create(ioBuf->qid, cluster->bufferSize);
-            memcpy(buf, ioBuf, BUF_HDR_SIZE);
-            buf->refCount = 1;
-
-            if (ioBuf->compressedSize < ioBuf->size) { 
-                socket->read(ioBuf->data, ioBuf->compressedSize);
-                decompress(buf->data, ioBuf->data, ioBuf->size, ioBuf->compressedSize);
-                totalReceived += ioBuf->compressedSize;
-            } else if (buf->size != 0) { 
-                socket->read(buf->data, buf->size);
-                totalReceived += buf->size;
-            }
-            switch (buf->kind) {
-              case MSG_PONG:
-                assert(buf->qid < cluster->maxQueues);
-                cluster->recvQueues[buf->qid]->signal();            
-                buf->release();
-                continue;
-              case MSG_SHUTDOWN:
-                buf->release();
+            if (buf->kind == MSG_SHUTDOWN) { 
                 break;
-              default:
-                cluster->recvQueues[buf->qid]->put(buf);
-                continue;
-            }
-            break;
+			} else {
+				CriticalSection cs(cluster->nodes[cluster->nodeId].mutex);
+				cluster->channels[buf->cid]->process(buf);
+			}
         }
     } catch (std::exception& x) {
         printf("Receiver catch exception %s\n", x.what());
     } 
     printf("Totally received %ldMb\n", totalReceived/MB);
-    delete ioBuf;
+    delete buf;
 }
 
 void SendJob::run()

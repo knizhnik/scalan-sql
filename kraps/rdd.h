@@ -96,16 +96,15 @@ enum JoinKind
     AntiJoin
 };
 
-#define typeof(rdd) decltype((rdd)->elem)
-
+// Do not use virtual functions here: let derived template classes be inlined
 template<class T>
 class Reactor
 {
   public:
     void react(T const& record) {}
-	void end() {} 
+	
+	virtual~Reactor() {} 
 };
-
 
 class StepByStepScheduler : public Scheduler
 {
@@ -165,7 +164,7 @@ class RDD
 {
   public:
     template<class R>
-    virtual stepid_t schedule(Scheduler& scheduler, stepid_t step, R& reactor);
+    virtual stepid_t schedule(Scheduler& scheduler, stepid_t step, R* reactor);
 
     /**
      * Filter input RDD
@@ -249,7 +248,6 @@ class RDD
         void react(T const& record) {
             value = record;
         }
-		void end() {}
     };
         
     
@@ -341,259 +339,82 @@ private:
     Queue* const queue;
 };
 
-/**
- * Scatter RDD data between nodes using provided distribution key and hash function
- */
-template<class T, class K, void (*dist_key)(K& key, T const& record), class Rdd = RDD<T> >
-class ScatterJob : public Job
+
+template<class T, void (*dist_key)(K& key, T const& record)>
+class Scatter : public Reactor
 {
 public:
-    ScatterJob(Rdd* in, Queue* q) : input(in), queue(q) {}
-    ~ScatterJob() { delete input; }
-    
-    void run()
-    {
-        K key;
-        T record;
-        size_t nNodes = cluster->nNodes;
-        size_t nodeId = cluster->nodeId;
-        size_t bufferSize = cluster->bufferSize;
-        Buffer** buffers = new Buffer*[nNodes];
-        size_t sent = 0;
-        for (size_t i = 0; i < nNodes; i++) { 
-            buffers[i] = Buffer::create(queue->qid, bufferSize);
-            buffers[i]->size = 0;
-        }
-
-        while (input->next(record)) { 
-            dist_key(key, record);
-            size_t hash = hashCode(key);
-            size_t node = hash % nNodes;
-            if (buffers[node]->size + sizeof(T) > bufferSize) {
-                sent += buffers[node]->size;
-                cluster->send(node, queue, buffers[node]);
-                buffers[node] = Buffer::create(queue->qid, bufferSize);
-                buffers[node]->size = 0;
-                
-                if (sent > cluster->syncInterval) { 
-                    for (size_t node = 0; node < nNodes; node++) {
-                        if (node != nodeId) { 
-                            cluster->send(node, queue, Buffer::ping(queue->qid));
-                        }
-                    }
-                    queue->wait(nNodes-1);
-                    sent = 0;
-                }                
-            }
-            size_t size = pack(record, buffers[node]->data + buffers[node]->size);
-            assert(size <= sizeof(T));
-            buffers[node]->size += size;
-        }
-            
-        for (size_t node = 0; node < nNodes; node++) {
-            if (buffers[node]->size != 0) { 
-                sent += buffers[node]->size;
-                cluster->send(node, queue, buffers[node]);
-                cluster->send(node, queue, Buffer::eof(queue->qid));
-            } else { 
-                buffers[node]->kind = MSG_EOF;
-                cluster->send(node, queue, buffers[node]);
-            }                
-        }
-        delete[] buffers;
-    }
-private:
-    Rdd* const input;
-    Queue* const queue;
-};
-
-
-/**
- * RDD representing result of gathering data from multiple nodes (opposite to Scatter)
- */
-template<class T>
-class GatherRDD : public RDD<T>
-{
-public:
-    bool next(T& record) {
-        Cluster* cluster = Cluster::instance.get();
-        while (used == size) { 
-            if (buf != NULL) { 
-                buf->release();
-            }
-            buf = queue->get();
-            switch (buf->kind) { 
-            case MSG_EOF:
-                if (--nWorkers == 0) { 
-                    return false;
-                }                
-                continue;
-            case MSG_PING:
-                buf->kind = MSG_PONG;
-                assert(buf->node < cluster->nNodes && buf->node != cluster->nodeId);
-                Cluster::instance->sendQueues[buf->node]->putFirst(buf);
-                buf = NULL; // will be deleted by sender
-                continue;
-            default:
-                used = 0;
-                size = buf->size;
-            }
-        }
-        used += unpack(record, buf->data + used);
-        return true;
-    }
-
-    bool getNext(T& record) override { 
-        return next(record);
-    }
-
-    GatherRDD(Queue* q) : buf(NULL), used(0), size(0), queue(q), nWorkers(Cluster::instance->nNodes) {}
-    ~GatherRDD() { 
-        if (buf != NULL) { 
-            buf->release(); 
-        }
-    }
-private:
-    Buffer* buf;
-    size_t used;
-    size_t size;
-    Queue* queue;
-    size_t nWorkers;
-};
-
-/**
- * RDD for fetching elements from buffer, used in message handlers
- */
-template<class T>
-class BufferRDD : public RDD<T>
-{
-  public:
-    bool next(T& record) {
-        if (pos == buf->size) { 
-            return false;
-        }
-        pos += unpack(record, buf->data + pos);
-        return true;
-    }
-    
-    bool getNext(T& record) override { 
-        return next(record);
-    }
-
-    BufferRDD(Buffer* buffer) : buf(buffer), pos(0) {}
-    ~BufferRDD() { buf->release(); }
-
+	Scatter(Channel* chan) : channel(chan), cluster(Cluster::instance.get()), nNodes(cluster->nNodes), bufferSize(cluster->bufferSize), buffers(nNodes) {} 
+	{
+		for (size_t i = 0; i < nNodes; i++) { 
+			buffers[i] = Buffer::create(channel->cid, bufferSize);
+			buffers[i]->size = 0;
+		}
+	}
+	void react(T const& record)
+	{
+		K key;
+		dist_key(key, record);
+		size_t hash = hashCode(key);
+		size_t node = hash % nNodes;
+		if (buffers[node]->size + sizeof(T) > bufferSize) {
+			sent += buffers[node]->size;
+			cluster->send(node, channel, buffers[node]);
+			buffers[node]->size = 0;
+		}
+		size_t size = pack(record, buffers[node]->data + buffers[node]->size);
+		assert(size <= sizeof(T));
+		buffers[node]->size += size;
+	}
+	
+	vod end() { 
+		for (size_t i = 0; i < nNodes; i++) { 
+			if (buffers[i]->size != 0) { 
+				cluster->send(node, channel, buffers[node]);
+			}
+			delete buffers[node];
+		}
+		if (channel->done()) { 
+			for (size_t i = 0; i < nNodes; i++) { 
+				cluster->sendEof(node);
+			}
+		}
+	}
   private:
-    Buffer* buf;
-    size_t pos;
-};
-
-/**
- * Replicate RDD data to all nodes
- */
-template<class T, class Rdd = RDD<T> >
-class BroadcastJob : public Job
-{
-public:
-    BroadcastJob(Rdd* in, Queue* q) : input(in), queue(q) {}
-    ~BroadcastJob() { delete input; }
-    
-    void run()
-    {
-        T record;
-        size_t nNodes = cluster->nNodes;
-        size_t nodeId = cluster->nodeId;
-        size_t bufferSize = cluster->bufferSize;
-        Buffer* buffer = Buffer::create(queue->qid, bufferSize);        
-        size_t size = 0;
-        size_t sent = 0;
-
-        while (input->next(record)) { 
-            if (size + sizeof(T) > bufferSize) {
-                sent += size;
-                buffer->size = size;
-                buffer->refCount = nNodes;
-                for (size_t node = 0; node < nNodes; node++) { 
-                    cluster->send(node, queue, buffer);
-                    if (sent > cluster->syncInterval && node != nodeId) { 
-                        cluster->sendQueues[node]->put(Buffer::ping(queue->qid));
-                    }
-                }
-                if (sent > cluster->syncInterval) { 
-                    queue->wait(nNodes-1);
-                    sent = 0;
-                }
-                buffer = Buffer::create(queue->qid, bufferSize);
-                size = 0;
-            }
-            size += pack(record, buffer->data + size);
-            assert(size <= bufferSize);
-        }
-            
-        if (size != 0) { 
-            buffer->size = size;
-            buffer->refCount = nNodes;
-        } else { 
-            buffer->release();
-        }
-        for (size_t node = 0; node < nNodes; node++) {
-            if (size != 0) { 
-                cluster->send(node, queue, buffer);
-            }
-            cluster->send(node, queue, Buffer::eof(queue->qid));
-        }
-    }
-private:
-    Rdd* const input;
-    Queue* const queue;
-};
-
-/**
- * RDD representing result of replication
- */
-template<class T, class Rdd = RDD<T> >
-class ReplicateRDD : public GatherRDD<T>
-{
-public:
-    ReplicateRDD(Rdd* input, Queue* queue) : GatherRDD<T>(queue), thread(new BroadcastJob<T,Rdd>(input, queue)) {}
-private:
-    Thread thread;
-};
-    
-// ---------------------------------
-
-template<class T>
-class Scatter 
-{
-public:
-	void send(size_t nodeId, T const& record);
-	Scatter(Channel* channel);
+	Channel* channel;
+	Cluster* cluster;
+	size_t nNodes;
+	size_t bufferSize;
+	vector<Buffer*> buffers;
 };
 
 
 template<class T>
-class Sender : public Reactor
+class Sender : public Reactor<T>
 {
 
 public:
 	void react(T const& record) { 
 		if (msg->size + sizeof(T) > cluster->bufferSize) { 
 			cluster->send(node, channel, msg);
-			msg = Buffer::create(channel->id, cluster->bufferSize);
 			msg->size = 0;
 		}
 		msg->size += pack(record, msg->data + msg->size);
 	}
 
-	void end() {
-		cluster->send(node, channel, msg);
-		cluster->send(node, channel, Buffer::eof(queue->qid));
-	}
-	
 	Sender(Channel* chan, size_t destination = COORDINATOR) : cluster(Cluster::instance.get()), channe(chan), node(destination) { 
-		msg = Buffer::create(channel->id, cluster->bufferSize);
+		msg = Buffer::create(channel->cid, cluster->bufferSize);
 		msg->size = 0;
 	}
+
+	~Sender() {
+		if (msg->size != 0) { 
+			cluster->send(node, channel, msg);
+		}
+		cluster->sendEof(node, channel);
+		delete msg;
+	}
+	
  private:
 	Cluster* cluster;
 	Channel* channel;
@@ -619,9 +440,9 @@ class FileRDD : public RDD<T>
     template<class R>
     class ReadJob : public Job {        
         FILE* f;
-        R& reactor;
+        R* reactor;
       public:
-        ReadJob(FileRDD& file, R& jobReactor, size_t id, size_t concurrency) : reactor(jobReactor)
+        ReadJob(FileRDD& file, R* jobReactor, size_t id, size_t concurrency) : reactor(jobReactor)
         {
             f = fopen(file.path, "rb");
             assert(f != NULL);
@@ -638,9 +459,9 @@ class FileRDD : public RDD<T>
         void run() {
             T record;
             while (++jobOffs <= jobSize && fread(&record, sizeof(T), 1, f) == 1) {
-                reactor.react(record);
+                reactor->react(record);
             }
-			reactor.end();
+			delete reactor;
         }
         ~ReadJob() {
             fclose(f);
@@ -652,10 +473,10 @@ class FileRDD : public RDD<T>
     };   
     
     template<class R>
-    stepid_t schedule(Scheduler& scheduler, stepid_t step, R& reactor) {
+    stepid_t schedule(Scheduler& scheduler, stepid_t step, R* reactor) {
         size_t concurrecy = Cluster::instance()->threadPool.defaultConcurrency();
         for (size_t i = 0; i < concurrency; i++) {
-            scheduler.schedule(step, new Job(*this, reactor, i, concurrency));
+            scheduler.schedule(step, new ReadJob(*this, reactor, i, concurrency));
         }
 		return step;
     }
@@ -683,13 +504,13 @@ class DirRDD : public RDD<T>
 
     template<class R>
     class ReadJob : public Job {        
-        char* path;
-        R& reactor;
+        char*  path;
+        R*     reactor;
         size_t segno;
         size_t split;
         size_t step;
       public:
-        ReadJob(DirRDD& dir, R& jobReactor, size_t id, size_t concurrency)
+        ReadJob(DirRDD& dir, R* jobReactor, size_t id, size_t concurrency)
         : path(dir.path), reactor(jobReactor), segno(dir.segno*concurrency + id), split(dir.split*concurrency), step(dir.step*concurrency) {}
 
         void run() {
@@ -709,12 +530,12 @@ class DirRDD : public RDD<T>
                 assert(rc == 0);
 
                 while (nRecords-- != 0 && fread(&record, sizeof(T), 1, f) == 1) {
-                    reactor.react(record);
+                    reactor->react(record);
                 }
                 fclose(f);
                 segno += step;
             }
-			reactor.end();
+			delete reactor;
         }
         ~ReadJob() {
             fclose(f);
@@ -726,10 +547,10 @@ class DirRDD : public RDD<T>
     };   
     
     template<class R>
-    stepid_t schedule(Scheduler& scheduler, stepid_t step, R& reactor) {
+    stepid_t schedule(Scheduler& scheduler, stepid_t step, R* reactor) {
         size_t concurrecy = Cluster::instance()->threadPool.defaultConcurrency();
         for (size_t i = 0; i < concurrency; i++) {
-            scheduler.schedule(step, new Job(*this, reactor, i, concurrency));
+            scheduler.schedule(step, new ReadJob(*this, reactor, i, concurrency));
         }
 		return step;
     }
@@ -782,26 +603,25 @@ class FilterRDD : public RDD<T>
 
     template<class R>
     class FilterReactor {
-        R& reactor;
+        R* reactor;
 
 	  public:
-		FilterReactor(R& r) : reactor(r) {}
+		FilterReactor(R* r) : reactor(r) {}
 
         void react(T const& record) {
             if (predicate(record)) {
-                reactor.react(record);
+                reactor->react(record);
             }
         }
 
-		void end() { 
-			reactor.end();
+		~FilterReactor() { 
+			delete reactor;
 		}
     };
         
     template<class R>
-    stepid_t schedule(Scheduler& scheduler, stepid_t step, R& reactor) {
-        FilterReactor filter(reactor);
-        return in->shedule(scheduler, step, filter);
+    stepid_t schedule(Scheduler& scheduler, stepid_t step, R* reactor) {
+        return in->shedule(scheduler, step, new FilterReactor(reactor));
     }
 
     ~FilterRDD() { delete in; }
@@ -809,50 +629,68 @@ class FilterRDD : public RDD<T>
   private:
     RDD<T>* const in;
 };
+
+
+class BarrierJob : public Job
+{
+  public:
+	Barrier(size_t n) : count(n) {}
+
+	void reach() { 
+		semaphore.signal();
+	}
+
+	void run() { 
+		CriticalSection cs(mutex);
+		semaphore.wait(count);
+	}
+  private:
+	Mutex mutex;
+	Semaphore semaphore;
+};
     
 /**
  * Perform aggregation of input data (a-la Scala fold)
  */
-template<class T, class S,void (*accumulate)(S& state, T const& in),void (*combine)(S& state, S const& in) >
+template<class T, class S, void (*accumulate)(S& state, T const& in), void (*combine)(S& state, S const& in) >
 class ReduceRDD : public RDD<S> 
 {    
     template<class R>
     class ReduceReactor {
-        ReduceRDD& reduce;
+        ReduceRDD& rdd;
 		S state;
 
 	  public:
-		ReduceReator(ReduceRDD& reduce) : rdd(reduce), state(reduce.state) {}
+		ReduceReactor(ReduceRDD& reduce) : rdd(reduce), state(reduce.state) {}
 
         void react(T const& record) {
 			accumulate(state, record);
         }
 
-		void end() { 
+		~ReduceReactor() { 
 			CriticalSection cs(rdd.mutex);
 			combine(rdd.state, state);
 		}
     };
 
     template<class R>
-	class ReduceReactor { 
+	class ReduceProcessor { 
 	public:
-		void react(S const& partialState) { 			
-			combine(state, partialState);
-		}
-
-		void end() { 
-			if (++getResponses == nNodes) { 
-				reactor.react(state);
-				reactor.end();
+		void process(Buffer* buf) { 
+			if (buf->kind == MSG_EOF) { 
+				rdd.barrier->reach();
+			} else {
+				assert(buf->size == sizeof(S));
+				combine(rdd.state, *(S const*)buf->data);
 			}
 		}
 
-		ReduceReactor(R& r, S& s) : reator(r), state(s), nResponses(0), nNodes(Cluster::instance->nNodes-1) {}
+		ReduceProcessor(ReduceRDD& redure) : rdd(reduce) {}
 
 	private:
-		R& reactor;
-		S& state;
+		ReduceRDD& reduce;
+		S& result;
+		R* reactor;
 		size_t nResponses;
 		size_t nNodes;
 	};	
@@ -862,12 +700,11 @@ class ReduceRDD : public RDD<S>
 	{
 	public:
 		void run() {
-			sender->react(rdd.state);
-			sender->end();
+			reactor->react(result);
+			delete reactor;
 		}
 
-		SendJob(R* to) : reactor(to) {}
-		~SendJob() { delete reactor; }
+		SendJob(S& state, R* to) : result(state), reactor(to) {}
 	private:
 		R* reactor;
 	};
@@ -875,146 +712,117 @@ class ReduceRDD : public RDD<S>
 
   public:
     template<class R>
-    stepid_t schedule(Scheduler& scheduler, stepid_t step, R& reactor) {
-        step = in->shedule(scheduler, step, filter);
+    stepid_t schedule(Scheduler& scheduler, stepid_t step, R* reactor) {
+        step = in->shedule(scheduler, step, new ReduceReactor(*this));
         Cluster* cluster = Cluster::instance.get();
-		Channel* channel = cluster->getChannel(new ReduceReactor(reactor, state));
+		barrier = new BarrierJob(cluster->nNodes-1);
+		Channel* channel = cluster->getChannel(new ReduceProcessor(*this));
 		if (!Cluster::instance->isCoordinator()) {
-			scheduler.shedule(++step, new SendJob(new Sender(channel)));
-		}
+			scheduler.schedule(++step, new SendJob<S, Sender<T> >(state, new Sender<T>(channel)));
+		} else { 
+			scheduler.schedule(++step, barrier);		
+			scheduler.schedule(++step, new SendJob<S,R>(state, reactor));
+		}		
 		return step;
     }
 
-    ReduceRDD(RDD<T>* input, S const& initState) : state(initState), in(input)
-
+    ReduceRDD(RDD<T>* input, S const& initState) : state(initState), in(input) {}
   private:
     S state;
 	RDD<T>* in;
 	Mutex mutex;
 };
-        
+   
+
+
 /**
  * Classical Map-Reduce
  */
-template<class T,class K,class V,void (*map)(Pair<K,V>& out, T const& in), void (*reduce)(V& dst, V const& src), class Rdd = RDD<T> >
+template<class T,class K,class V,void (*map)(Pair<K,V>& out, T const& in), void (*reduce)(V& dst, V const& src) >
 class MapReduceRDD : public RDD< Pair<K,V> > 
 {    
   public:
-    MapReduceRDD(Rdd* input, size_t estimation) : size(hashTableSize(estimation)), table(new Entry*[size]) {
-        loadHash(input);
-    }
+    MapReduceRDD(RDD<T>* input, size_t estimation) : initSize(hashTableSize(estimation)), in(input) {}
 
-    bool next(Pair<K,V>& record) {
-        while (curr == NULL) { 
-            if (i == size) { 
-                return false;
-            }
-            curr = table[i++];
-        }
-        record = curr->pair;
-        curr = curr->collision;
-        return true;
-    }
+    template<class R>
+    class MapReduceReactor {
+		BlockAllocator<Entry> allocator;
+		MapReduceRDD& rdd;
+		KeyValueMap<K,V,reduce> hashMap;
 
-    bool getNext(Pair<K,V>& record) override { 
-        return next(record);
-    }
+	  public:
+		MapReduceReator(MapReduceRDD& reduce) : rdd(reduce), hashMap(rdd.initSize) {}
 
-    ~MapReduceRDD() { 
-        deleteHash();        
-    }
-  private:
-    struct Entry {
-        Pair<K,V> pair;
-        Entry* collision;
-    };
-    
-    size_t  size;
-    Entry** table;
-    size_t  i;
-    Entry*  curr;
-    BlockAllocator<Entry> allocator;
-
-    void extendHash() 
-    {
-        Entry *entry, *next;
-        size_t newSize = hashTableSize(size+1);
-        Entry** newTable = new Entry*[newSize];
-        memset(newTable, 0, newSize*sizeof(Entry*));
-        for (size_t i = 0; i < size; i++) { 
-            for (entry = table[i]; entry != NULL; entry = next) { 
-                size_t h = MOD(hashCode(entry->pair.key), newSize);
-                next = entry->collision;
-                entry->collision = newTable[h];
-                newTable[h] = entry;
-            }
-        }
-        delete[] table;
-        table = newTable;
-        size = newSize;
-    }
-             
-
-    void loadHash(Rdd* input) 
-    {
-        Entry* entry;
-        T record;
-        Pair<K,V> pair;
-
-        memset(table, 0, size*sizeof(Entry*));
-        
-        size_t realSize = 0;
-        while (input->next(record)) {
+        void react(T const& record) {
+			Pair<K,V> pair;
             map(pair, record);
-            size_t hash = hashCode(pair.key);
-            size_t h = MOD(hash, size);            
-            for (entry = table[h]; !(entry == NULL || pair.key == entry->pair.key); entry = entry->collision);
-            if (entry == NULL) { 
-                entry = allocator.alloc();
-                entry->collision = table[h];
-                table[h] = entry;
-                entry->pair = pair;
-                if (++realSize > size) { 
-                    extendHash();
-                }
-            } else { 
-                reduce(entry->pair.value, pair.value);
-            }
+			hashMap.add(pair);
         }
-        curr = NULL;
-        i = 0;
-        Cluster* cluster = Cluster::instance.get();
-        Queue* queue = cluster->getQueue();
-        if (cluster->isCoordinator()) { 
-            GatherRDD< Pair<K,V> > gather(queue);
-            queue->putFirst(Buffer::eof(queue->qid)); // do not wait for self node
-            Pair<K,V> pair;
-            while (gather.next(pair)) {
-                size_t hash = hashCode(pair.key);
-                size_t h = MOD(hash, size);            
-                for (entry = table[h]; !(entry == NULL || pair.key == entry->pair.key); entry = entry->collision);
-                if (entry == NULL) { 
-                    entry = allocator.alloc();
-                    entry->collision = table[h];
-                    table[h] = entry;
-                    entry->pair = pair;
-                    if(++realSize > size) { 
-                        extendHash();
-                    }
-                } else { 
-                    reduce(entry->pair.value, pair.value);
-                }                
-            }            
-        } else {
-            sendToCoordinator<Pair<K,V>,MapReduceRDD>(this, queue);            
-        }
-        printf("HashAggregate: estimated size=%ld, real size=%ld\n", size, realSize);
-        delete input;
-    }
 
-    void deleteHash() {
-        delete[] table;
-    }
+		~MapReduceReator() { 
+			CriticalSection cs(rdd.mutex);
+			rdd.hashMap.merge(hashMap);
+		}
+    };
+
+    template<class R>
+	class MapReduceProcessor { 
+	public:
+		void process(Buffer* buf) { 
+			if (buf->kind == MSG_EOF) { 
+				rdd.barrier->reach();
+			} else {
+				Pair<K,V>* pairs = (Pair<K,V>*)buf->data;
+				size_t n = buf->size/sizeof(Pair<K,V>);
+				for (size_t i = 0; i < n; i++) { 
+					rdd.hashMap.add(pairs[i]);
+				}
+			}
+		}
+
+		MapReduceProcessor(MapReduce& reduce) : rdd(reduce)
+
+	private:
+		MapReduce& rdd;
+	};	
+		
+	friend void key(K& k, Pair<K,V> const& pair) { 
+		k = pair.key;
+	}
+
+    template<class R>
+    stepid_t schedule(Scheduler& scheduler, stepid_t step, R* reactor) {
+        step = in->shedule(scheduler, step, filter);
+        Cluster* cluster = Cluster::instance.get();
+		barrier = new BarrierJob(cluster->nNodes-1);
+		Channel* channel = cluster->getChannel(new MapReduceProcessor(*this));
+		if (!Cluster::instance->isCoordinator()) {
+			scatter = new Scatter<T,key>(channel);
+			scheduler.schedule(++step, hashMap.iterate<Scatter<T,key> >(*scatter));
+		} else { 
+			scheduler.schedule(++step, barrier);		
+			step += 1;
+			size_t nPartitions = cluster->threadPool.deafultConcurrency();
+			size_t partitionSize = (hashMap.count() + nPartitions - 1) / nPartitions;
+			for (size_t i = 0; i < nPartitions; i++) { 				
+				scheduler.schedule(step, hashMap.iterate<R>(reactor, i*partitionSize, (i+1)*partitionSize));
+			}
+		}
+		return step;
+	}
+
+	~MapReduce() { 
+		delete scatter;
+		delete barrier;
+	}
+
+  private:
+	size_t const initSize;
+	RDD<T>* const in;
+	KeyValueMap<K,V> hashMap;	
+	Scatter<T,key>* scatter; 
+	BarrierJob* barrier;
+	
 };
 
 /**
@@ -1026,23 +834,36 @@ class ProjectRDD : public RDD<P>
   public:
     ProjectRDD(Rdd* input) : in(input) {}
 
-    bool next(P& projection) { 
-        T record;
-        if (in->next(record)) { 
-            project(projection, record);
-            return true;
-        }
-        return false;
-    }
+    template<class R>
+    class ProjectReactor {
+        R& reactor;
 
-    bool getNext(P& record) override {
-        return next(record);
+	  public:
+		ProjectReactor(R& r) : reactor(r) {}
+
+        void react(T const& record) {
+			P projection;
+			project(projection, record);
+			reactor.react(projection);
+        }
+
+		void end() { 
+			reactor.end();
+		}
+    };
+ 
+    template<class R>
+    stepid_t schedule(Scheduler& scheduler, stepid_t step, R& reactor) {
+        ProjectReactor<R> project = new ProjectReactor<R>(reactor);
+		reactor = project;
+        return in->shedule(scheduler, step, *project);
     }
 
     ~ProjectRDD() { delete in; }
 
   private:
-    Rdd* const in;
+    RDD<T>* const in;
+	Reactor* reactor;
 };
 
 /**
