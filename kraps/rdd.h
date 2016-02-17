@@ -276,70 +276,6 @@ class RDD
 };
 
 
-
-// ------------------------------------
-
-/**
- * Tranfer data from RDD to queue
- */
-template<class T, class Rdd = RDD<T> >
-inline void enqueue(Rdd* input, size_t node, Queue* queue) 
-{
-    Cluster* cluster = Cluster::instance.get();
-    qid_t qid = queue->qid;
-    size_t bufferSize = cluster->bufferSize;
-    Buffer* buf = Buffer::create(qid, bufferSize);
-    size_t size, used = 0;
-    T record;
-    while (input->next(record)) { 
-        if (used + sizeof(T) > bufferSize) { 
-            buf->size = used;
-            cluster->send(node, queue, buf);
-            buf = Buffer::create(qid, bufferSize);
-            used = 0;
-        }
-        size = pack(record, buf->data + used);
-        assert(size <= sizeof(T));
-        used += size;
-    }
-    buf->size = used;
-    if (used != 0) { 
-        cluster->send(node, queue, buf);
-        cluster->send(node, queue, Buffer::eof(qid));
-    } else { 
-        buf->kind = MSG_EOF;
-        cluster->send(node, queue, buf);
-    }
-}
-
-/**
- * Send data to coordinator
- */
-template<class T, class Rdd = RDD<T> >
-inline void sendToCoordinator(Rdd* input, Queue* queue) 
-{
-    enqueue<T,Rdd>(input, COORDINATOR, queue);
-}
-
-/**
- * Fetch data from RDD and place it in queue
- */
-template<class T, class Rdd = RDD<T> >
-class FetchJob : public Job
-{
-public:
-    FetchJob(Rdd* in, Queue* q) : input(in), queue(q) {}
-
-    void run()
-    {        
-        enqueue<T,Rdd>(input, Cluster::instance->nodeId, queue);
-    }
-private:
-    Rdd* const input;
-    Queue* const queue;
-};
-
-
 template<class T, void (*dist_key)(K& key, T const& record)>
 class Scatter : public Reactor
 {
@@ -392,7 +328,6 @@ public:
 template<class T>
 class Sender : public Reactor<T>
 {
-
 public:
 	void react(T const& record) { 
 		if (msg->size + sizeof(T) > cluster->bufferSize) { 
@@ -420,6 +355,49 @@ public:
 	Channel* channel;
 	Buffer* msg;
 	size_t node;
+};
+
+template<class T>
+class Broadcaster : public Reactor<T>
+{
+public:
+	void react(T const& record) { 
+		if (msg->size + sizeof(T) > cluster->bufferSize) { 
+			for (size_t i = 0; i < cluster->nNodes; i++) { 
+				if (i != cluster->nodeId) { 
+					cluster->send(i, channel, msg);
+				}
+			}
+			msg->size = 0;
+		}
+		msg->size += pack(record, msg->data + msg->size);
+	}
+
+	Broadcaster(Channel* chan) : cluster(Cluster::instance.get()), channe(chan) { 
+		msg = Buffer::create(channel->cid, cluster->bufferSize);
+		msg->size = 0;
+	}
+
+	~Broadcaster() {
+		if (msg->size != 0) { 
+			for (size_t i = 0; i < cluster->nNodes; i++) { 
+				if (i != cluster->nodeId) { 
+					cluster->send(i, channel, msg);
+				}
+			}
+		}
+		for (size_t i = 0; i < cluster->nNodes; i++) { 
+			if (i != cluster->nodeId) { 
+				cluster->sendEof(i, channel);
+			}
+		}
+		delete msg;
+	}
+	
+ private:
+	Cluster* cluster;
+	Channel* channel;
+	Buffer* msg;
 };
 
 /**
@@ -680,8 +658,9 @@ class ReduceRDD : public RDD<S>
 			if (buf->kind == MSG_EOF) { 
 				rdd.barrier->reach();
 			} else {
-				assert(buf->size == sizeof(S));
-				combine(rdd.state, *(S const*)buf->data);
+				S state;
+				unpack(state, buf->data);
+				combine(rdd.state, state);
 			}
 		}
 
@@ -689,10 +668,6 @@ class ReduceRDD : public RDD<S>
 
 	private:
 		ReduceRDD& reduce;
-		S& result;
-		R* reactor;
-		size_t nResponses;
-		size_t nNodes;
 	};	
 		
 	template<class R>
@@ -715,11 +690,11 @@ class ReduceRDD : public RDD<S>
     stepid_t schedule(Scheduler& scheduler, stepid_t step, R* reactor) {
         step = in->shedule(scheduler, step, new ReduceReactor(*this));
         Cluster* cluster = Cluster::instance.get();
-		barrier = new BarrierJob(cluster->nNodes-1);
 		Channel* channel = cluster->getChannel(new ReduceProcessor(*this));
 		if (!Cluster::instance->isCoordinator()) {
-			scheduler.schedule(++step, new SendJob<S, Sender<T> >(state, new Sender<T>(channel)));
+			scheduler.schedule(++step, new SendJob<S, Sender<S> >(state, new Sender<S>(channel)));
 		} else { 
+			barrier = new BarrierJob(cluster->nNodes-1);
 			scheduler.schedule(++step, barrier);		
 			scheduler.schedule(++step, new SendJob<S,R>(state, reactor));
 		}		
@@ -772,15 +747,17 @@ class MapReduceRDD : public RDD< Pair<K,V> >
 			if (buf->kind == MSG_EOF) { 
 				rdd.barrier->reach();
 			} else {
-				Pair<K,V>* pairs = (Pair<K,V>*)buf->data;
-				size_t n = buf->size/sizeof(Pair<K,V>);
-				for (size_t i = 0; i < n; i++) { 
-					rdd.hashMap.add(pairs[i]);
+				char* src = buf->data;
+				char* end = src + buf->size;
+				Pair<K,V> pair;
+				while (src < end) { 
+					src += unpack(pair, src);
+					rdd.hashMap.add(pair);
 				}
 			}
 		}
 
-		MapReduceProcessor(MapReduce& reduce) : rdd(reduce)
+		MapReduceProcessor(MapReduce& reduce) : rdd(reduce) {}
 
 	private:
 		MapReduce& rdd;
@@ -792,28 +769,21 @@ class MapReduceRDD : public RDD< Pair<K,V> >
 
     template<class R>
     stepid_t schedule(Scheduler& scheduler, stepid_t step, R* reactor) {
-        step = in->shedule(scheduler, step, filter);
+        step = in->shedule(scheduler, step, new MapReduceReator(*this));
         Cluster* cluster = Cluster::instance.get();
-		barrier = new BarrierJob(cluster->nNodes-1);
 		Channel* channel = cluster->getChannel(new MapReduceProcessor(*this));
 		if (!Cluster::instance->isCoordinator()) {
-			scatter = new Scatter<T,key>(channel);
-			scheduler.schedule(++step, hashMap.iterate<Scatter<T,key> >(*scatter));
+			scheduler.schedule(++step, hashMap.iterate<Sender<Pair<K,V> >(new Sender<Pair<K,V> >(channel))));
 		} else { 
+			barrier = new BarrierJob(cluster->nNodes-1);
 			scheduler.schedule(++step, barrier);		
 			step += 1;
 			size_t nPartitions = cluster->threadPool.deafultConcurrency();
-			size_t partitionSize = (hashMap.count() + nPartitions - 1) / nPartitions;
 			for (size_t i = 0; i < nPartitions; i++) { 				
-				scheduler.schedule(step, hashMap.iterate<R>(reactor, i*partitionSize, (i+1)*partitionSize));
+				scheduler.schedule(step, hashMap.iterate<R>(reactor, i, nPartitions)); // !!!! Fix iteator in utils
 			}
 		}
 		return step;
-	}
-
-	~MapReduce() { 
-		delete scatter;
-		delete barrier;
 	}
 
   private:
@@ -822,7 +792,7 @@ class MapReduceRDD : public RDD< Pair<K,V> >
 	KeyValueMap<K,V> hashMap;	
 	Scatter<T,key>* scatter; 
 	BarrierJob* barrier;
-	
+	Mutex mutex;	
 };
 
 /**
@@ -836,95 +806,122 @@ class ProjectRDD : public RDD<P>
 
     template<class R>
     class ProjectReactor {
-        R& reactor;
-
 	  public:
-		ProjectReactor(R& r) : reactor(r) {}
+		ProjectReactor(R* r) : reactor(r) {}
 
         void react(T const& record) {
 			P projection;
 			project(projection, record);
-			reactor.react(projection);
+			reactor->react(projection);
         }
 
-		void end() { 
-			reactor.end();
+		~ProjectReactor() { 
+			delete reactor;
 		}
+
+	private:
+		R* reactor;
     };
  
     template<class R>
     stepid_t schedule(Scheduler& scheduler, stepid_t step, R& reactor) {
-        ProjectReactor<R> project = new ProjectReactor<R>(reactor);
-		reactor = project;
-        return in->shedule(scheduler, step, *project);
+        return in->shedule(scheduler, step, new ProjectReactor<R>(reactor));
     }
 
     ~ProjectRDD() { delete in; }
 
   private:
     RDD<T>* const in;
-	Reactor* reactor;
 };
+
+// Move to utils.h
+template<class T, class R>
+class ArrayIterator : public Job { 
+public:
+	Iterator(R* r, vector<T>& arr, size_t offs = 0, size_t inc = 1) : reactor(r), array(arr), offset(offs), step(inc) {}
+
+	void run() { 
+		for (size_t i = offs; i < array.size(); i += step) { 
+			reactor->react(array[i]);
+		}
+		delete reactor;
+	}
+	
+private:
+	R* const reactor;
+	vector<T>& array;
+	size_t const offs;
+	size_t const step;
+};
+
+
 
 /**
  *  Sort using given comparison function
  */
-template<class T, int compare(T const* a, T const* b), class Rdd = RDD<T> >
+template<class T, int compare(T const* a, T const* b)>
 class SortRDD : public RDD<T>
 {
-  public:
-    SortRDD(Rdd* input, size_t estimation) {
-        loadArray(input, estimation);
-    }
+    template<class R>
+	class AppendProcessor { 
+	public:
+		void process(Buffer* buf) { 
+			if (buf->kind == MSG_EOF) { 
+				rdd.barrier->reach();
+			} else {
+				char* src = buf->data;
+				char* end = src + buf->size;
+				T record;
+				while (src < end) { 
+					src += unpack(record, src);
+					rdd.array.push_back(record);
+				}
+			}
+		}
 
-    bool next(T& record) { 
-        if (i < size) { 
-            record = buf[i++];
-            return true;
-        }
-        return false;
-    }
-    
-    bool getNext(T& record) override {
-        return next(record);
-    }
+		AppendProcessor(SortRDD& sort) : rdd(sort) {}
 
-    ~SortRDD() { 
-        delete[] buf;
-    }
-
-  private:
-    T* buf;
-    size_t size;
-    size_t i;
+	private:
+		SortRDD& reduce;
+	};	
 
     typedef int(*comparator_t)(void const* p, void const* q);
 
-    void loadArray(Rdd* input, size_t estimation) { 
-        Cluster* cluster = Cluster::instance.get();
-        Queue* queue = cluster->getQueue();
-        if (cluster->isCoordinator()) {         
-            Thread loader(new FetchJob<T,Rdd>(input, queue));
-            GatherRDD<T> gather(queue);
-            buf = new T[estimation];
-            for (size = 0; gather.next(buf[size]);) { 
-                if (++size == estimation) { 
-                    T* newBuf = new T[estimation *= 2];
-                    printf("Extend sort buffer to %ld\n", estimation);
-                    memcpy(newBuf, buf, size*sizeof(T));
-                    delete[] buf;
-                    buf = newBuf;
-                }
-            }
-            qsort(buf, size, sizeof(T), (comparator_t)compare);
-        } else { 
-            sendToCoordinator<T,Rdd>(input, queue);
-            buf = NULL;
-            size = 0;
-        }
-        delete input;
-        i = 0;
+	class SortJob : public Job
+	{
+	public:
+		SortJob(SortRDD& sort) : rdd(sort) {}
+
+		public void run() { 
+            qsort(&rdd.array[0], rdd.size, sizeof(T), (comparator_t)compare);
+		}			
+	};
+
+  public:
+    SortRDD(RDD<T>* input, size_t estimation) : in(input){
+        array.reserve(estimation);
     }
+
+    template<class R>
+    stepid_t schedule(Scheduler& scheduler, stepid_t step, R* reactor) {
+		Channel* channel = cluster->getChannel(new AppendProcessor(*this));
+        step = in->shedule(scheduler, step, new Sender<T>(channel));
+		if (Cluster::instance->isCoordinator()) {
+			barrier = new BarrierJob(cluster->nNodes-1);
+			scheduler.schedule(++step, barrier);		
+			scheduler.schedule(++step, new SortJob(*this));
+			scheduler.schedule(++step, new ArrayIterator<T,R>(reactor, array, i, nPartitions));
+		}
+		return step;
+    }
+	
+	~SortRDD() { 
+		delete in;
+	}
+
+private:
+	RDD<T>* in;
+	vector<T> array;
 };
 
 /**
