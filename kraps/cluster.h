@@ -80,13 +80,13 @@ class Channel
 	Cluster* const cluster;
 	ChannelProcessor* processor;
 
-	void done() { 
+	bool done() { 
 		return __sync_add_and_fetch(&nConnections, -1) == 0;
 	}
 
-	Channel(cid_t id, Cluster* clu, ChannelProcessor* cp) : cid(id), cluster(clu), processor(cp), nConnections(cluster->nNodes-1) {}
+	Channel(cid_t cid, Cluster* cluster, ChannelProcessor* processor);
 
-  private:
+  private:	
 	int nConnections;
 };
 
@@ -97,8 +97,8 @@ class Cluster
 {
 	struct Node { 
 		Mutex   mutex;
-        Thread* receiver;
 		Socket* socket;
+        Thread* receiver;
 		
 		Node() : socket(NULL), receiver(NULL) {}
 		~Node() { delete socket; }		
@@ -120,8 +120,8 @@ class Cluster
     bool shutdown;
     void* userData;
     ThreadPool threadPool;
-	Vector<Node> nodes;
-	Vector<Channel> channels;
+	vector<Node> nodes;
+	vector<Channel> channels;
 	
     /**
      * Check if this node is coordinator. Coordinator is forst node in the cluster and it is used to collect all

@@ -8,35 +8,14 @@
 #include "cluster.h"
 #include "pack.h"
 #include "hash.h"
+#include "util.h"
 
 #ifndef UNKNOWN_ESTIMATION
 #define UNKNOWN_ESTIMATION (1024*1024)
 #endif
 
-/**
- * Pair is used for map-reduce
- */
-template<class K, class V>
-struct Pair
-{
-    K key;
-    V value;
-    friend size_t pack(Pair const& src, char* dst) {
-        size_t size = pack(src.key, dst);
-        return size + pack(src.value, dst + size);
-    }
-
-    friend size_t unpack(Pair& dst, char const* src) {
-        size_t size = unpack(dst.key, src);
-        return size + unpack(dst.value, src + size);
-    }
-    friend void print(Pair const& pair, FILE* out)
-    {
-        print(pair.key, out);
-        fputs(", ", out);
-        print(pair.value, out);
-    }
-};
+// Do not use virtual functions: let's functions be inclined by templates
+#define VIRTUAL(x)
 
 /**
  *  Result of join
@@ -61,27 +40,6 @@ struct Join : Outer, Inner
     }
 };
 
-
-/**
- * Print functions for scalars
- */
-inline void print(int val, FILE* out)
-{
-    fprintf(out, "%d", val);
-}
-inline void print(long val, FILE* out)
-{
-    fprintf(out, "%ld", val);
-}
-inline void print(double val, FILE* out)
-{
-    fprintf(out, "%f", val);
-}
-inline void print(char const* val, FILE* out)
-{
-    fprintf(out, "%s", val);
-}
-
 /**
  * Join kind
  */
@@ -101,13 +59,12 @@ class Reactor
   public:
     /**
 	 * Proceed record	 
-	 * Do not use virtual functions here: let derived template classes be inlined
 	 */
-    void react(T const& record) {}
+    VIRTUAL(void react(T const& record));
 	
 	/**
-	 * Destructor is used to inform consumer that end of data is reached */
-	*/
+	 * Destructor is used to inform consumer that end of data is reached 
+	 */
 	virtual~Reactor() {} 
 };
 
@@ -163,7 +120,7 @@ class ChainRddReactorFactory : public ReactorFactory<Child>
   public:
 	ChainRddReactorFactory(Rdd& owner, ReactorFactory<Parent>& factory) : rdd(owner), parent(factory) {}
 
-	R* getReactor() { 
+	Child* getReactor() { 
 		return new Child(rdd, parent.getReactor());
 	}
 
@@ -196,11 +153,11 @@ class ChannelReactorFactory : public ReactorFactory<R>
 class StagedScheduler : public Scheduler
 {
   public:
-    StagedScheduler() : currStage(0), currJob(0), activeJobs(0), stageStartTime(getCurrentTime()) {}
+    StagedScheduler() : currStage(0), currJob(0), nActiveJobs(0), stageStartTime(getCurrentTime()) {}
     
 	size_t getDefaultConcurrency() 
 	{
-		return Cluster::instance.threadPool.getDefaultConcurrency();
+		return Cluster::instance->threadPool.getDefaultConcurrency();
 	}
 		
     void schedule(stage_t stage, Job* job)
@@ -234,20 +191,21 @@ class StagedScheduler : public Scheduler
         assert(nActiveJobs == 0);
         if (--nActiveJobs == 0) {
             printf("Stage %u finisihed in %ld microseconds\n", currStage, stageStartTime - getCurrentTime());
-            event.signal();
+            stageDone.signal();
         }
     }
 
   private:
-    vector< vector<Job> > jobs;
+    vector< vector<Job*> > jobs;
     Mutex    mutex;
     Event    stageDone;
     stage_t  currStage;
     size_t   currJob;
-    size_t   activeJobs;
+    size_t   nActiveJobs;
     time_t   stageStartTime;    
 };
         
+#define typeof(rdd) decltype((rdd)->elem)
 
 /**
  * Abstract RDD (Resilient Distributed Dataset)
@@ -256,119 +214,32 @@ template<class T>
 class RDD
 {
   public:
+    /**
+     * RDD element. It is used for getting RDD elementtype using typeof macro
+     */
+    T elem;
+
+	/** 
+	 * Mutex to sycnhronize access to RDD
+	 */
+    Mutex mutex;
+
 	/**
 	 * Schedule jobs for this RDD
 	 */
-    template<class R>
-    virtual stage_t schedule(Scheduler& scheduler, stage_t stage, ReactorFactory<R>& factory);
-
-    /**
-     * Filter input RDD
-     * @return RDD with records matching predicate 
-     */
-    template<bool (*predicate)(T const&)>
-    RDD<T>* filter();
-
-    /**
-     * Perfrom map-reduce
-     * @param estimation esimation for number of pairs
-     * @return RDD with &lt;key,value&gt; pairs
-     */
-    template<class K,class V,void (*map)(Pair<K,V>& out, T const& in), void (*reduce)(V& dst, V const& src)>
-    RDD< Pair<K,V> >* mapReduce(size_t estimation = UNKNOWN_ESTIMATION);
-
-    /**
-     * Perform aggregation of input RDD 
-     * @param initState initial aggregate value
-     * @return RDD with aggregated value
-     */
-    template<class S,void (*accumulate)(S& state,  T const& in),void (*combine)(S& state, S const& in)>
-    RDD<S>* reduce(S const& initState);
-
-    /**
-     * Map records of input RDD
-     * @return projection of the input RDD. 
-     */
-    template<class P, void (*projection)(P& out, T const& in)>
-    RDD<P>* project();
-
-    /**
-     * Sort input RDD
-     * @param estimation estimation for number of records in RDD
-     * @return RDD with sorted records
-     */
-    template<int (*compare)(T const* a, T const* b)> 
-    RDD<T>* sort(size_t estimation = UNKNOWN_ESTIMATION);
-
-    /**
-     * Find top N records according to provided comparison function
-     * @param n number of returned top records
-     * @return RDD with up to N top records
-     */
-    template<int (*compare)(T const* a, T const* b)> 
-    RDD<T>* top(size_t n);
-
-    /**
-     * Join of two RDDs. Inner join returns pairs of matches records in outer and inner table.
-     * Outer join also returns records from outer table for which there are matching in inner table.
-     * @param with inner join table
-     * @param estimation estimation for number of joined records
-     * @param kind join kind (inner/outer join)
-     */
-    template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner)>
-    RDD< Join<T,I> >* join(RDD<I>* with, size_t estimation = UNKNOWN_ESTIMATION, JoinKind kind = InnerJoin);
-
-    /**
-     * Print RDD records to the stream
-     * @param out output stream
-     */
-    void output(FILE* out)
-	{
-        OutputFactory factory(*this, out);
-        StagedScheduler scheduler;
-        schedule<Output>(scheduler, 1, factory);
-        Cluster::instance->threadPool.run(scheduler);
-    }
-
+    VIRTUAL(template<class R> stage_t schedule(Scheduler& scheduler, stage_t stage, ReactorFactory<R>& factory));
 	
+	/**
+	 * Release RDD: delete dynamically created RDDs
+	 */
 	virtual void release() {
 		delete this;
 	}
-		
+	
+	/**
+	 * Vertual destructor
+	 */
     virtual~RDD() {}
-
-  private:
-	class OutputReactor : public Reactor<T>
-	{
-	  public:
-		OutputReactor(RDD& owner, FILE* output) : rdd(owner), out(output) {}
-
-		void react(T const& record) { 
-			CriticalSection cs(rdd.mutex);
-			print(record, out);
-		}
-
-	  private:
-		RDD&  rdd;
-		FILE* out;
-	};
-
-	class OutputFactory : public ReactorFactory<OutputReacto>
-	{
-	  public:
-		OutputFactory(RDD& owner, FILE* output) : rdd(owner), out(output) {}
-
-		OutputReactor* getFactory() { 
-			return new OutputReactor(rdd, out);
-		}
-
-	  private:
-		RDD&  rdd;
-		FILE* out;
-	};
-
-  protected:
-    Mutex mutex;
 };
 
 /**
@@ -667,11 +538,11 @@ class FileManager
 /**
  * Filter resutls using provided condition
  */
-template<class T, bool (*predicate)(T const&)>
+template<class T, bool (*predicate)(T const&), class Rdd>
 class FilterRDD : public RDD<T>
 {
   public:
-    FilterRDD(RDD<T>* input) : in(input) {}
+    FilterRDD(Rdd* input) : in(input) {}
     ~FilterRDD() { in->release(); }
 
     template<class R>
@@ -699,7 +570,7 @@ class FilterRDD : public RDD<T>
         R* reactor;
     };
 
-    RDD<T>* const in;
+    Rdd* const in;
 };
 
 
@@ -725,11 +596,11 @@ class BarrierJob : public Job
 /**
  * Perform aggregation of input data (a-la Scala fold)
  */
-template<class T, class S, void (*accumulate)(S& state, T const& in), void (*combine)(S& state, S const& in) >
+template<class T, class S, void (*accumulate)(S& state, T const& in), void (*combine)(S& state, S const& in), class Rdd >
 class ReduceRDD : public RDD<S> 
 {     
   public:
-    ReduceRDD(RDD<T>* input, S const& initState) : state(initState), in(input) {}
+    ReduceRDD(Rdd* input, S const& initState) : state(initState), in(input) {}
     ~ReduceRDD() { in->release(); }
 
     template<class R>
@@ -807,7 +678,7 @@ class ReduceRDD : public RDD<S>
 		
   private:
     S state;
-	RDD<T>* in;
+	Rdd* in;
 	BarrierJob* barrier;
 };
    
@@ -816,11 +687,11 @@ class ReduceRDD : public RDD<S>
 /**
  * Classical Map-Reduce
  */
-template<class T,class K,class V,void (*map)(Pair<K,V>& out, T const& in), void (*reduce)(V& dst, V const& src) >
+template<class T,class K,class V,void (*map)(Pair<K,V>& out, T const& in), void (*reduce)(V& dst, V const& src), class Rdd >
 class MapReduceRDD : public RDD< Pair<K,V> > 
 {    
   public:
-    MapReduceRDD(RDD<T>* input, size_t estimation) : initSize(hashTableSize(estimation)), in(input) {}
+    MapReduceRDD(Rdd* input, size_t estimation) : initSize(hashTableSize(estimation)), in(input) {}
 	~MapReduceRDD() { in->release(); }
 			
     template<class R>
@@ -894,7 +765,7 @@ class MapReduceRDD : public RDD< Pair<K,V> >
 
   private:
 	size_t const initSize;
-	RDD<T>* const in;
+	Rdd* const in;
 	KeyValueMap<K,V> hashMap;	
 	BarrierJob* barrier;
 };
@@ -902,7 +773,7 @@ class MapReduceRDD : public RDD< Pair<K,V> >
 /**
  * Project (map) RDD records
  */
-template<class T, class P, void project(P& out, T const& in), class Rdd = RDD<T> >
+template<class T, class P, void project(P& out, T const& in), class Rdd>
 class ProjectRDD : public RDD<P>
 {
   public:
@@ -936,17 +807,17 @@ class ProjectRDD : public RDD<P>
     };
  
   private:
-    RDD<T>* const in;
+    Rdd* const in;
 };
 
 /**
  *  Sort using given comparison function
  */
-template<class T, int compare(T const* a, T const* b)>
+template<class T, int compare(T const* a, T const* b), class Rdd>
 class SortRDD : public RDD<T>
 {
   public:
-    SortRDD(RDD<T>* input, size_t estimation) : in(input){}
+    SortRDD(Rdd* input, size_t estimation) : in(input){}
 	~SortRDD() { in->release();	}
 
     template<class R>
@@ -1004,7 +875,7 @@ class SortRDD : public RDD<T>
 	};
 
   private:
-	RDD<T>* in;
+	Rdd* in;
 	vector<T> array;
     BarrierJob* barrier;
 };
@@ -1012,11 +883,11 @@ class SortRDD : public RDD<T>
 /**
  * Get top N records using given comparison function
  */
-template<class T, int compare(T const* a, T const* b)>
+template<class T, int compare(T const* a, T const* b), class Rdd>
 class TopRDD : public RDD<T>
 {
   public:
-    TopRDD(Rdd* input, size_t n) : in(input), top(n) {}
+    TopRDD(Rdd* input, size_t top) : in(input), heap(top) {}
 	~TopRDD() { in->release(); }
 
     template<class R>
@@ -1115,6 +986,7 @@ class TopRDD : public RDD<T>
     };
 
   private:
+	Rdd* in;
     SortedArray heap;
     BarrierJob* barrier;
 };
@@ -1124,11 +996,11 @@ class TopRDD : public RDD<T>
  * Depending on estimated result size and broadcastJoinThreshold, this RDD either broadcast inner table, 
  * either shuffle inner table 
  */
-template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner)>
+template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner), class ORdd, class IRdd>
 class HashJoinRDD : public RDD< Join<O,I> >
 {
 public:
-    HashJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t estimation, JoinKind joinKind) 
+    HashJoinRDD(ORdd* outerRDD, IRdd* innerRDD, size_t estimation, JoinKind joinKind) 
     : kind(joinKind), outer(outerRDD), inner(innerRDD), initSize(estimation), hashTable(estimation) {}
 	
 	~HashJoinRDD() { 
@@ -1266,8 +1138,8 @@ public:
     };
         
     JoinKind const kind;
-    RDD<I>* const outer;
-    RDD<I>* const inner;
+    ORdd* const outer;
+    IRdd* const inner;
 	size_t  const initSize;
     HashTable<I, innerKey> hashTable;
     BarrierJob* outerBarrier;
@@ -1433,46 +1305,125 @@ class ColumnarRDD : public RDD<V>
     C cache;
 };
 
-template<class T>
-template<bool (*predicate)(T const&)>
-inline RDD<T>* RDD<T>::filter() { 
-    return new FilterRDD<T,predicate>(this);
+/**
+ * Filter input RDD
+ * @return RDD with records matching predicate 
+ */
+template<class T, bool (*predicate)(T const&), class Rdd>
+inline auto filter(Rdd* in) { 
+    return new FilterRDD<T,predicate,Rdd>(in);
 }
 
-template<class T>
-template<class S,void (*accumulate)(S& state, T const& in), void(*combine)(S& state, S const& partial)>
-inline RDD<S>* RDD<T>::reduce(S const& initState) {
-    return new ReduceRDD<T,S,accumulate,combine>(this, initState);
+/**
+ * Perform aggregation of input RDD 
+ * @param initState initial aggregate value
+ * @return RDD with aggregated value
+ */
+template<class T,class S,void (*accumulate)(S& state, T const& in), void(*combine)(S& state, S const& partial), class Rdd>
+inline auto reduce(Rdd* in, S const& initState) {
+    return new ReduceRDD<T,S,accumulate,combine,Rdd>(in, initState);
 }
 
-template<class T>
-template<class K,class V,void (*map_f)(Pair<K,V>& out, T const& in), void (*reduce_f)(V& dst, V const& src)>
-inline RDD< Pair<K,V> >* RDD<T>::mapReduce(size_t estimation) {
-    return new MapReduceRDD<T,K,V,map_f,reduce_f>(this, estimation);
+/**
+ * Perfrom map-reduce
+ * @param estimation esimation for number of pairs
+ * @return RDD with &lt;key,value&gt; pairs
+ */
+template<class T,class K,class V,void (*map_f)(Pair<K,V>& out, T const& in), void (*reduce_f)(V& dst, V const& src), class Rdd>
+inline auto mapReduce(Rdd* in, size_t estimation = UNKNOWN_ESTIMATION) {
+    return new MapReduceRDD<T,K,V,map_f,reduce_f,Rdd>(in, estimation);
 }
 
-template<class T>
-template<class P, void (*projection)(P& out, T const& in)>
-inline RDD<P>* RDD<T>::project() {
-    return new ProjectRDD<T,P,projection>(this);
+/**
+ * Map records of input RDD
+ * @return projection of the input RDD. 
+ */
+template<class T,class P, void (*projection)(P& out, T const& in), class Rdd>
+inline auto project(Rdd* in) {
+    return new ProjectRDD<T,P,projection,Rdd>(in);
 }
 
-template<class T>
-template<int (*compare)(T const* a, T const* b)> 
-inline RDD<T>* RDD<T>::sort(size_t estimation) {
-    return new SortRDD<T,compare>(this, estimation);
+/**
+ * Sort input RDD
+ * @param estimation estimation for number of records in RDD
+ * @return RDD with sorted records
+ */
+template<class T, int (*compare)(T const* a, T const* b), class Rdd> 
+inline auto sort(Rdd* in, size_t estimation = UNKNOWN_ESTIMATION) {
+    return new SortRDD<T,compare,Rdd>(in, estimation);
 }
 
-template<class T>
-template<int (*compare)(T const* a, T const* b)> 
-inline RDD<T>* RDD<T>::top(size_t n) {
-    return new TopRDD<T,compare>(this, n);
+/**
+ * Find top N records according to provided comparison function
+ * @param n number of returned top records
+ * @return RDD with up to N top records
+ */
+template<class T, int (*compare)(T const* a, T const* b), class Rdd> 
+inline auto top(Rdd* in, size_t n = UNKNOWN_ESTIMATION) {
+    return new TopRDD<T,compare,Rdd>(in, n);
 }
 
-template<class T>
-template<class I, class K, void (*outerKey)(K& key, T const& outer), void (*innerKey)(K& key, I const& inner)>
-RDD< Join<T,I> >* RDD<T>::join(RDD<I>* with, size_t estimation, JoinKind kind) {
-	return new HashJoinRDD<T,I,K,outerKey,innerKey>(this, with, estimation, kind);
+/**
+ * In-memory hash join of two RDDs. Inner join returns pairs of matches records in outer and inner table.
+ * Outer join also returns records from outer table for which there are matching in inner table.
+ * @param with inner join table
+ * @param estimation estimation for number of joined records
+ * @param kind join kind (inner/outer join)
+ */
+template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner), class ORdd, class IRdd>
+inline auto join(ORdd* outer, IRdd* inner, size_t estimation = UNKNOWN_ESTIMATION, JoinKind kind = InnerJoin) 
+{
+    return new HashJoinRDD<O,I,K,outerKey,innerKey,ORdd,IRdd>(outer, inner, estimation, kind);
 }
+
+/**
+ * Output results
+ */
+template<class T, class Rdd>
+class OutputReactor : public Reactor<T>
+{
+public:
+	OutputReactor(Rdd& owner, FILE* output) : rdd(owner), out(output) {}
+	
+	void react(T const& record) { 
+		CriticalSection cs(rdd.mutex);
+		print(record, out);
+	}
+	
+private:
+	Rdd&  rdd;
+	FILE* out;
+};
+
+
+template<class T, class Rdd>
+class OutputReactorFactory : public ReactorFactory< OutputReactor<T,Rdd> >
+{
+public:
+	OutputReactorFactory(Rdd& owner, FILE* output) : rdd(owner), out(output) {}
+	
+	OutputReactor* getFactory() { 
+		return new OutputReactor(rdd, out);
+	}
+	
+private:
+	Rdd&  rdd;
+	FILE* out;
+};
+
+/**
+ * Print RDD records to the stream
+ * @param out output stream
+ */
+template<class T, class Rdd>
+inline void output(Rdd* in, FILE* out)
+{
+	OutputFactory factory(*in, out);
+	StagedScheduler scheduler;
+	schedule<Output>(scheduler, 1, factory);
+	Cluster::instance->threadPool.run(scheduler);
+}
+
 
 #endif
+

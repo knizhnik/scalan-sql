@@ -1,7 +1,10 @@
 #ifndef __SYNC_H__
 #define __SYNC_H__
 
+#include <vector>
 #include <pthread.h>
+
+using namespace std;
 
 class Event;
 class Thread;
@@ -146,35 +149,14 @@ class Scheduler
 
 class ThreadPool
 {
-    class PoolJob : public Job {
-      public:
-        void run() {
-            Job* job = pool.getJob();
-            if (job == NULL) {
-                return;
-            }
-            job->run();
-            pool.jobFinished(job);
-        }
-        PoolJob(ThreadPool& owner) : pool(owner) {}
-    };
-    vector<Thread*> threads;
-    Mutex mutex;
-    Event go;
-    Event done;
-    bool  shutdown;
-    bool  hasMoreWork;
-    Scheduler* scheduler;
-    size_t nActiveJobs;
-    
   public:
     size_t getDefaultConcurrency() {
         return threads.size();
     }
 
-    ThreadPool(size_t nThread) : threads(nThreads), shutdown(false), hasMoreWork(false) scheduler(NULL), nActiveJobs(0) {
+    ThreadPool(size_t nThreads) : threads(nThreads), shutdown(false), hasMoreWork(false), scheduler(NULL), nActiveJobs(0) {
         for (size_t i = 0; i < nThreads; i++) {
-            threads[i] = new Thread(new PoolJon(*this));
+            threads[i] = new Thread(new PoolJob(*this));
         }
     }
 
@@ -206,7 +188,7 @@ class ThreadPool
                     done.signal();
                 }
             } else {
-                nAtiveJobs += 1;
+                nActiveJobs += 1;
                 return job;
             }
         }
@@ -232,6 +214,30 @@ class ThreadPool
         }
         scheduler = NULL;
     }
+  private:
+    class PoolJob : public Job {
+      public:
+        void run() {
+            Job* job = pool.getJob();
+            if (job == NULL) {
+                return;
+            }
+            job->run();
+            pool.jobFinished(job);
+        }
+        PoolJob(ThreadPool& owner) : pool(owner) {}
+
+  	  private:
+		ThreadPool& pool;
+    };
+    vector<Thread*> threads;
+    Mutex mutex;
+    Event go;
+    Event done;
+    bool  shutdown;
+    bool  hasMoreWork;
+    Scheduler* scheduler;
+    size_t nActiveJobs;   
 };
                         
     

@@ -137,4 +137,6 @@ inline size_t mod_power2(size_t x, size_t y) {
 #define MOD(x,y) ((x) % (y))
 #endif
 
+extern uint32_t murmur_hash3_32(const void* key, const int len);
+
 #endif

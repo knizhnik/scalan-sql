@@ -6,6 +6,10 @@ const size_t MB = 1024*1024;
 
 ThreadLocal<Cluster> Cluster::instance;
 
+Channel::Channel(cid_t id, Cluster* clu, ChannelProcessor* cp) 
+  : cid(id), cluster(clu), processor(cp), nConnections(cluster->nNodes-1) {}
+
+
 class ReceiveJob : public Job
 {
   public:
