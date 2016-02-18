@@ -29,11 +29,14 @@ CPP=g++ $(COMMON_FLAGS) $(OPT_FLAGS) $(DEFS)
 
 JNI_INCLUDES = -I$(JAVA_HOME)/include -I$(JAVA_HOME)/include/linux -I$(JAVA_HOME)/include/darwin -I/usr/java/default/include -I/usr/java/default/include/linux -I/usr/java/include -I$(JAVA_HOME)/include -I$(JAVA_HOME)/include/linux -I/usr/lib/jvm/oracle-jdk-bin-1.8/include
 
-tpch.o: tpch.cpp rdd.h cluster.h tpch.h sync.h sockio.h
+tpch.o: tpch.cpp rdd.h cluster.h tpch.h sync.h sockio.h util.h
 	$(CPP) -c tpch.cpp
 
-cluster.o: cluster.cpp cluster.h sync.h sockio.h
+cluster.o: cluster.cpp cluster.h sync.h sockio.h util.h
 	$(CPP) -c cluster.cpp
+
+util.o: util.cpp util.h cluster.h sync.h sockio.h
+	$(CPP) -c util.cpp
 
 sockio.o: sockio.cpp sockio.h
 	$(CPP) -c sockio.cpp
