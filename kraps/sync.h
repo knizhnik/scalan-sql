@@ -138,9 +138,10 @@ typedef unsigned stage_t;
 class Scheduler
 {
   public:
-    virtual void schedule(stage_t stage, Job* job) = 0;
-    virtual Job* getJob() = 0;
-    virtual void jobFinished(Job* job) = 0;
+	virtual size_t getDefaultConcurrency() = 0;
+    virtual void   schedule(stage_t stage, Job* job) = 0;
+    virtual Job*   getJob() = 0;
+    virtual void   jobFinished(Job* job) = 0;
 };
 
 class ThreadPool
@@ -167,7 +168,7 @@ class ThreadPool
     size_t nActiveJobs;
     
   public:
-    size_t defaultConcurrency() {
+    size_t getDefaultConcurrency() {
         return threads.size();
     }
 

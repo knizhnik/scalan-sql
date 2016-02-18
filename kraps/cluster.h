@@ -68,7 +68,7 @@ struct Buffer
 class ChannelProcessor
 {
   public:
-	virtual void process(Buffer* buf) = 0;
+	virtual void process(Buffer* buf, size_t node) = 0;
 	virtual ~ChannelProcessor() {}
 };
 	
@@ -112,7 +112,7 @@ class Cluster
     size_t const inmemJoinThreshold;
     size_t const split;
     bool   const sharedNothing;
-    char const* tmpDir;
+    char   const*tmpDir;
 
     char** hosts;
     cid_t cid;
@@ -123,8 +123,6 @@ class Cluster
 	Vector<Node> nodes;
 	Vector<Channel> channels;
 	
-    FILE* openTempFile(char const* prefix, qid_t qid, size_t no, char const* mode = "r");
-    
     /**
      * Check if this node is coordinator. Coordinator is forst node in the cluster and it is used to collect all
      * local results from other nodes
@@ -163,23 +161,16 @@ class Cluster
      * @param hosts addresses of cluster node. Each address includes host name and port separated by column, i.e. "localhost:5011"
      * @param nQueues maximal number of receive queues  (64)
      * @param bufferSize size of buffer used for internode communication  (256kb)
-     * @param recvQueueSize size of receive queue (256Mb)
-     * @param sendQueueSize size of send queue (16Mb)
-     * @param syncInterval synchorinization inerval (amount of bytes after which PING message is sent to synchronize data producer and consumer (64Mb)
      * @param broadcastJoinThreshold threshold for choosing broadcast of inner table for join rather than shuffle method (10 000)
-     * @param inmemJoinThreshold threshold for choosing shuffling to files instead of in-memory join (10 000 000)
-     * @param tmp directory  for creating shuffling files ("/tmp")
      * @param sharedNothing trues if each nodes is given its own local files, false if files in DFS are shared by all nodes
      * @param split split factor. Using split factor greater than 1 it is posisble to spawn more cluster nodes than there are 
      * physical partitions (files)
      */
-    Cluster(size_t nodeId, size_t nHosts, char** hosts, size_t nQueues = 64, size_t bufferSize = 4*64*1024, size_t recvQueueSize = 4*64*1024*1024,  size_t sendQueueSize = 4*4*1024*1024, size_t syncInterval = 64*1024*1024, size_t broadcastJoinThreshold = 10000, size_t inmemJoinThreshold = 10000000, char const* tmp = "/tmp", bool sharedNothing = true, size_t split = 1);
+    Cluster(size_t nodeId, size_t nHosts, char** hosts, size_t nChannels = 64, size_t bufferSize = 4*64*1024, size_t broadcastJoinThreshold = 10000, bool sharedNothing = true, size_t split = 1);
     ~Cluster();
 
     static ThreadLocal<Cluster> instance;
 };
 
-// Move to utils.h    
-extern uint32_t murmur_hash3_32(const void* key, const int len);
 
 #endif
