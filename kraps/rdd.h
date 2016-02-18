@@ -109,7 +109,8 @@ class Reactor
 template<class R>
 class ReactorFactory
 {
-    R getReactor();
+    R* getReactor();
+};
 
 class StagedScheduler : public Scheduler
 {
@@ -169,7 +170,7 @@ class RDD
 {
   public:
     template<class R>
-    virtual stage_t schedule(Scheduler& scheduler, stage_t stage, R* reactor);
+    virtual stage_t schedule(Scheduler& scheduler, stage_t stage, ReactorFactory<R>& rf);
 
     /**
      * Filter input RDD
@@ -245,7 +246,7 @@ class RDD
      */
     virtual RDD<T>* replicate();
 
-    class Singleton : public Reactor
+    class Singleton : public Reactor<T>
     {
       public:
         T value;
@@ -254,7 +255,15 @@ class RDD
             value = record;
         }
     };
-        
+	
+	class SingletonFactory : public ReactorFactory< Reactor<T> >
+	{
+	  public:
+		Singleton* getReactor(T const& defaultValue) {
+			return new Singleton(defaultValue);
+		}
+	};
+
     
     /**
      * Get single record from input RDD or substitute it with default value of RDD is empty.
@@ -263,7 +272,7 @@ class RDD
      */
     T result(T const& defaultValue)
     {
-        Singleton singleton(defaultValue);
+        SingletonFactory factoryu(defaultValue);
         StageByStageSheduler scheduler;
         Cluster* cluster = Cluster::instance.get();
         schedule(scheduler, 1, singleton);
@@ -459,7 +468,7 @@ class FileRDD : public RDD<T>
     stage_t schedule(Scheduler& scheduler, stage_t stage, R* reactor) {
         size_t concurrecy = Cluster::instance()->threadPool.defaultConcurrency();
         for (size_t i = 0; i < concurrency; i++) {
-            scheduler.schedule(stage, new ReadJob(*this, reactor, i, concurrency));
+            scheduler.schedule(stage, new ReadJob<R>(*this, reactor, i, concurrency));
         }
 		return stage;
     }
@@ -604,7 +613,7 @@ class FilterRDD : public RDD<T>
         
     template<class R>
     stage_t schedule(Scheduler& scheduler, stage_t stage, R* reactor) {
-        return in->shedule(scheduler, stage, new FilterReactor(reactor));
+        return in->shedule<FilterReactor>(scheduler, stage, new FilterReactor(reactor));
     }
 
     ~FilterRDD() { delete in; }
