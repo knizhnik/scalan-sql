@@ -133,12 +133,12 @@ private:
     static void* trampoline(void* arg); 
 };
 
-typedef unsigned stepid_t;
+typedef unsigned stage_t;
 
 class Scheduler
 {
   public:
-    virtual void schedule(stepid_t step, Job* job) = 0;
+    virtual void schedule(stage_t stage, Job* job) = 0;
     virtual Job* getJob() = 0;
     virtual void jobFinished(Job* job) = 0;
 };

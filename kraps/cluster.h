@@ -17,10 +17,7 @@ typedef uint32_t cid_t;
 enum MessageKind 
 { 
     MSG_DATA,
-    MSG_PING,
-    MSG_PONG,
     MSG_EOF,
-    MSG_BARRIER,
     MSG_SHUTDOWN
 };
 
@@ -31,12 +28,11 @@ enum MessageKind
  */
 struct Buffer 
 { 
-    uint32_t compressedSize; // compressed size 
-    uint32_t size;  // size without header
-	cid_t    cid;   // identifier of destination channel
-    uint16_t node;  // sender
-    uint16_t kind;  // message kind
-    char     data[1];
+    uint32_t    compressedSize; // compressed size 
+    uint32_t    size;  // size without header
+	cid_t       cid;   // identifier of destination channel
+    MessageKind kind;  // message kind
+    char        data[1];
     
     /**
      * Create new buffer of specified kind and size
@@ -54,7 +50,7 @@ struct Buffer
      * @param id channel ID (needed to locate recipient channel at target node)
      * @param len buffer data size (not including header)
      */
-    Buffer(MessageKind type, cid_t id, size_t len = 0) : compressedSize((uint32_t)len), size((uint32_t)len), cid(id), kind((uint16_t)type) {}
+    Buffer(MessageKind type, cid_t id, size_t len = 0) : compressedSize((uint32_t)len), size((uint32_t)len), cid(id), kind(type) {}
 
     void* operator new(size_t hdrSize, size_t bufSize) {
         return malloc(BUF_HDR_SIZE + bufSize);
@@ -101,9 +97,10 @@ class Cluster
 {
 	struct Node { 
 		Mutex   mutex;
+        Thread* receiver;
 		Socket* socket;
 		
-		Node() : socket(NULL) {}
+		Node() : socket(NULL), receiver(NULL) {}
 		~Node() { delete socket; }		
 	};
   public:
@@ -140,11 +137,6 @@ class Cluster
      * @param hnd optional message handler used for push-style processing for this queue
      */
     Channel* getChannel(ChannelProcessor* proc);
-
-    /**
-     * Set barrier: syncronize execution of all nodes
-     */
-    void barrier();
 
     /**
      * Send message to the node or place it in locasl queue
@@ -187,7 +179,7 @@ class Cluster
     static ThreadLocal<Cluster> instance;
 };
 
-    
+// Move to utils.h    
 extern uint32_t murmur_hash3_32(const void* key, const int len);
 
 #endif

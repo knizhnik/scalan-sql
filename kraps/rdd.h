@@ -106,40 +106,45 @@ class Reactor
 	virtual~Reactor() {} 
 };
 
-class StepByStepScheduler : public Scheduler
+template<class R>
+class ReactorFactory
+{
+    R getReactor();
+
+class StagedScheduler : public Scheduler
 {
     vector< vector<Job> > jobs;
     Mutex    mutex;
-    Event    stepDone;
-    stepid_t currStep;
+    Event    stageDone;
+    stage_t currStage;
     size_t   currJob;
     size_t   activeJobs;
-    time_t   stepStartTime;
+    time_t   stageStartTime;
     
   public:
-    StepByStepScheduler() : currStep(0), currJob(0), activeJobs(0), stepStartTime(getCurrentTime()) {}
+    StagedScheduler() : currStage(0), currJob(0), activeJobs(0), stageStartTime(getCurrentTime()) {}
     
-    void schedule(stepid_t step, Job* job)
+    void schedule(stage_t stage, Job* job)
     {
-        assert(step > 0);
-        if (step >= jobs.size()) {
-            jobs.resize(step+1);
+        assert(stage > 0);
+        if (stage >= jobs.size()) {
+            jobs.resize(stage+1);
         }
-        jobs[step].push_back(job);
+        jobs[stage].push_back(job);
     }
 
     Job* getJob() { 
         CriticalSection cs(mutex);
-        while (currStep < jobs.size()) {
-            if (currJob < jobs[currStep].size()) {
+        while (currStage < jobs.size()) {
+            if (currJob < jobs[currStage].size()) {
                 nActiveJobs += 1;
-                return jobs[currStep][currJob++];
+                return jobs[currStage][currJob++];
             }
             while (nActiveJobs != 0) {
-                stepDone.wait(mutex);
+                stageDone.wait(mutex);
             }
-            stepStartTime = getCurrentTime();
-            currStep += 1;
+            stageStartTime = getCurrentTime();
+            currStage += 1;
             currJob = 0;
         }
         return NULL;
@@ -149,7 +154,7 @@ class StepByStepScheduler : public Scheduler
         CriticalSection cs(mutex);
         assert(nActiveJobs == 0);
         if (--nActiveJobs == 0) {
-            printf("Step %u finisihed in %ld microseconds\n", currStep, stepStartTime - getCurrentTime());
+            printf("Stage %u finisihed in %ld microseconds\n", currStage, stageStartTime - getCurrentTime());
             event.signal();
         }
     }
@@ -164,7 +169,7 @@ class RDD
 {
   public:
     template<class R>
-    virtual stepid_t schedule(Scheduler& scheduler, stepid_t step, R* reactor);
+    virtual stage_t schedule(Scheduler& scheduler, stage_t stage, R* reactor);
 
     /**
      * Filter input RDD
@@ -259,7 +264,7 @@ class RDD
     T result(T const& defaultValue)
     {
         Singleton singleton(defaultValue);
-        StepByStepSheduler scheduler;
+        StageByStageSheduler scheduler;
         Cluster* cluster = Cluster::instance.get();
         schedule(scheduler, 1, singleton);
         cluster->threadPool.run(scheduler);
@@ -303,7 +308,7 @@ public:
 		buffers[node]->size += size;
 	}
 	
-	vod end() { 
+	~Scatter() { 
 		for (size_t i = 0; i < nNodes; i++) { 
 			if (buffers[i]->size != 0) { 
 				cluster->send(node, channel, buffers[node]);
@@ -451,12 +456,12 @@ class FileRDD : public RDD<T>
     };   
     
     template<class R>
-    stepid_t schedule(Scheduler& scheduler, stepid_t step, R* reactor) {
+    stage_t schedule(Scheduler& scheduler, stage_t stage, R* reactor) {
         size_t concurrecy = Cluster::instance()->threadPool.defaultConcurrency();
         for (size_t i = 0; i < concurrency; i++) {
-            scheduler.schedule(step, new ReadJob(*this, reactor, i, concurrency));
+            scheduler.schedule(stage, new ReadJob(*this, reactor, i, concurrency));
         }
-		return step;
+		return stage;
     }
 
     ~FileRDD() {
@@ -525,12 +530,12 @@ class DirRDD : public RDD<T>
     };   
     
     template<class R>
-    stepid_t schedule(Scheduler& scheduler, stepid_t step, R* reactor) {
+    stage_t schedule(Scheduler& scheduler, stage_t stage, R* reactor) {
         size_t concurrecy = Cluster::instance()->threadPool.defaultConcurrency();
         for (size_t i = 0; i < concurrency; i++) {
-            scheduler.schedule(step, new ReadJob(*this, reactor, i, concurrency));
+            scheduler.schedule(stage, new ReadJob(*this, reactor, i, concurrency));
         }
-		return step;
+		return stage;
     }
 
     ~DirRDD() {
@@ -598,8 +603,8 @@ class FilterRDD : public RDD<T>
     };
         
     template<class R>
-    stepid_t schedule(Scheduler& scheduler, stepid_t step, R* reactor) {
-        return in->shedule(scheduler, step, new FilterReactor(reactor));
+    stage_t schedule(Scheduler& scheduler, stage_t stage, R* reactor) {
+        return in->shedule(scheduler, stage, new FilterReactor(reactor));
     }
 
     ~FilterRDD() { delete in; }
@@ -687,18 +692,18 @@ class ReduceRDD : public RDD<S>
 
   public:
     template<class R>
-    stepid_t schedule(Scheduler& scheduler, stepid_t step, R* reactor) {
-        step = in->shedule(scheduler, step, new ReduceReactor(*this));
+    stage_t schedule(Scheduler& scheduler, stage_t stage, R* reactor) {
+        stage = in->shedule(scheduler, stage, new ReduceReactor(*this));
         Cluster* cluster = Cluster::instance.get();
 		Channel* channel = cluster->getChannel(new ReduceProcessor(*this));
 		if (!Cluster::instance->isCoordinator()) {
-			scheduler.schedule(++step, new SendJob<S, Sender<S> >(state, new Sender<S>(channel)));
+			scheduler.schedule(++stage, new SendJob<S, Sender<S> >(state, new Sender<S>(channel)));
 		} else { 
 			barrier = new BarrierJob(cluster->nNodes-1);
-			scheduler.schedule(++step, barrier);		
-			scheduler.schedule(++step, new SendJob<S,R>(state, reactor));
+			scheduler.schedule(++stage, barrier);		
+			scheduler.schedule(++stage, new SendJob<S,R>(state, reactor));
 		}		
-		return step;
+		return stage;
     }
 
     ReduceRDD(RDD<T>* input, S const& initState) : state(initState), in(input) {}
@@ -768,22 +773,22 @@ class MapReduceRDD : public RDD< Pair<K,V> >
 	}
 
     template<class R>
-    stepid_t schedule(Scheduler& scheduler, stepid_t step, R* reactor) {
-        step = in->shedule(scheduler, step, new MapReduceReator(*this));
+    stage_t schedule(Scheduler& scheduler, stage_t stage, R* reactor) {
+        stage = in->shedule(scheduler, stage, new MapReduceReator(*this));
         Cluster* cluster = Cluster::instance.get();
 		Channel* channel = cluster->getChannel(new MapReduceProcessor(*this));
 		if (!Cluster::instance->isCoordinator()) {
-			scheduler.schedule(++step, hashMap.iterate<Sender<Pair<K,V> >(new Sender<Pair<K,V> >(channel))));
+			scheduler.schedule(++stage, hashMap.iterate<Sender<Pair<K,V> >(new Sender<Pair<K,V> >(channel))));
 		} else { 
 			barrier = new BarrierJob(cluster->nNodes-1);
-			scheduler.schedule(++step, barrier);		
-			step += 1;
+			scheduler.schedule(++stage, barrier);		
+			stage += 1;
 			size_t nPartitions = cluster->threadPool.deafultConcurrency();
 			for (size_t i = 0; i < nPartitions; i++) { 				
-				scheduler.schedule(step, hashMap.iterate<R>(reactor, i, nPartitions)); // !!!! Fix iteator in utils
+				scheduler.schedule(stage, hashMap.iterate<R>(reactor, i, nPartitions)); // !!!! Fix iteator in utils
 			}
 		}
-		return step;
+		return stage;
 	}
 
   private:
@@ -824,8 +829,8 @@ class ProjectRDD : public RDD<P>
     };
  
     template<class R>
-    stepid_t schedule(Scheduler& scheduler, stepid_t step, R& reactor) {
-        return in->shedule(scheduler, step, new ProjectReactor<R>(reactor));
+    stage_t schedule(Scheduler& scheduler, stage_t stage, R& reactor) {
+        return in->shedule(scheduler, stage, new ProjectReactor<R>(reactor));
     }
 
     ~ProjectRDD() { delete in; }
@@ -836,9 +841,9 @@ class ProjectRDD : public RDD<P>
 
 // Move to utils.h
 template<class T, class R>
-class ArrayIterator : public Job { 
+class IterateArrayJob : public Job { 
 public:
-	Iterator(R* r, vector<T>& arr, size_t offs = 0, size_t inc = 1) : reactor(r), array(arr), offset(offs), step(inc) {}
+	IterateArrayJob(R* r, vector<T>& arr, size_t offs = 0, size_t inc = 1) : reactor(r), array(arr), offset(offs), step(inc) {}
 
 	void run() { 
 		for (size_t i = offs; i < array.size(); i += step) { 
@@ -854,6 +859,125 @@ private:
 	size_t const step;
 };
 
+// Move to utils.h
+
+#define HASH_PARTITIONS 64
+
+template<class T, class K, void (*getKey)(K& key, T const& record)>  
+class HashTable
+{
+  public;
+    struct Entry {
+        T record;
+        Entry* collision;
+
+        bool equalsKey(K const& other) {
+            K key;
+            getKey(key, record);
+            return key == other;
+        }
+    };
+        
+    HashTable(size_t estimation) {
+        size = hashTableSize(estimation);
+        table = new Entry[size];
+        memset(table, 0, size*sizeof(Entry*));
+    }
+
+    Entry* get(K const& key)
+    {
+        size_t h = MOD(hashCode(key), size);
+        return table[h];
+    }
+    
+    void add(T const& record) {
+        K key;
+        getKey(key, record);
+        size_t h = MOD(hashCode(key), size);
+        size_t partition = h % HASH_PARTITIONS;
+        {
+            CriticalSection cs(mutex[partition]);
+            Entry* oldValue;
+            Entry* entry = allocator[partition].alloc();
+            entry->record = record;
+            entry->collision = table[h];
+            table[h] = entry;
+        }
+		if (__sync_add_and_fetch(&used, 1) == size) { 
+            extendHash();
+        }
+    }
+    
+    template<class R>
+    iterateJob<R>* iterate(R* reactor, size_t from = 0, size_t step = 1) {
+        return new IterateJob<R>(*this, reactor, from, step);
+    }
+
+
+  private:
+    template<class R>
+    class IterateJob : public Job {
+      public:
+        IterateJob(HashTable& h, R* r, size_t origin = 0, size_t inc = 1) : hash(h), reactor(r), from(origin), step(inc) {}
+
+        void run() {
+            for (size_t i = from; i < size; i += step) {
+                for (Entry* entry = table[i]; entry != NULL entry = entry->collision) {
+                    reactor->react(entry->record);
+                }
+            }
+            delete reactor;
+        }
+        
+      private:
+        HashTable& hash;
+        R* reactor;
+        size_t const from;
+        size_t const step;
+    };
+
+    void lock() { 
+        for (size_t i = 0; i < HASH_PARITIONS; i++) {
+            mutex[i].lock();
+        }
+    }
+
+    void unlock() { 
+        for (size_t i = 0; i < HASH_PARITIONS; i++) {
+            mutex[i].lock();
+        }
+    }
+
+    
+    void extendHash() 
+    {
+        Entry *entry, *next;
+        size_t newSize = hashTableSize(size+1);
+        Entry** newTable = new Entry*[newSize];
+        memset(newTable, 0, newSize*sizeof(Entry*));
+        lock();
+        for (size_t i = 0; i < size; i++) { 
+            for (entry = table[i]; entry != NULL; entry = next) { 
+                K key;
+                getKey(key, entry->record);
+                size_t h = MOD(hashCode(key), newSize);
+                next = entry->collision;
+                entry->collision = newTable[h];
+                newTable[h] = entry;
+            }
+        }
+        delete[] table;
+        table = newTable;
+        size = newSize;
+        unlock();
+    }
+
+    Entry** table;
+    size_t size;
+    size_t used;
+    BlockAllocator<Entry> allocator[HASH_PARTITIONS];
+    Mutex mutex[HASH_PARTIIONS];
+};
 
 
 /**
@@ -882,7 +1006,7 @@ class SortRDD : public RDD<T>
 		AppendProcessor(SortRDD& sort) : rdd(sort) {}
 
 	private:
-		SortRDD& reduce;
+		SortRDD& rdd;
 	};	
 
     typedef int(*comparator_t)(void const* p, void const* q);
@@ -903,16 +1027,16 @@ class SortRDD : public RDD<T>
     }
 
     template<class R>
-    stepid_t schedule(Scheduler& scheduler, stepid_t step, R* reactor) {
+    stage_t schedule(Scheduler& scheduler, stage_t stage, R* reactor) {
 		Channel* channel = cluster->getChannel(new AppendProcessor(*this));
-        step = in->shedule(scheduler, step, new Sender<T>(channel));
+        stage = in->shedule(scheduler, stage, new Sender<T>(channel), array);
 		if (Cluster::instance->isCoordinator()) {
 			barrier = new BarrierJob(cluster->nNodes-1);
-			scheduler.schedule(++step, barrier);		
-			scheduler.schedule(++step, new SortJob(*this));
-			scheduler.schedule(++step, new ArrayIterator<T,R>(reactor, array, i, nPartitions));
+			scheduler.schedule(++stage, barrier);		
+			scheduler.schedule(++stage, new SortJob(*this));
+			scheduler.schedule(++stage, new IterateArrayJob<T,R>(reactor, array));
 		}
-		return step;
+		return stage;
     }
 	
 	~SortRDD() { 
@@ -922,67 +1046,46 @@ class SortRDD : public RDD<T>
 private:
 	RDD<T>* in;
 	vector<T> array;
+    BarrierJob* barrier;
 };
 
 /**
  * Get top N records using given comparison function
  */
-template<class T, int compare(T const* a, T const* b), class Rdd = RDD<T> >
+template<class T, int compare(T const* a, T const* b)>
 class TopRDD : public RDD<T>
 {
   public:
-    TopRDD(Rdd* input, size_t top) : i(0) {
-        buf = new T[top];
-        size_t n = loadTop(input, 0, top);
-        delete input;
-        
-        Cluster* cluster = Cluster::instance.get();
-        Queue* queue = cluster->getQueue();
-        if (cluster->isCoordinator()) {         
-            GatherRDD<T> gather(queue);
-            queue->putFirst(Buffer::eof(queue->qid)); // Coordinator already finished it's part of work
-            size = loadTop(&gather, n, top);
-        } else {
-            assert(n*sizeof(T) < cluster->bufferSize);
-            Buffer* msg = Buffer::create(queue->qid, n*sizeof(T));
-            size_t used = 0;
-            for (size_t j = 0; j < n; j++) {
-                used += pack(buf[j], msg->data + used);
-            }
-            assert(used <= n*sizeof(T));
-            msg->size = used;
-            cluster->send(COORDINATOR, queue, msg);
-            cluster->send(COORDINATOR, queue, Buffer::eof(queue->qid));
-            size = 0;
-        }
-    }
+    TopRDD(Rdd* input, size_t topN) : in(input), top(topN) {}
 
-    bool next(T& record) { 
-        if (i < size) { 
-            record = buf[i++];
-            return true;
-        }
-        return false;
-    }
-    
-    bool getNext(T& record) override {
-        return next(record);
-    }
+    template<class R>
+	class MergeSortProcessor { 
+	public:
+		void process(Buffer* buf) { 
+			if (buf->kind == MSG_EOF) { 
+				rdd.barrier->reach();
+			} else {
+				char* src = buf->data;
+				char* end = src + buf->size;
+				T record;
+				while (src < end) { 
+					src += unpack(record, src);
+					rdd.heap.add(record);
+				}
+			}
+		}
 
-    ~TopRDD() { 
-        delete[] buf;
-    }
+		MergeSortProcessor(TopRDD& sort) : rdd(sort) {}
 
-  private:
-    T* buf;
-    size_t size;
-    size_t i;
-    
-    template<class IRdd>
-    size_t loadTop(IRdd* input, size_t n, size_t top) { 
-        T record;
-        while (input->next(record)) {
-            size_t l = 0, r = n;
+	private:
+		TopRDD& rdd;
+	};	
+
+    class SortedArray
+    {
+      public:
+        void add(T const& record) {
+            size_t l = 0, r = buf.size();
             while (l < r) {
                 size_t m = (l + r) >> 1;
                 if (compare(&buf[m], &record) <= 0) {
@@ -992,15 +1095,65 @@ class TopRDD : public RDD<T>
                 }
             }
             if (r < top) {
-                if (n < top) {
-                    n += 1;
+                if (buf.size() < top) {
+                    buf.insert(r, record);
+                } else {
+                    memmove(&buf[r+1], &buf[r], (size-r-1)*sizeof(T));
+                    buf[r] = record;
                 }
-                memmove(&buf[r+1], &buf[r], (n-r-1)*sizeof(T));
-                buf[r] = record;
             }
         }
-        return n;
+
+        void merge(SortedArray const& other) {
+            for (size_t i = 0; i < other.buf.size(); i++) {
+                add(other.buf[i]);
+            }
+        }        
+        
+        SortedArray(size_t n) : top(n) 
+        
+        vector<T> buf;
+        size_t top;
+    };
+
+    class TopReactor : public Reactor, public SortedArray
+    {
+      public:
+        TopReactor(TopRDD& r) : SortedArray(r.top), rdd(r) {}
+        ~TopReactor() {
+            CriticalSection cs(rdd.mutex);
+            rdd.heap.merge(*this);
+        }
+
+        void react(T const& record) {
+            add(record);
+        }
+        
+      private:
+        TopRDD& rdd;
+    };
+
+    template<class R>
+    stage_t schedule(Scheduler& scheduler, stage_t stage, R* reactor) {
+		Channel* channel = cluster->getChannel(new MergeSortAppendProcessor(*this));
+        stage = in->shedule(scheduler, stage, new TopReactor(*this));
+        scheduler.schedule(++state, new IterateArrayJob<T,Sender<T> >(new Sender<T>(channel), heap.buf));
+		if (Cluster::instance->isCoordinator()) {
+			barrier = new BarrierJob(cluster->nNodes-1);
+			scheduler.schedule(++stage, barrier);		
+			scheduler.schedule(++stage, new IterateArrayJob<T,R>(reactor, heap.buf));
+		}
+		return stage;
     }
+	
+	~TopRDD() { 
+		delete in;
+	}
+
+  private:
+    SortedArray heap;
+    Mutex mutex;
+    BarrierJob* barrier;
 };
 
 /**
@@ -1008,732 +1161,135 @@ class TopRDD : public RDD<T>
  * Depending on estimated result size and broadcastJoinThreshold, this RDD either broadcast inner table, 
  * either shuffle inner table 
  */
-template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner), class ORdd = RDD<O>, class IRdd = RDD<I> >
-class HashJoinRDD : public RDD< Join<O,I> >, MessageHandler
+template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner)>
+class HashJoinRDD : public RDD< Join<O,I> >
 {
 public:
-    HashJoinRDD(ORdd* outerRDD, IRdd* innerRDD, size_t estimation, JoinKind joinKind) 
-    : kind(joinKind), table(NULL), size(hashTableSize(estimation)), innerSize(0), entry(NULL), inner(innerRDD), outer(outerRDD), scatter(NULL), gather(NULL), innerIsShuffled(false) 
-    {
-        assert(kind != AntiJoin);
+    HashJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t estimation, JoinKind joinKind) 
+    : kind(joinKind), outer(outerRDD), inner(innerRDD), hashTable(estimation) {}
 
+    template<class R>
+    stage_t schedule(Scheduler& scheduler, stage_t stage, R* reactor) {
         Cluster* cluster = Cluster::instance.get();
-#ifdef USE_MESSAGE_HANDLER
-        innerQueue = cluster->getQueue(this);
-#else
-        innerQueue = cluster->getQueue();
-#endif
-        outerQueue = Cluster::instance->getQueue();
-    }
+		Channel* channel = cluster->getChannel(new InnerProcessor(*this));
+        innerBarrier = new BarrierJob(cluster->nNodes-1);
+        if (estimation <= cluster->broadcastJoinThreshold) {
+            // broadcast inner table
+            stage = inner->shedule(scheduler, stage, new Broadcaster<I> >(channel));
+            scheduler.schedule(++stage, innerBarrier);
+            stage = outer->schedule(scheduler, ++stage, new JoinReactor(*this, reactor));
+        } else {
+            // shuffle both tables
+            stage = inner->shedule(scheduler, stage, new Scatter<I, innerKey> >(channel));
+            scheduler.schedule(++stage, innerBarrier);
 
-    bool next(Join<O,I>& record)
-    {
-        Cluster* cluster = Cluster::instance.get();
-        if (table == NULL) { 
-            bool replicateInner = size <= cluster->broadcastJoinThreshold;
-#if 0
-            if (replicateInner) {             
-                size *= cluster->nNodes; // adjust hash table size 
-            }
-#endif
-            table = new Entry*[size];
-            memset(table, 0, size*sizeof(Entry*));
-            
-#if PARALLEL_INNER_OUTER_TABLES_LOAD
-            loadOuterTable(replicateInner);
-#endif
-            if (replicateInner) {             
-                loadHash(replicate<I,IRdd>(inner));
-            } else { 
-                Thread loader(new ScatterJob<I,K,innerKey,IRdd>(inner, innerQueue));
-                loadHash(new GatherRDD<I>(innerQueue));
-                innerIsShuffled = true;
-            }                
-#if !PARALLEL_INNER_OUTER_TABLES_LOAD
-            loadOuterTable(replicateInner);
-#endif
+            outerBarrier = new BarrierJob(cluster->nNodes-1);
+            channel = cluster->getChannel(new OuterProcessor<R>(*this, reactor));
+            stage = outer->schedule(scheduler, ++stage, new Scatter<O, outerKey> >(channel));
+            scheduler.schedule(++stage, outerBarrier);
         }
-        if (entry == NULL) { 
-            do { 
-                if (!(scatter ? gather->next(outerRec) : outer->next(outerRec))) { 
-                    entry = NULL;
-                    return false;
-                }
-                outerKey(key, outerRec);
-                size_t h = MOD(hashCode(key), size);
-                for (entry = table[h]; !(entry == NULL || entry->equalsKey(key)); entry = entry->collision);
-            } while (entry == NULL && kind == InnerJoin);
-            
-            if (entry == NULL) { 
-                (O&)record = outerRec;
-                (I&)record = innerRec;
-                return true;
-            }
-        }
-        (O&)record = outerRec;
-        (I&)record = entry->record;
-        do {
-            entry = entry->collision;
-        } while (!(entry == NULL || entry->equalsKey(key)));
-
-        return true;
+        return stage;
     }
 
-    bool getNext(Join<O,I>& record) override 
-    {
-        return next(record);
-    }
+  private:
+    template<class R>
+	class InnerProcessor { 
+	public:
+		void process(Buffer* buf) { 
+			if (buf->kind == MSG_EOF) { 
+				rdd.innerBarrier->reach();
+			} else {
+				char* src = buf->data;
+				char* end = src + buf->size;
+				I record;
+				while (src < end) { 
+					src += unpack(record, src);
+					rdd.hashTable.add(record);
+				}
+			}
+		}
 
-    ~HashJoinRDD() { 
-        deleteHash();
-        delete outer;
-        delete gather;
-        delete scatter;
-    }
-protected:
-    struct Entry {
-        I      record;
-        Entry* collision;
+		InnerProcessor(HashJoinRDD& join) : rdd(join) {}
 
-        bool equalsKey(K const& other) {
-            K key;
-            innerKey(key, record);
-            return key == other;
-        }
-    };
+	private:
+		HashJoinRDD& rdd;
+	};	
     
-    JoinKind const kind;
-    Entry** table;
-    size_t  size;
-    size_t  innerSize;
-    O       outerRec;
-    I       innerRec;
-    K       key;
-    size_t  hash;
-    Entry*  entry;
-    IRdd*   inner;
-    ORdd*   outer;
-    Queue*  innerQueue;
-    Queue*  outerQueue;
-    Thread* scatter;
-    GatherRDD<O>* gather;
-    bool    innerIsShuffled;
-    BlockAllocator<Entry> allocator;
-
-    void loadOuterTable(bool replicateInner)
-    {
-        if (!replicateInner) {
-            scatter = new Thread(new ScatterJob<O,K,outerKey,ORdd>(outer, outerQueue));
-            gather = new GatherRDD<O>(outerQueue);
-            outer = NULL;
-        }
-    }
-
-    void extendHash() 
-    {
-        Entry *entry, *next;
-        size_t newSize = hashTableSize(size+1);
-        Entry** newTable = new Entry*[newSize];
-        memset(newTable, 0, newSize*sizeof(Entry*));
-        for (size_t i = 0; i < size; i++) { 
-            for (entry = table[i]; entry != NULL; entry = next) {
-                K key;
-                innerKey(key, entry->record);
-                size_t h = MOD(hashCode(key), newSize);
-                next = entry->collision;
-                entry->collision = newTable[h];
-                newTable[h] = entry;
-            }
-        }
-        delete[] table;
-        table = newTable;
-        size = newSize;
-    }
-             
-    void handle(Buffer* buf) 
-    {
-        BufferRDD<I> input(buf);
-        Entry* entry = new Entry();       
-        size_t n = 0;
-        while (input.next(entry->record)) { 
-            K key;
-            innerKey(key, entry->record);
-            size_t h = MOD(hashCode(key), size);  
-            Entry* oldValue;
-            do {
-                oldValue = table[h];
-                entry->collision = oldValue; 
-            } while (!__sync_bool_compare_and_swap(&table[h], oldValue, entry));
-            entry = new Entry();
-            n += 1;
-        }
-        __sync_add_and_fetch(&innerSize, n);
-        delete entry;
-    }   
-
-    template<class Rdd>
-    void loadHash(Rdd* gather) 
-    {
-        Entry* entry = allocator.alloc();
-        size_t realSize = 0;
-        while (gather->next(entry->record)) {
-            K key;
-            innerKey(key, entry->record);
-            size_t h = MOD(hashCode(key), size);  
-            entry->collision = table[h]; 
-            table[h] = entry;
-            entry = allocator.alloc();
-            if (++realSize == size) {
-                extendHash();
-            }
-        }
-        innerSize += realSize;
-#ifdef SHOW_HASH_STATISTIC
-        size_t totalLen = 0;
-        size_t nChains = 0;
-        size_t maxLen = 0;
-        for (size_t i = 0; i < size; i++) { 
-            size_t chainLen = 0;
-            for (Entry* entry = table[i]; entry != NULL; entry = entry->collision) chainLen += 1;
-            if (chainLen > maxLen) { 
-                maxLen = chainLen;
-            }
-            totalLen += chainLen;
-            nChains += chainLen != 0;                
-        }
-        printf("HashJoin: estimated size=%ld, real size=%ld, collisions=(%ld max, %f avg)\n", size, realSize, maxLen, nChains != 0 ? (double)totalLen/nChains : 0.0);
-#endif
-        delete gather;
-    }
-    void deleteHash() {
-#ifdef USE_MESSAGE_HANDLER
-        if (innerIsShuffled) { 
-            for (size_t i = 0; i < size; i++) { 
-                Entry *curr, *next;
-                for (curr = table[i]; curr != NULL; curr = next) { 
-                    next = curr->collision;
-                    delete curr;
-                }
-            }
-        }
-#endif
-        delete[] table;
-    }
-};
-    
-/**
- * Semijoin two RDDs using hash table
- * Depending on estimated result size and broadcastJoinThreshold, this RDD either broadcast inner table, 
- * either shuffle inner table 
- */
-template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner), class ORdd = RDD<O>, class IRdd = RDD<I> >
-class HashSemiJoinRDD : public RDD<O>, MessageHandler
-{
-public:
-    HashSemiJoinRDD(ORdd* outerRDD, IRdd* innerRDD, size_t estimation, JoinKind joinKind) 
-    : kind(joinKind), table(NULL), size(hashTableSize(estimation)), inner(innerRDD), outer(outerRDD), scatter(NULL), gather(NULL), innerIsShuffled(false)
-    {
-        assert(kind != OuterJoin);
-        Cluster* cluster = Cluster::instance.get();
-#ifdef USE_MESSAGE_HANDLER
-        innerQueue = cluster->getQueue(this);
-#else
-        innerQueue = cluster->getQueue();
-#endif
-        outerQueue = Cluster::instance->getQueue();
-    }
-
-    bool next(O& record)
-    {
-        Cluster* cluster = Cluster::instance.get();
-        if (table == NULL) { 
-            bool replicateInner = size <= cluster->broadcastJoinThreshold;
-#if 0
-            if (replicateInner) {             
-                size *= cluster->nNodes; // adjust hash table size 
-            }
-#endif
-            table = new Entry*[size];
-            memset(table, 0, size*sizeof(Entry*));
-            
-#if PARALLEL_INNER_OUTER_TABLES_LOAD
-            loadOuterTable(replicateInner);
-#endif
-            if (replicateInner) {             
-                loadHash(replicate<I,IRdd>(inner));
-            } else { 
-                Thread loader(new ScatterJob<I,K,innerKey,IRdd>(inner, innerQueue));
-                loadHash(new GatherRDD<I>(innerQueue));
-                innerIsShuffled = true;
-            }                
-#if !PARALLEL_INNER_OUTER_TABLES_LOAD
-            loadOuterTable(replicateInner);
-#endif
-        }
-        while (scatter ? gather->next(record) : outer->next(record)) { 
-            K key;
-            outerKey(key, record);
-            Entry* entry;            
-            for (entry = table[MOD(hashCode(key), size)]; !(entry == NULL || entry->equalsKey(key)); entry = entry->collision);
-            if ((entry != NULL) ^ (kind == AntiJoin)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    bool getNext(O& record) override
-    {
-        return next(record);
-    }
-
-    ~HashSemiJoinRDD() { 
-        deleteHash();
-        delete outer;
-        delete gather;
-        delete scatter;
-    }
-protected:
-    struct Entry {
-        I      record;
-        Entry* collision;
-
-
-        bool equalsKey(K const& other) {
-            K key;
-            innerKey(key, record);
-            return key == other;
-        }
-    };
-    
-    JoinKind const kind;
-    Entry** table;
-    size_t  size;
-    size_t  innerSize;
-    IRdd*   inner;
-    ORdd*   outer;
-    Queue*  innerQueue;
-    Queue*  outerQueue;
-    Thread* scatter;
-    GatherRDD<O>* gather;
-    bool    innerIsShuffled;
-    BlockAllocator<Entry> allocator;
-
-    void loadOuterTable(bool replicateInner)
-    {
-        if (!replicateInner) {
-            scatter = new Thread(new ScatterJob<O,K,outerKey,ORdd>(outer, outerQueue));
-            gather = new GatherRDD<O>(outerQueue);
-            outer = NULL;
-        }
-    }
-
-    void extendHash() 
-    {
-        Entry *entry, *next;
-        size_t newSize = hashTableSize(size+1);
-        Entry** newTable = new Entry*[newSize];
-        memset(newTable, 0, newSize*sizeof(Entry*));
-        for (size_t i = 0; i < size; i++) { 
-            for (entry = table[i]; entry != NULL; entry = next) { 
-                K key;
-                innerKey(key, entry->record);
-                size_t h = MOD(hashCode(key), newSize);
-                next = entry->collision;
-                entry->collision = newTable[h];
-                newTable[h] = entry;
-            }
-        }
-        delete[] table;
-        table = newTable;
-        size = newSize;
-    }
-             
-    void handle(Buffer* buf) 
-    {
-        BufferRDD<I> input(buf);
-        Entry* entry = new Entry();       
-        size_t n = 0;
-        while (input.next(entry->record)) { 
-            K key;
-            innerKey(key, entry->record);
-            size_t h = MOD(hashCode(key), size);  
-            Entry* oldValue;
-            do {
-                oldValue = table[h];
-                entry->collision = oldValue; 
-            } while (!__sync_bool_compare_and_swap(&table[h], oldValue, entry));
-            entry = new Entry();
-            n += 1;
-        }
-        __sync_add_and_fetch(&innerSize, n);
-        delete entry;
-    }   
-
-
-    template<class Rdd>
-    void loadHash(Rdd* gather) 
-    {
-        Entry* entry = allocator.alloc();
-        size_t realSize = 0;
-        while (gather->next(entry->record)) {
-            K key;
-            innerKey(key, entry->record);
-            size_t h = MOD(hashCode(key), size);  
-            entry->collision = table[h]; 
-            table[h] = entry;
-            entry = allocator.alloc();
-            if (++realSize == size) { 
-                extendHash();
-            }
-        }
-        innerSize += realSize;
-#ifdef SHOW_HASH_STATISTIC
-        size_t totalLen = 0;
-        size_t nChains = 0;
-        size_t maxLen = 0;
-        for (size_t i = 0; i < size; i++) { 
-            size_t chainLen = 0;
-            for (Entry* entry = table[i]; entry != NULL; entry = entry->collision) chainLen += 1;
-            if (chainLen > maxLen) { 
-                maxLen = chainLen;
-            }
-            totalLen += chainLen;
-            nChains += chainLen != 0;                
-        }
-        printf("HashSemiJoin: estimated size=%ld, real size=%ld, collisions=(%ld max, %f avg)\n", size, realSize, maxLen, nChains != 0 ? (double)totalLen/nChains : 0.0);
-#endif
-        delete gather;
-    }
-
-    void deleteHash() {
-#ifdef USE_MESSAGE_HANDLER
-        if (innerIsShuffled) { 
-            for (size_t i = 0; i < size; i++) { 
-                Entry *curr, *next;
-                for (curr = table[i]; curr != NULL; curr = next) { 
-                    next = curr->collision;
-                    delete curr;
-                }
-            }
-        }
-#endif
-        delete[] table;
-    }
-};
-  
-
-/**
- * Join two RDDs using shuffle join.
- * This join method is used when estimated result size is larger than inmemJoinThreshold.
- * In this case inner and outer tables are shuffled into N files, where N=estimation/inmemJoinThreshold.
- * The inner table files are one-by-one loaded in memory (placed in hash table and records frim corresponding 
- * outer table files are located in this hash table.
- */
-template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner), class ORdd = RDD<O>, class IRdd = RDD<I> >
-class ShuffleJoinRDD : public RDD< Join<O,I> >
-{
-public:
-    ShuffleJoinRDD(ORdd* outerRDD, IRdd* innerRDD, size_t nShuffleFiles, size_t estimation, JoinKind joinKind) 
-    : kind(joinKind), size(hashTableSize(estimation)), table(new Entry*[size]), nFiles(nShuffleFiles), outerFile(NULL), inner(NULL) {
-        assert(kind != AntiJoin);
-        Cluster* cluster = Cluster::instance.get();
-        Queue* innerQueue = cluster->getQueue();
-        Queue* outerQueue = cluster->getQueue();
-        qid = innerQueue->qid;
-        {
-            // shuffle inner RDD
-            Thread loader(new ScatterJob<I,K,innerKey,IRdd>(innerRDD, innerQueue));
-            saveInnerFiles(new GatherRDD<I>(innerQueue));
-        }
-        {
-            // shuffle outer RDD
-            Thread loader(new ScatterJob<O,K,outerKey,ORdd>(outerRDD, outerQueue));
-            saveOuterFiles(new GatherRDD<O>(outerQueue));
-        }
-        fileNo = 0;
-    }
-
-    bool next(Join<O,I>& record)
-    {
-        if (inner == NULL) { 
-            do { 
-                if (outerFile == NULL) {
-                    if (fileNo == nFiles) { 
-                        return false;
-                    }
-                    fileNo += 1;
-                    Cluster* cluster = Cluster::instance.get();
-                    FILE* innerFile = cluster->openTempFile("inner", qid, fileNo);
-                    outerFile = cluster->openTempFile("outer", qid, fileNo);
-
-                    memset(table, 0, size*sizeof(Entry*));
-                    allocator.reset();
-
-                    Entry* entry = allocator.alloc();
-                    while (fread(&entry->record, sizeof(I), 1, innerFile) == 1) { 
-                        K key;
-                        innerKey(key, entry->record);
-                        size_t h = MOD(hashCode(key), size);  
-                        entry->collision = table[h]; 
-                        table[h] = entry;
-                        entry = allocator.alloc();
-                    }
-                    fclose(innerFile);
-                }
-                if (fread(&outerRec, sizeof(O), 1, outerFile) != 1) { 
-                    fclose(outerFile);
-                    outerFile = NULL;
-                } else { 
-                    outerKey(key, outerRec);
-                    size_t h = MOD(hashCode(key), size);
-                    for (inner = table[h]; !(inner == NULL || inner->equalsKey(key)); inner = inner->collision);
-                }
-            } while (outerFile == NULL || (inner == NULL && kind == InnerJoin));
-            
-            if (inner == NULL) { 
-                (O&)record = outerRec;
-                (I&)record = innerRec;
-                return true;
-            }
-        }
-        (O&)record = outerRec;
-        (I&)record = inner->record;
-        do {
-            inner = inner->collision;
-        } while (!(inner == NULL || inner->equalsKey(key)));
-
-        return true;
-    }
-
-    bool getNext(Join<O,I>& record) override
-    {
-        return next(record);
-    }
-
-    ~ShuffleJoinRDD() { 
-        delete[] table;
-    }
-protected:
-    struct Entry {
-        I      record;
-        Entry* collision;
-
-        bool equalsKey(K const& other) {
-            K key;
-            innerKey(key, record);
-            return key == other;
-        }
-    };
-    
-    JoinKind const kind;
-    size_t  const size;
-    Entry** const table;
-    size_t  const nFiles;
-    FILE*   outerFile;
-    O       outerRec;
-    I       innerRec;
-    K       key;
-    size_t  hash;
-    Entry*  inner;
-    qid_t   qid;
-    size_t  fileNo;
-    BlockAllocator<Entry> allocator;
-    
-    void saveOuterFiles(ORdd* input)
-    {
-        FILE** files = new FILE*[nFiles];
-        Cluster* cluster = Cluster::instance.get();
-        for (size_t i = 0; i < nFiles; i++) {
-            files[i] = cluster->openTempFile("outer", qid, i+1, "w");
-        }
-        O record;
-        size_t nNodes = cluster->nNodes;
-        while (input->next(record)) { 
-            K key;
-            outerKey(key, record);
-            size_t h = hashCode(key) / nNodes % nFiles;
-            fwrite(&record, sizeof record, 1, files[h]);
-        }
-        for (size_t i = 0; i < nFiles; i++) {
-            fclose(files[i]);
-        }
-        delete[] files;
-        delete input;
-    }
-            
-    void saveInnerFiles(IRdd* input)
-    {
-        FILE** files = new FILE*[nFiles];
-        Cluster* cluster = Cluster::instance.get();
-        for (size_t i = 0; i < nFiles; i++) {
-            files[i] = cluster->openTempFile("inner", qid, i+1, "w");
-        }
-        I record;
-        size_t nNodes = cluster->nNodes;
-        while (input->next(record)) { 
-            K key;
-            innerKey(key, record);
-            size_t h = hashCode(key) / nNodes % nFiles;
-            fwrite(&record, sizeof record, 1, files[h]);
-        }
-        for (size_t i = 0; i < nFiles; i++) {
-            fclose(files[i]);
-        }
-        delete[] files;
-        delete input;
-    }
-};
-    
-  
-/**
- * Semijoin two RDDs using shuffle join.
- * This join method is used when estimated result size is larger than inmemJoinThreshold.
- * In this case inner and outer tables are shuffled into N files, where N=estimation/inmemJoinThreshold.
- * The inner table files are one-by-one loaded in memory (placed in hash table and records frim corresponding 
- * outer table files are located in this hash table.
- */
-template<class O, class I, class K, void (*outerKey)(K& key, O const& outer), void (*innerKey)(K& key, I const& inner), class ORdd = RDD<O>, class IRdd = RDD<I> >
-class ShuffleSemiJoinRDD : public RDD<O>
-{
-public:
-    ShuffleSemiJoinRDD(ORdd* outerRDD, IRdd* innerRDD, size_t nShuffleFiles, size_t estimation, JoinKind joinKind) 
-    : kind(joinKind), size(estimation), table(new Entry*[size]), nFiles(nShuffleFiles), outerFile(NULL) {
-        assert(kind != OuterJoin);
-        Cluster* cluster = Cluster::instance.get();
-        Queue* innerQueue = cluster->getQueue();
-        Queue* outerQueue = cluster->getQueue();
-        qid = innerQueue->qid;
-        {
-            // shuffle inner RDD
-            Thread loader(new ScatterJob<I,K,innerKey,IRdd>(innerRDD, innerQueue));
-            saveInnerFiles(new GatherRDD<I>(innerQueue));
-        }
-        {
-            // shuffle outer RDD
-            Thread loader(new ScatterJob<O,K,outerKey,ORdd>(outerRDD, outerQueue));
-            saveOuterFiles(new GatherRDD<O>(outerQueue));
-        }
-        fileNo = 0;
-    }
-
-    bool next(Join<O,I>& record)
-    {
-        Cluster* cluster = Cluster::instance.get();
-        while (true) { 
-            if (outerFile == NULL) {
-                if (fileNo == nFiles) { 
-                    return false;
-                }
-                fileNo += 1;
-                FILE* innerFile = cluster->openTempFile("inner", qid, fileNo);
-                outerFile = cluster->openTempFile("outer", qid, fileNo);
-                
-                memset(table, 0, size*sizeof(Entry*));
-                allocator.reset();                
-
-                Entry* entry = allocator.alloc();
-
-                while (fread(&entry->record, sizeof(I), 1, innerFile) == 1) { 
+    template<class R>
+	class OuterProcessor { 
+	public:
+		void process(Buffer* buf) { 
+			if (buf->kind == MSG_EOF) { 
+				rdd.outerBarrier->reach();
+                delete reactor;
+			} else {
+				char* src = buf->data;
+				char* end = src + buf->size;
+				Pair<O,I> pair;
+				while (src < end) {
                     K key;
-                    innerKey(key, entry->record);
-                    size_t h = MOD(hashCode(key), size);  
-                    entry->collision = table[h]; 
-                    table[h] = entry;
-                    entry = allocator.alloc();
+                    size_t nMatches = 0;
+					src += unpack(pair.key, src);
+                    outerKey(key, pair.key);                    
+                    for (HashTable<I,innerKey>::Entry* entry = rdd.hashTable.get(key); entry != NULL; entry = entry->collision) {
+                        if (entry->equalsKey(key)) {
+                            pair.value = entry->record;
+                            reactor->react(pair);
+                            nMatches += 1;
+                        }
+                    }
+                    if (nMatches == 0 && rdd.kind == OuterJoin){ 
+                        reactor->react(pair);
+                    }
+				}
+			}
+		}
+
+		OuterProcessor(HashJoinRDD& join, R* reactor) : rdd(join) {}
+
+	private:
+		HashJoinRDD& rdd;
+        R* reactor;
+	};	
+
+    template<class R>
+    class JoinReactor : public Reactor< Pair<O,I> >
+    {
+      public:
+        void react(O const& outer) {
+            K key;
+            Pair<O,I> pair;
+            size_t nMatches = 0;
+            outerKey(key, outer);                    
+            pair.key = outer;
+            for (HashTable<I,innerKey>::Entry* entry = rdd.hashTable.get(key); entry != NULL; entry = entry->collision) {
+                if (entry->equalsKey(key)) {
+                    pair.value = entry->record;
+                    reactor->react(pair);
+                    nMatches += 1;
                 }
-                fclose(innerFile);
             }
-            if (fread(&record, sizeof(O), 1, outerFile) != 1) { 
-                fclose(outerFile);
-                outerFile = NULL;
-            } else { 
-                K key;
-                outerKey(key, record);
-                size_t h = MOD(hashCode(key), size);
-                Entry* inner;            
-                for (inner = table[h]; !(inner == NULL || inner->equalsKey(key)); inner = inner->collision);
-                if ((inner != NULL) ^ (kind == AntiJoin)) {
-                    return true;
-                }                
+            if (nMatches == 0 && rdd.kind == OuterJoin){ 
+                reactor->react(pair);
             }
         }
-    }
 
-    bool getNext(Join<O,I>& record) override
-    {
-        return next(record);
-    }
-
-    ~ShuffleSemiJoinRDD() { 
-        delete[] table;
-    }
-protected:
-    struct Entry {
-        I      record;
-        Entry* collision;
-
-        bool equalsKey(K const& other) {
-            K key;
-            innerKey(key, record);
-            return key == other;
+        JoinReactor(HashJoinRDD& join, R* r) : rdd(join), reactor(r) {}
+        ~JoinReactor() {
+            delete reactor;
         }
+      private:
+        HashJoinRDD& rdd;
+        R* reactor;
     };
-    
+        
     JoinKind const kind;
-    Entry** const table;
-    size_t  const nFiles;
-    size_t  const size;
-    FILE*   outerFile;
-    qid_t   qid;
-    size_t  fileNo;
-    BlockAllocator<Entry> allocator;
-    
-    void saveOuterFiles(ORdd* input)
-    {
-        FILE** files = new FILE*[nFiles];
-        Cluster* cluster = Cluster::instance.get();
-        for (size_t i = 0; i < nFiles; i++) {
-            files[i] = cluster->openTempFile("outer", qid, i+1, "w");
-        }
-        O record;
-        size_t nNodes = cluster->nNodes;
-        while (input->next(record)) { 
-            K key;
-            outerKey(key, record);
-            size_t h = hashCode(key) / nNodes % nFiles;
-            fwrite(&record, sizeof record, 1, files[h]);
-        }
-        for (size_t i = 0; i < nFiles; i++) {
-            fclose(files[i]);
-        }
-        delete[] files;
-        delete input;
-    }
-            
-    void saveInnerFiles(IRdd* input)
-    {
-        FILE** files = new FILE*[nFiles];
-        Cluster* cluster = Cluster::instance.get();
-        for (size_t i = 0; i < nFiles; i++) {
-            files[i] = cluster->openTempFile("inner", qid, i+1, "w");
-        }
-        I record;
-        size_t nNodes = cluster->nNodes;
-        while (input->next(record)) { 
-            K key;
-            innerKey(key, record);
-            size_t h = hashCode(key) / nNodes % nFiles;
-            fwrite(&record, sizeof record, 1, files[h]);
-        }
-        for (size_t i = 0; i < nFiles; i++) {
-            fclose(files[i]);
-        }
-        delete[] files;
-        delete input;
-    }
+    HashTable<I, innerKey> hashTable;
+    RDD<I>* const outer;
+    RDD<I>* const inner;
+    BarrierJob* outerBarrier;
+    BarrierJob* innerBarrier;
 };
-    
   
 /**
  * Cache RDD in memory
