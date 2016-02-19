@@ -77,7 +77,7 @@ inline size_t unpack(Class& dst, char const* src, size_t size = 0)  \
 }
 #endif
 
-#define PARQUET_FIELD(x) unpackParquet(dst.x, reader.columns[i++].reader, sizeof(dst.x)) && 
+#define PARQUET_FIELD(x) unpackParquet(dst.x, reader.columns[i++], sizeof(dst.x)) && 
 #define PARQUET_UNPACK(Class)                       \
 inline bool unpackParquet(Class& dst, ParquetReader& reader)   \
 {                                                   \

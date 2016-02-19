@@ -4,6 +4,7 @@
 #include <stdio.h>
 
 #include "parquet/parquet.h"
+#include "parquet/thrift/util.h"
 #include "rdd.h"
 #include "hdfs.h"
 
@@ -17,7 +18,7 @@ using namespace std;
 const uint32_t FOOTER_SIZE = 8;
 const uint8_t PARQUET_MAGIC[4] = {'P', 'A', 'R', '1'};
 
-class ParquetFile {
+class ParquetFile : public FileLike {
   public:
     ParquetFile(char const* url) {
         if (strncmp(url, "hdfs://", 7) == 0) {
@@ -51,13 +52,13 @@ class ParquetFile {
             *path = '/';
         }
         char*** hosts = hdfsGetHosts(fs, path, 0, 0);//FOOTER_SIZE); 
-	if (hosts == NULL) { 
-	    eof = true;
-	    return false;
-	}
-	eof = false;
-	printf("%s -> %s\n", hosts[0][0], url);
-	bool my = Cluster::instance->isLocalNode(hosts[0][0]);
+		if (hosts == NULL) { 
+			eof = true;
+			return false;
+		}
+		eof = false;
+		printf("%s -> %s\n", hosts[0][0], url);
+		bool my = Cluster::instance->isLocalNode(hosts[0][0]);
         hdfsFreeHosts(hosts);
         return my;
     }
@@ -66,7 +67,7 @@ class ParquetFile {
         return hf != NULL || f != NULL;
     }
 
-    size_t size() { 
+    size_t Size() { 
         if (hf) {
             hdfsFileInfo* info = hdfsGetPathInfo(fs, path);
             size_t sz = info->mSize;
@@ -80,7 +81,15 @@ class ParquetFile {
         }
     }
 
-    void seek(size_t pos) {
+	size_t Tell() {
+        if (hf) { 
+			return hdfsTell(fs, hf);
+        } else {
+            return ftell(f);
+        }
+    }
+		
+    void Seek(size_t pos) {
         if (hf) { 
             int rc = hdfsSeek(fs, hf, pos);
             assert(rc == 0);
@@ -90,27 +99,34 @@ class ParquetFile {
         }
     }
 
-    void read(void* buf, size_t size) {
+    size_t Read(size_t size, uint8_t* buf) {
+		size_t offs;
         if (hf) {
-            size_t offs = 0;
+            offs = 0;
             while (offs < size) { 
-                int n = hdfsRead(fs, hf, (char*)buf + offs, size - offs);
+                int n = hdfsRead(fs, hf, buf + offs, size - offs);
                 assert(n > 0);
                 offs += n;
             }
         } else {
-            int rc = fread(buf, size, 1, f);
-            assert(rc == 1);
+            offs = fread(buf, 1, size, f);
         }
+		return offs;
     }
-    
-    ~ParquetFile() {
+
+	void Close() {
         if (f != NULL) { 
             fclose(f);
+			f = NULL;
         } else if (hf != NULL) { 
             hdfsCloseFile(fs, hf);
+			hf = NULL;
         }
     }
+
+    ~ParquetFile() {
+		Close();
+	}
 
   private:
     static hdfsFS fs;
@@ -121,38 +137,6 @@ class ParquetFile {
 
 
 hdfsFS ParquetFile::fs;
-
-bool GetFileMetadata(ParquetFile& file, FileMetaData* metadata)
-{
-    size_t file_len = file.size();
-    if (file_len < FOOTER_SIZE) {
-        cerr << "Invalid parquet file. Corrupt footer." << endl;
-        return false;
-    }
-
-    uint8_t footer_buffer[FOOTER_SIZE];
-    file.seek(file_len - FOOTER_SIZE);
-    file.read(footer_buffer, FOOTER_SIZE);
-    if (memcmp(footer_buffer + 4, PARQUET_MAGIC, 4) != 0) {
-        cerr << "Invalid parquet file. Corrupt footer." << endl;
-        return false;
-    }
-
-    uint32_t metadata_len = *reinterpret_cast<uint32_t*>(footer_buffer);
-    size_t metadata_start = file_len - FOOTER_SIZE - metadata_len;
-    if (metadata_start < 0) {
-        cerr << "Invalid parquet file. File is less than file metadata size." << endl;
-        return false;
-    }
-
-    file.seek(metadata_start);
-    uint8_t metadata_buffer[metadata_len];
-    file.read(metadata_buffer, metadata_len);
-
-    DeserializeThriftMsg(metadata_buffer, &metadata_len, metadata);
-    return true;
-
-}
     
 bool ParquetReader::loadFile(char const* dir, size_t partNo)
 {
@@ -163,38 +147,17 @@ bool ParquetReader::loadFile(char const* dir, size_t partNo)
     if (!file.exists()) { 
     	return false;
     }
-    if (!GetFileMetadata(file, &metadata)) { 
-        return false;
-    }
-    size_t nColumns = 0;
-    for (size_t i = 0; i < metadata.row_groups.size(); ++i) {
-        const RowGroup& row_group = metadata.row_groups[i];
-        nColumns += row_group.columns.size();
-    }
-    columns.resize(0); // do cleanup
-    columns.resize(nColumns);
-    nColumns = 0;
-    
-    for (size_t i = 0; i < metadata.row_groups.size(); ++i) {
-        const RowGroup& row_group = metadata.row_groups[i];
-        for (size_t c = 0; c < row_group.columns.size(); ++c) {
-            const ColumnChunk& col = row_group.columns[c];
-            
-            size_t col_start = col.meta_data.data_page_offset;
-            if (col.meta_data.__isset.dictionary_page_offset) {
-                if (col_start > col.meta_data.dictionary_page_offset) {
-                    col_start = col.meta_data.dictionary_page_offset;
-                }
-            }
-            file.seek(col_start);
-            ParquetColumnReader& cr = columns[nColumns++];
-            cr.column_buffer.resize(col.meta_data.total_compressed_size);
-            file.read(&cr.column_buffer[0], cr.column_buffer.size());
-            
-            cr.stream = new InMemoryInputStream(&cr.column_buffer[0], cr.column_buffer.size());
-            cr.reader = new ColumnReader(&col.meta_data, &metadata.schema[c + 1], cr.stream);
-        }
-    }
+	
+	reader.Open(&file);
+	reader.ParseMetaData();
+	
+	columns.clear();        
+	for (size_t i = 0; i < reader.num_row_groups(); ++i) {
+		RowGroupReader* rr = reader.RowGroup(i);
+		for (size_t c = 0; c < rr->num_columns(); ++c) {
+			columns.push_back(rr->Column(c));
+		}
+	}
     return true;
 }
 
@@ -206,43 +169,24 @@ bool ParquetReader::loadLocalFile(char const* dir, size_t partNo, bool& eof)
     size_t nExecutors = cluster->nExecutorsPerHost;
     size_t nHosts = cluster->nNodes / nExecutors;
     if (ParquetFile::isLocal(url, eof) && cluster->nodeId / nHosts == partNo % nExecutors) { 
+		ParquetFile file(url);
         printf("Node %ld loads file %s\n", cluster->nodeId,url);
-	fflush(stdout);
-	
-	ParquetFile file(url);
-        if (!GetFileMetadata(file, &metadata)) { 
+		fflush(stdout);
+		
+		if (!file.exists()) {
             return false;
         }
-        size_t nColumns = 0;
-        for (size_t i = 0; i < metadata.row_groups.size(); ++i) {
-            const RowGroup& row_group = metadata.row_groups[i];
-            nColumns += row_group.columns.size();
-        }
-        columns.resize(0); // do cleanup
-        columns.resize(nColumns);
-        nColumns = 0;
-        
-        for (size_t i = 0; i < metadata.row_groups.size(); ++i) {
-            const RowGroup& row_group = metadata.row_groups[i];
-            for (size_t c = 0; c < row_group.columns.size(); ++c) {
-                const ColumnChunk& col = row_group.columns[c];
-                
-                size_t col_start = col.meta_data.data_page_offset;
-                if (col.meta_data.__isset.dictionary_page_offset) {
-                    if (col_start > col.meta_data.dictionary_page_offset) {
-                        col_start = col.meta_data.dictionary_page_offset;
-                    }
-                }
-                file.seek(col_start);
-                ParquetColumnReader& cr = columns[nColumns++];
-                cr.column_buffer.resize(col.meta_data.total_compressed_size);
-                file.read(&cr.column_buffer[0], cr.column_buffer.size());
-                
-                cr.stream = new InMemoryInputStream(&cr.column_buffer[0], cr.column_buffer.size());
-                cr.reader = new ColumnReader(&col.meta_data, &metadata.schema[c + 1], cr.stream);
-            }
-        }
-	return true;
+		reader.Open(&file);
+		reader.ParseMetaData();
+
+		columns.clear();        
+		for (size_t i = 0; i < reader.num_row_groups(); ++i) {
+			RowGroupReader* rr = reader.RowGroup(i);
+			for (size_t c = 0; c < rr->num_columns(); ++c) {
+				columns.push_back(rr->Column(c));
+			}
+		}
+		return true;
     }
     return false;
 }
