@@ -107,9 +107,7 @@ class Cluster
     size_t const nNodes;
     size_t const nodeId;
     size_t const bufferSize;
-    size_t const syncInterval;
     size_t const broadcastJoinThreshold;
-    size_t const inmemJoinThreshold;
     size_t const split;
     bool   const sharedNothing;
     char   const*tmpDir;
@@ -121,7 +119,7 @@ class Cluster
     void* userData;
     ThreadPool threadPool;
 	vector<Node> nodes;
-	vector<Channel> channels;
+	vector<Channel*> channels;
 	
     /**
      * Check if this node is coordinator. Coordinator is forst node in the cluster and it is used to collect all
@@ -139,13 +137,13 @@ class Cluster
     /**
      * Send message to the node or place it in locasl queue
      * @param node destination node
-     * @param queue if node is self node, then message is placed directly in this queue, otherwise it is sent to 
-     * the remote node with qid (queue identifier) taken from this queue
+     * @param channel if node is self node, then message is placed directly in this queue, otherwise it is sent to 
+     * the remote node with cid (channel identifier) taken from this channel
      * @param buf message to be delivered
      */
-    void send(size_t node, Buffer* buf);
+    void send(size_t node, Channel* channel, Buffer* buf);
     
-	void sendEof(size_t node);
+	void sendEof(size_t node, Channel* channel);
 
     /**
      * Check if sepcified address corresponds to local node
@@ -166,7 +164,7 @@ class Cluster
      * @param split split factor. Using split factor greater than 1 it is posisble to spawn more cluster nodes than there are 
      * physical partitions (files)
      */
-    Cluster(size_t nodeId, size_t nHosts, char** hosts, size_t nChannels = 64, size_t bufferSize = 4*64*1024, size_t broadcastJoinThreshold = 10000, bool sharedNothing = true, size_t split = 1);
+    Cluster(size_t nodeId, size_t nHosts, char** hosts, size_t nThreads = 8, size_t nChannels = 64, size_t bufferSize = 4*64*1024, size_t broadcastJoinThreshold = 10000, bool sharedNothing = true, size_t split = 1);
     ~Cluster();
 
     static ThreadLocal<Cluster> instance;

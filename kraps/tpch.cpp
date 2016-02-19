@@ -38,14 +38,14 @@ class ColumnarStore
     ColumnarRDD<HRegion,Region,VRegion> _Region;
 
     ColumnarStore() : 
-    _Lineitem(FileManager::load<HLineitem>(filePath("Lineitem")), SCALE(6000000)),
-    _Orders(FileManager::load<HOrders>(filePath("Orders")),       SCALE(1500000)),
-    _Supplier(FileManager::load<HSupplier>(filePath("Supplier")), SCALE(10000)),
-    _Customer(FileManager::load<HCustomer>(filePath("Customer")), SCALE(150000)),
-    _Part(FileManager::load<HPart>(filePath("Part")),             SCALE(200000)),
-    _Partsupp(FileManager::load<HPartsupp>(filePath("Partsupp")), SCALE(800000)),
-    _Nation(FileManager::load<HNation>(filePath("Nation")),       25),
-    _Region(FileManager::load<HRegion>(filePath("Region")),       5) {}
+    _Lineitem(new DirRDD<HLineitem>(filePath("Lineitem")), SCALE(6000000)),
+    _Orders(new DirRDD<HOrders>(filePath("Orders")),       SCALE(1500000)),
+    _Supplier(new DirRDD<HSupplier>(filePath("Supplier")), SCALE(10000)),
+    _Customer(new DirRDD<HCustomer>(filePath("Customer")), SCALE(150000)),
+    _Part(new DirRDD<HPart>(filePath("Part")),             SCALE(200000)),
+    _Partsupp(new DirRDD<HPartsupp>(filePath("Partsupp")), SCALE(800000)),
+    _Nation(new DirRDD<HNation>(filePath("Nation")),       25),
+    _Region(new DirRDD<HRegion>(filePath("Region")),       5) {}
 
 };
 
@@ -66,14 +66,14 @@ class CachedData
     CachedRDD<Region> _Region;
 
     CachedData() : 
-    _Lineitem(FileManager::load<Lineitem>(filePath("Lineitem")), SCALE(6000000)),
-    _Orders(FileManager::load<Orders>(filePath("Orders")),       SCALE(1500000)),
-    _Supplier(FileManager::load<Supplier>(filePath("Supplier")), SCALE(10000)),
-    _Customer(FileManager::load<Customer>(filePath("Customer")), SCALE(150000)),
-    _Part(FileManager::load<Part>(filePath("Part")),             SCALE(200000)),
-    _Partsupp(FileManager::load<Partsupp>(filePath("Partsupp")), SCALE(800000)),
-    _Nation(FileManager::load<Nation>(filePath("Nation")),       25),
-    _Region(FileManager::load<Region>(filePath("Region")),       5) {}
+    _Lineitem(new DirRDD<Lineitem>(filePath("Lineitem")), SCALE(6000000)),
+    _Orders(new DirRDD<Orders>(filePath("Orders")),       SCALE(1500000)),
+    _Supplier(new DirRDD<Supplier>(filePath("Supplier")), SCALE(10000)),
+    _Customer(new DirRDD<Customer>(filePath("Customer")), SCALE(150000)),
+    _Part(new DirRDD<Part>(filePath("Part")),             SCALE(200000)),
+    _Partsupp(new DirRDD<Partsupp>(filePath("Partsupp")), SCALE(800000)),
+    _Nation(new DirRDD<Nation>(filePath("Nation")),       25),
+    _Region(new DirRDD<Region>(filePath("Region")),       5) {}
 
 };
 #endif
@@ -1755,8 +1755,8 @@ class TPCHJob : public Job
     Cluster cluster;
 
   public:
-    TPCHJob(size_t nodeId, size_t nHosts, char** hosts = NULL, size_t nChannels = 64, size_t bufferSize, size_t broadcastJoinThreshold = 10000, bool sharedNothing = false, size_t split = 1)
-    : cluster(nodeId, nHosts, hosts, nChannels, bufferSize, broadcastJoinThreshold, sharedNothing, split)
+    TPCHJob(size_t nodeId, size_t nHosts, char** hosts = NULL, size_t nThreads = 8, size_t nChannels = 64, size_t bufferSize = 64*1024, size_t broadcastJoinThreshold = 10000, bool sharedNothing = false, size_t split = 1)
+    : cluster(nodeId, nHosts, hosts, nThreads, nChannels, bufferSize, broadcastJoinThreshold, sharedNothing, split)
     {}
     
   public:
@@ -1773,7 +1773,6 @@ class TPCHJob : public Job
         cluster.userData = (void*)new CachedData();
 #endif
         printf("Elapsed time for loading all data in memory: %d milliseconds\n", (int)(getCurrentTime() - start));
-        cluster.barrier(); 
     
         execute("Q1",  Q1::query);
         execute("Q3",  Q3::query);
@@ -1800,6 +1799,7 @@ class TPCHJob : public Job
 int main(int argc, char* argv[])
 {
     int i;
+    size_t nThreads = 8;
     size_t nChannels = 64;
     size_t bufferSize = 4*64*1024;
     size_t broadcastJoinThreshold = 10000;
@@ -1816,6 +1816,8 @@ int main(int argc, char* argv[])
                 dataDir = argv[++i];
             } else if (strcmp(option, "format") == 0) { 
                 dataFormat = argv[++i];
+            } else if (strcmp(option, "threads") == 0) { 
+                nThreads = atol(argv[++i]);
             } else if (strcmp(option, "channels") == 0) { 
                 nChannels = atol(argv[++i]);
             } else if (strcmp(option, "buffer") == 0) { 
@@ -1834,6 +1836,7 @@ int main(int argc, char* argv[])
                       "-dir\tdata directory (.)\n"
                       "-format\tdata format: parquet, plain-file,... ()\n"
                       "-shared-nothing 0/1\tdata is located at executor nodes (1)\n"
+                      "-channels N\tnumber of concurrent threads (8)\n"
                       "-channels N\tnumber of channels (64)\n"
                       "-buffer SIZE\tbuffer size (256Kb)\n"
                       "-broadcast-threshold SIZE\tbroadcast join threshold (10000)\n"
@@ -1854,7 +1857,7 @@ int main(int argc, char* argv[])
         return 1;
     }
 	if (argc == i + nNodes) {
-        TPCHJob test(nodeId, nNodes, &argv[i], nChannels, bufferSize, broadcastJoinThreshold, sharedNothing, split);
+        TPCHJob test(nodeId, nNodes, &argv[i], nThreads, nChannels, bufferSize, broadcastJoinThreshold, sharedNothing, split);
         test.run();
     } else {      
         fprintf(stderr, "%d nodes expected, %d given\n", nNodes, i - argc);

@@ -1,6 +1,7 @@
 #ifndef __SYNC_H__
 #define __SYNC_H__
 
+#include <assert.h>
 #include <vector>
 #include <pthread.h>
 
@@ -167,7 +168,7 @@ class ThreadPool
             shutdown = true;
             go.broadcast();
         }
-        for (size_t i = i; i < threads.size(); i++) {
+        for (size_t i = 0; i < threads.size(); i++) {
             delete threads[i];
         }
     }
@@ -204,10 +205,10 @@ class ThreadPool
         }
     }
     
-    void run(Scheduler* sched) {
+    void run(Scheduler& sched) {
         CriticalSection cs(mutex);
         assert(!shutdown);
-        scheduler = sched;
+        scheduler = &sched;
         go.broadcast();
         while (hasMoreWork || nActiveJobs != 0) {
             done.wait(mutex);

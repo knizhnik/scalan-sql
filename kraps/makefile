@@ -47,11 +47,11 @@ compress.o: compress.cpp compress.h
 parquet.o: parquet.cpp rdd.h cluster.h
 	$(CPP) -c parquet.cpp
 
-tpch: tpch.o cluster.o sockio.o compress.o parquet.o 
+tpch: tpch.o cluster.o sockio.o compress.o util.o
 #	$(CPP) -static -o tpch tpch.o cluster.o sockio.o compress.o -L$(HOME)/.nix-profile/lib -lz
-#	$(CPP) -o tpch tpch.o cluster.o sockio.o compress.o -lz
+	$(CPP) -o tpch tpch.o cluster.o sockio.o util.o
 #	$(CPP) -o tpch tpch.o cluster.o sockio.o compress.o -L $(SIMDCOMP_HOME) -lsimdcomp 
-	$(CPP) -o tpch tpch.o cluster.o sockio.o compress.o  parquet.o $(PARQUET_CPP_HOME)/build/libParquet.a $(PARQUET_CPP_HOME)/build/libParquetCompression.a $(PARQUET_CPP_HOME)/build/libThriftParquet.a $(PARQUET_CPP_HOME)/thirdparty/installed/lib/libsnappy.a  $(PARQUET_CPP_HOME)/thirdparty/installed/lib/liblz4.a /usr/local/lib/libthrift.a $(HADOOP_HOME)/lib/native/libhdfs.a -L/usr/lib/jvm/oracle-jdk-bin-1.8/jre/lib/amd64/server -L/usr/lib/jvm/jdk1.8.0_60/jre/lib/amd64/server/ -lz -ljvm
+#	$(CPP) -o tpch tpch.o cluster.o sockio.o compress.o  parquet.o $(PARQUET_CPP_HOME)/build/libParquet.a $(PARQUET_CPP_HOME)/build/libParquetCompression.a $(PARQUET_CPP_HOME)/build/libThriftParquet.a $(PARQUET_CPP_HOME)/thirdparty/installed/lib/libsnappy.a  $(PARQUET_CPP_HOME)/thirdparty/installed/lib/liblz4.a /usr/local/lib/libthrift.a $(HADOOP_HOME)/lib/native/libhdfs.a -L/usr/lib/jvm/oracle-jdk-bin-1.8/jre/lib/amd64/server -L/usr/lib/jvm/jdk1.8.0_60/jre/lib/amd64/server/ -lz -ljvm
 
 kraps: libkraps.so kraps.jar libkrapsrdd.so
 q1: libq1rdd.so q1rdd.jar

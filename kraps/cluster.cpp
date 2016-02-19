@@ -27,7 +27,7 @@ class ReceiveJob : public Job
                 if (buf->kind == MSG_SHUTDOWN) { 
                     break;
                 } else {
-                    cluster->channels[buf->cid]->process(buf, node);
+                    cluster->channels[buf->cid]->processor->process(buf, node);
                 }
             }
         } catch (std::exception& x) {
@@ -48,29 +48,26 @@ void Cluster::send(size_t node, Channel* channel, Buffer* buf)
     } else {
         CriticalSection cs(nodes[node].mutex);
 		nodes[node].socket->write(buf, BUF_HDR_SIZE + buf->size);
-		sent += BUF_HDR_SIZE + buf->size;
     }
 }
 
 void Cluster::sendEof(size_t node, Channel* channel)
 {
+	Buffer buf(MSG_EOF, channel->cid);
     if (node == nodeId) {
-		Buffer buf(MSG_EOF, channel->cid);
-        channel->processor->process(buf, node);
+        channel->processor->process(&buf, node);
     } else {
-		Buffer buf(MSG_EOF, channel->cid);
 		CriticalSection cs(nodes[node].mutex);
 		nodes[node].socket->write(&buf, BUF_HDR_SIZE);
-		sent += BUF_HDR_SIZE;
     }
 }
 
-Channel* Cluster::getChannel(ChanelProcessor* processor)
+Channel* Cluster::getChannel(ChannelProcessor* processor)
 {
     assert(cid < channels.size());
     Channel* c = channels[cid++];
 	c->processor = processor;
-    return q;
+    return c;
 
 }
 
@@ -82,20 +79,16 @@ bool Cluster::isLocalNode(char const* host)
 }
 
     
-Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nChannels, size_t bufSize, size_t recvQueueSize, size_t sendQueueSize, size_t syncPeriod, size_t broadcastThreshold, size_t inmemThreshold, char const* tmp, bool sharedNothingDFS, size_t fileSplit) 
-: nNodes(nHosts), nodeId(selfId), bufferSize(bufSize), broadcastJoinThreshold(broadcastThreshold), inmemJoinThreshold(inmemThreshold), split(fileSplit), sharedNothing(sharedNothingDFS), tmpDir(tmp), shutdown(false), userData(NULL), nodes(nNodes), channels(nQueues)
+Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nThreads, size_t nChannels, size_t bufSize, size_t broadcastThreshold, bool sharedNothingDFS, size_t fileSplit) 
+: nNodes(nHosts), nodeId(selfId), bufferSize(bufSize), broadcastJoinThreshold(broadcastThreshold), split(fileSplit), sharedNothing(sharedNothingDFS), shutdown(false), userData(NULL), threadPool(nThreads), nodes(nNodes), channels(nChannels)
 {
     instance.set(this);
     this->hosts = hosts;
 
     cid = 0;
-    if (hosts == NULL) {
-        nodes[nodeId] = this;
-        return;
-    }
     
     for (size_t i = 0; i < selfId; i++) { 
-        nodes[i].sockets[i] = Socket::connect(hosts[i]);
+        nodes[i].socket = Socket::connect(hosts[i]);
         nodes[i].socket->write(&nodeId, sizeof nodeId);
     }
 
@@ -106,7 +99,6 @@ Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nChannels, s
 
     size_t n, hostLen = strchr(hosts[0], ':') - hosts[0];    
     for (n = 1; n < nHosts && strncmp(hosts[0], hosts[n], hostLen) == 0 && hosts[n][hostLen] == ':'; n++);
-    nExecutorsPerHost = n;
     
     for (size_t i = selfId+1; i < nHosts; i++) {
         size_t node;
@@ -114,7 +106,7 @@ Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nChannels, s
             ? localGateway->accept()
             : globalGateway->accept();
         s->read(&node, sizeof node);
-        assert(nodes[node] == NULL);
+        assert(nodes[node].socket == NULL);
         nodes[node].socket = s;
     }
     delete localGateway;
@@ -122,7 +114,7 @@ Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nChannels, s
 
     for (size_t i = 0; i < nHosts; i++)  {
         if (i != selfId) { 
-            nodes[i].receiver = new Thread(new ReceiveJob(i));
+            nodes[i].receiver = new Thread(new ReceiveJob(this, i));
         }
     }    
 }
@@ -133,8 +125,8 @@ Cluster::~Cluster()
         Buffer shutdownMsg(MSG_SHUTDOWN, 0);
         shutdown = true;
         for (size_t i = 0; i < nNodes; i++) {
-            if (i != nodeID) {
-                nodes[i].socket->write(shutdownMsg, BUF_HDR_SIZE);
+            if (i != nodeId) {
+                nodes[i].socket->write(&shutdownMsg, BUF_HDR_SIZE);
             }
         }
         for (size_t i = 0; i < nNodes; i++) {

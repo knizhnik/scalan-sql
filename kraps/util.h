@@ -1,8 +1,10 @@
 #ifndef __UTIL_H__
 #define __UTIL_H__
 
+#include <sys/time.h>
+#include <stdio.h>
 #include "sync.h"
-
+#include "hash.h"
 
 /**
  * Print functions for scalars
@@ -122,7 +124,7 @@ class KeyValueMap
 	
 	KeyValueMap(size_t estimation) { 
 		used = 0;
-		size = estimation;
+		size = hashTableSize(estimation);
 		table = new Entry*[size];
 		memset(table, 0, size*sizeof(Entry*));
 	}
@@ -139,7 +141,7 @@ class KeyValueMap
 		Entry* entry;
 		size_t hash = hashCode(pair.key);
 		size_t h = MOD(hash, size);            
-		for (entry = table[h]; entry != NULL && entry->pair.key != pair.key; entry = entry->collision);
+		for (entry = table[h]; entry != NULL && !(entry->pair.key == pair.key); entry = entry->collision);
 		if (entry == NULL) { 
 			entry = allocator.alloc();
 			entry->collision = table[h];
@@ -155,7 +157,7 @@ class KeyValueMap
 	
 	void merge(KeyValueMap const& other) { 
 		for (size_t i = 0; i < other.size; i++) { 
-			for (Entry entry = other.table[i]; entry != NULL; entry = next) { 
+			for (Entry* entry = other.table[i]; entry != NULL; entry = entry->collision) { 
 				add(entry->pair);
 			}
 		}
@@ -194,7 +196,7 @@ class KeyValueMap
 		
 		void run() { 
 			for (size_t i = from; i < map.size; i += step) { 
-				for (Entry* entry = table[i]; entry != NULL; entry = entry->next) { 
+				for (Entry* entry = map.table[i]; entry != NULL; entry = entry->collision) { 
 					reactor->react(entry->pair);
 				}
 			}
@@ -246,7 +248,7 @@ private:
 template<class T, class K, void (*getKey)(K& key, T const& record)>  
 class HashTable
 {
-public:
+  public:
     struct Entry {
         T record;
         Entry* collision;
@@ -260,7 +262,7 @@ public:
         
     HashTable(size_t estimation) {
         size = hashTableSize(estimation);
-        table = new Entry[size];
+        table = new Entry*[size];
         memset(table, 0, size*sizeof(Entry*));
     }
 
@@ -350,7 +352,8 @@ public:
         size = newSize;
         unlock();
     }
-private:
+
+  private:
     Entry** table;
     size_t size;
     size_t used;

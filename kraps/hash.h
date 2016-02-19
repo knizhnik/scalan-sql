@@ -12,6 +12,8 @@
 #define ROUND_HASH_TABLE_SIZE 0
 #endif
 
+extern uint32_t murmur_hash3_32(const void* key, const int len);
+
 #if USE_CRC_HASH_FUNCTION
 
 static inline uint32_t
@@ -136,7 +138,5 @@ inline size_t mod_power2(size_t x, size_t y) {
 #else
 #define MOD(x,y) ((x) % (y))
 #endif
-
-extern uint32_t murmur_hash3_32(const void* key, const int len);
 
 #endif
