@@ -7,7 +7,7 @@ const size_t MB = 1024*1024;
 ThreadLocal<Cluster> Cluster::instance;
 
 Channel::Channel(cid_t id, Cluster* clu, ChannelProcessor* cp)
-: cid(id), cluster(clu), processor(cp), nProducers(0), nConsumers(cluster->nNodes) {}
+: cid(id), cluster(clu), processor(cp), nProducers(0), nConsumers(cluster->nNodes-1) {}
 
 
 
@@ -54,10 +54,8 @@ void Cluster::send(size_t node, Channel* channel, Buffer* buf)
 
 void Cluster::sendEof(size_t node, Channel* channel)
 {
-	Buffer buf(MSG_EOF, channel->cid);
-    if (node == nodeId) {
-        channel->processor->process(&buf, node);
-    } else {
+    if (node != nodeId) {
+		Buffer buf(MSG_EOF, channel->cid);
 		CriticalSection cs(nodes[node].mutex);
 		nodes[node].socket->write(&buf, BUF_HDR_SIZE);
     }

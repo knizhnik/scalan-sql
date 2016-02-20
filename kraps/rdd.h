@@ -425,6 +425,7 @@ class FileRDD : public RDD<T>
     template<class R>
     stage_t schedule(Scheduler& scheduler, stage_t stage, ReactorFactory<R>& factory) {
         size_t concurrency = scheduler.getDefaultConcurrency();
+		stage += 1;
         for (size_t i = 0; i < concurrency; i++) {
             scheduler.schedule(stage, new ReadJob<R>(*this, factory.getReactor(), i, concurrency));
         }
@@ -486,6 +487,7 @@ class DirRDD : public RDD<T>
     template<class R>
     stage_t schedule(Scheduler& scheduler, stage_t stage, ReactorFactory<R>& factory) {
         size_t concurrency = scheduler.getDefaultConcurrency();
+		stage += 1;
         for (size_t i = 0; i < concurrency; i++) {
             scheduler.schedule(stage, new ReadJob<R>(*this, factory.getReactor(), i, concurrency));
         }
@@ -623,7 +625,7 @@ class ReduceRDD : public RDD<S>
         stage = in->schedule(scheduler, stage, reduce);
         Cluster* cluster = Cluster::instance.get();
 		Channel* channel = cluster->getChannel(new ReduceProcessor(*this));
-		if (Cluster::instance->isCoordinator()) {
+		if (cluster->isCoordinator()) {
 			scheduler.schedule(++stage, new BarrierJob(channel));		
 			scheduler.schedule(++stage, new SendJob<R>(state, factory.getReactor()));
 		} else { 
@@ -712,7 +714,7 @@ class MapReduceRDD : public RDD< Pair<K,V> >
         stage = in->schedule(scheduler, stage, reducer);
         Cluster* cluster = Cluster::instance.get();
 		Channel* channel = cluster->getChannel(new MapReduceProcessor(*this));
-		if (Cluster::instance->isCoordinator()) {
+		if (cluster->isCoordinator()) {
 			scheduler.schedule(++stage, new BarrierJob(channel));		
 			stage += 1;
 			size_t nPartitions = scheduler.getDefaultConcurrency();
@@ -751,15 +753,14 @@ class MapReduceRDD : public RDD< Pair<K,V> >
 			if (buf->kind == MSG_EOF) { 
 				channel->eof();					
 			} else {
+				CriticalSection cs(rdd.mutex);
 				char* src = buf->data;
 				char* end = src + buf->size;
 				Pair<K,V> pair;
-				{
-					CriticalSection cs(rdd.mutex);
-					while (src < end) { 
-						src += unpack(pair, src);
-						rdd.hashMap.add(pair);
-					}
+				
+				while (src < end) { 
+					src += unpack(pair, src);
+					rdd.hashMap.add(pair);
 				}
 			}
 		}
@@ -788,8 +789,8 @@ class ProjectRDD : public RDD<P>
 
     template<class R>
     stage_t schedule(Scheduler& scheduler, stage_t stage, ReactorFactory<R>& factory) {
-		ChainReactorFactory< R,ProjectReactor<R> > project(factory);
-        return in->schedule(scheduler, stage, project);
+		ChainReactorFactory< R,ProjectReactor<R> > projection(factory);
+        return in->schedule(scheduler, stage, projection);
     }
 
   private:
@@ -832,7 +833,7 @@ class SortRDD : public RDD<T>
 		Channel* channel = cluster->getChannel(new AppendProcessor(*this));
 		ChannelReactorFactory< Sender<T> > sender(channel);
         stage = in->schedule(scheduler, stage, sender);
-		if (Cluster::instance->isCoordinator()) {
+		if (cluster->isCoordinator()) {
 			scheduler.schedule(++stage, new BarrierJob(channel));		
 			scheduler.schedule(++stage, new SortJob(*this));
 			// Create just one job because most likely we want ot preserve sort order
@@ -900,7 +901,7 @@ class TopRDD : public RDD<T>
 		Channel* channel = cluster->getChannel(new MergeSortProcessor(*this));
 		RddReactorFactory<TopRDD,TopReactor> topReactor(*this);
         stage = in->schedule(scheduler, stage, topReactor);
-		if (Cluster::instance->isCoordinator()) {
+		if (cluster->isCoordinator()) {
 			scheduler.schedule(++stage, new BarrierJob(channel));		
 			// Create just one job because most likely we want ot preserve sort order
 			scheduler.schedule(++stage, new IterateArrayJob<T,R>(factory.getReactor(), heap.buf));
@@ -1204,7 +1205,7 @@ class CachedRDD : public RDD<T>
 		array.reserve(estimation);
 		SequentialScheduler scheduler;
 		RddReactorFactory<CachedRDD,AppendArray> factory(*this);
-		input->schedule(scheduler, 1, factory);
+		input->schedule(scheduler, 0, factory);
 		scheduler.execute();
 		input->release();
     }
@@ -1213,6 +1214,7 @@ class CachedRDD : public RDD<T>
 	stage_t schedule(Scheduler& scheduler, stage_t stage, ReactorFactory<R>& factory)
 	{
         size_t concurrency = scheduler.getDefaultConcurrency();
+		stage += 1;
         for (size_t i = 0; i < concurrency; i++) {
             scheduler.schedule(stage, new IterateArrayJob<T,R>(factory.getReactor(), array, i, concurrency));
         }
@@ -1247,7 +1249,7 @@ class ColumnarRDD : public RDD<V>
     ColumnarRDD(DirRDD<H>* input, size_t estimation) : cache(estimation) { 
 		SequentialScheduler scheduler;
 		RddReactorFactory<ColumnarRDD,AppendCache> factory(*this);
-		input->schedule(scheduler, 1, factory);
+		input->schedule(scheduler, 0, factory);
 		scheduler.execute();
 		input->release();
     }
@@ -1258,6 +1260,7 @@ class ColumnarRDD : public RDD<V>
         size_t concurrency = scheduler.getDefaultConcurrency();
 		size_t size = cache._used;
 		size_t partitionSize = (size + concurrency - 1)/concurrency;
+		stage += 1;
         for (size_t i = 0; i < concurrency; i++) {
             scheduler.schedule(stage, new IterateCacheJob<R>(factory.getReactor(), *this, 
 															 i*partitionSize, (i+1)*partitionSize > size ? size : (i+1)*partitionSize));
@@ -1424,7 +1427,7 @@ inline void output(Rdd* in, FILE* out)
 {
 	OutputReactorFactory<T,Rdd> factory(*in, out);
 	StagedScheduler scheduler;
-	in->schedule(scheduler, 1, factory);
+	in->schedule(scheduler, 0, factory);
 	Cluster::instance->threadPool.run(scheduler);
 }
 
