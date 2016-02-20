@@ -6,7 +6,12 @@ const size_t MB = 1024*1024;
 
 ThreadLocal<Cluster> Cluster::instance;
 
-lass ReceiveJob : public Job
+Channel::Channel(cid_t id, Cluster* clu, ChannelProcessor* cp)
+: cid(id), cluster(clu), processor(cp), nProducers(0), nConsumers(cluster->nNodes) {}
+
+
+
+class ReceiveJob : public Job
 {
   public:
     ReceiveJob(Cluster* owner, size_t i) : cluster(owner), node(i) {}
@@ -61,9 +66,10 @@ void Cluster::sendEof(size_t node, Channel* channel)
 Channel* Cluster::getChannel(ChannelProcessor* processor)
 {
     assert(cid < channels.size());
-    Channel* c = channels[cid++];
-	c->processor = processor;
-    return c;
+    Channel* channel = channels[cid++];
+	channel->processor = processor;
+	processor->channel = channel;
+    return channel;
 
 }
 

@@ -65,9 +65,13 @@ struct Buffer
     }
 };
 
+class Channel;
+
 class ChannelProcessor
 {
   public:
+	Channel* channel;
+
 	virtual void process(Buffer* buf, size_t node) = 0;
 	virtual ~ChannelProcessor() {}
 };
@@ -88,11 +92,25 @@ class Channel
 		return __sync_add_and_fetch(&nProducers, -1) == 0;
 	}
 
-	Channel(cid_t cid, Cluster* cluster, ChannelProcessor* processor)
-	: cid(id), cluster(clu), processor(cp), nProducers(0) {}
+	void eof() { 
+		CriticalSection cs(mutex);
+		semaphore.signal(mutex);
+	}
+
+	void wait() { 
+		CriticalSection cs(mutex);
+		semaphore.wait(mutex, nConsumers);
+		delete processor;
+		processor = NULL;
+	}
+
+	Channel(cid_t cid, Cluster* cluster, ChannelProcessor* processor);
 
   private:	
 	int nProducers;
+	int nConsumers;
+	Mutex mutex;
+	Semaphore semaphore;
 };
 
 /**

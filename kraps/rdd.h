@@ -596,22 +596,14 @@ class FilterRDD : public RDD<T>
 class BarrierJob : public Job
 {
   public:
-	BarrierJob(size_t n) : count(n) {}
-
-	void reach() { 
-		CriticalSection cs(mutex);
-		semaphore.signal(mutex);
-	}
+	BarrierJob(Channel* chan) : channel(chan) {}
 
 	void run() { 
-		CriticalSection cs(mutex);
-		semaphore.wait(mutex, count);
+		channel->wait();
 	}
 
   private:
-	size_t const count;
-	Mutex mutex;
-	Semaphore semaphore;
+	Channel* const channel;
 };
     
 /**
@@ -632,8 +624,7 @@ class ReduceRDD : public RDD<S>
         Cluster* cluster = Cluster::instance.get();
 		Channel* channel = cluster->getChannel(new ReduceProcessor(*this));
 		if (Cluster::instance->isCoordinator()) {
-			barrier = new BarrierJob(cluster->nNodes-1);
-			scheduler.schedule(++stage, barrier);		
+			scheduler.schedule(++stage, new BarrierJob(channel));		
 			scheduler.schedule(++stage, new SendJob<R>(state, factory.getReactor()));
 		} else { 
 			scheduler.schedule(++stage, new SendJob< Sender<S> >(state, new Sender<S>(channel)));
@@ -663,7 +654,7 @@ class ReduceRDD : public RDD<S>
 	  public:
 		void process(Buffer* buf, size_t node) { 
 			if (buf->kind == MSG_EOF) { 
-				rdd.barrier->reach();
+				channel->eof();
 			} else {
 				S state;
 				size_t size = unpack(state, buf->data);
@@ -700,7 +691,6 @@ class ReduceRDD : public RDD<S>
   private:
     S state;
 	Rdd* in;
-	BarrierJob* barrier;
 };
    
 
@@ -723,8 +713,7 @@ class MapReduceRDD : public RDD< Pair<K,V> >
         Cluster* cluster = Cluster::instance.get();
 		Channel* channel = cluster->getChannel(new MapReduceProcessor(*this));
 		if (Cluster::instance->isCoordinator()) {
-			barrier = new BarrierJob(cluster->nNodes-1);
-			scheduler.schedule(++stage, barrier);		
+			scheduler.schedule(++stage, new BarrierJob(channel));		
 			stage += 1;
 			size_t nPartitions = scheduler.getDefaultConcurrency();
 			for (size_t i = 0; i < nPartitions; i++) { 				
@@ -760,7 +749,7 @@ class MapReduceRDD : public RDD< Pair<K,V> >
 	public:
 		void process(Buffer* buf, size_t node) { 
 			if (buf->kind == MSG_EOF) { 
-				rdd.barrier->reach();
+				channel->eof();					
 			} else {
 				char* src = buf->data;
 				char* end = src + buf->size;
@@ -785,7 +774,6 @@ class MapReduceRDD : public RDD< Pair<K,V> >
 	size_t const initSize;
     KeyValueMap<K,V,reduce> hashMap;	
 	Rdd* const in;
-	BarrierJob* barrier;
 };
 
 /**
@@ -845,8 +833,7 @@ class SortRDD : public RDD<T>
 		ChannelReactorFactory< Sender<T> > sender(channel);
         stage = in->schedule(scheduler, stage, sender);
 		if (Cluster::instance->isCoordinator()) {
-			barrier = new BarrierJob(cluster->nNodes-1);
-			scheduler.schedule(++stage, barrier);		
+			scheduler.schedule(++stage, new BarrierJob(channel));		
 			scheduler.schedule(++stage, new SortJob(*this));
 			// Create just one job because most likely we want ot preserve sort order
 			scheduler.schedule(++stage, new IterateArrayJob<T,R>(factory.getReactor(), array));
@@ -859,7 +846,7 @@ class SortRDD : public RDD<T>
 	public:
 		void process(Buffer* buf, size_t node) { 
 			if (buf->kind == MSG_EOF) { 
-				rdd.barrier->reach();
+				channel->eof();
 			} else {
 				CriticalSection cs(rdd.mutex);
 				char* src = buf->data;
@@ -895,7 +882,6 @@ class SortRDD : public RDD<T>
   private:
 	Rdd* in;
 	vector<T> array;
-    BarrierJob* barrier;
 };
 
 /**
@@ -915,8 +901,7 @@ class TopRDD : public RDD<T>
 		RddReactorFactory<TopRDD,TopReactor> topReactor(*this);
         stage = in->schedule(scheduler, stage, topReactor);
 		if (Cluster::instance->isCoordinator()) {
-			barrier = new BarrierJob(cluster->nNodes-1);
-			scheduler.schedule(++stage, barrier);		
+			scheduler.schedule(++stage, new BarrierJob(channel));		
 			// Create just one job because most likely we want ot preserve sort order
 			scheduler.schedule(++stage, new IterateArrayJob<T,R>(factory.getReactor(), heap.buf));
 		} else { 
@@ -931,7 +916,7 @@ class TopRDD : public RDD<T>
 	  public:
 		void process(Buffer* buf, size_t node) { 
 			if (buf->kind == MSG_EOF) { 
-				rdd.barrier->reach();
+				channel->eof();
 			} else {
 				CriticalSection cs(rdd.mutex);
 				char* src = buf->data;
@@ -1006,7 +991,6 @@ class TopRDD : public RDD<T>
   private:
 	Rdd* in;
     SortedArray heap;
-    BarrierJob* barrier;
 };
 
 /**
@@ -1030,14 +1014,13 @@ public:
     stage_t schedule(Scheduler& scheduler, stage_t stage, ReactorFactory<R>& factory) {
         Cluster* cluster = Cluster::instance.get();
 		Channel* channel = cluster->getChannel(new InnerProcessor(*this));
-        innerBarrier = new BarrierJob(cluster->nNodes-1);
 
         if (initSize <= cluster->broadcastJoinThreshold) {
             // broadcast inner table
 			ChannelReactorFactory< Broadcaster<I> > broadcast(channel);
             stage = inner->schedule< Broadcaster<I> >(scheduler, stage, broadcast);
 
-            scheduler.schedule(++stage, innerBarrier);
+            scheduler.schedule(++stage, new BarrierJob(channel));
 
 			ChainRddReactorFactory< HashJoinRDD,R,JoinReactor<R> > join(*this, factory);
             stage = outer->schedule(scheduler, ++stage, join);
@@ -1046,15 +1029,14 @@ public:
 			ChannelReactorFactory< Scatter<I, K, innerKey> > innerScatter(channel);
             stage = inner->schedule(scheduler, stage, innerScatter);
 
-            scheduler.schedule(++stage, innerBarrier);
+            scheduler.schedule(++stage, new BarrierJob(channel));
 
-            outerBarrier = new BarrierJob(cluster->nNodes-1);
             channel = cluster->getChannel(new OuterProcessor<R>(*this, factory));
 
 			ChannelReactorFactory< Scatter<O, K, outerKey> > outerScatter(channel);
             stage = outer->schedule(scheduler, ++stage, outerScatter);
 
-            scheduler.schedule(++stage, outerBarrier);
+            scheduler.schedule(++stage, new BarrierJob(channel));
         }
         return stage;
     }
@@ -1064,7 +1046,7 @@ public:
 	  public:
 		void process(Buffer* buf, size_t node) { 
 			if (buf->kind == MSG_EOF) { 
-				rdd.innerBarrier->reach();
+				channel->eof();
 			} else {
 				char* src = buf->data;
 				char* end = src + buf->size;
@@ -1087,7 +1069,7 @@ public:
 	  public:
 		void process(Buffer* buf, size_t node) { 
 			if (buf->kind == MSG_EOF) { 
-				rdd.outerBarrier->reach();
+				channel->eof();
                 delete reactors[node];
 			} else {
 				char* src = buf->data;
@@ -1166,8 +1148,6 @@ public:
     IRdd* const inner;
 	size_t  const initSize;
     HashTable<I,K,innerKey> hashTable;
-    BarrierJob* outerBarrier;
-    BarrierJob* innerBarrier;
 };
   
 class SequentialScheduler : public Scheduler
