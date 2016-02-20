@@ -14,7 +14,7 @@
 #define UNKNOWN_ESTIMATION (1024*1024)
 #endif
 
-// Do not use virtual functions: let's functions be inclined by templates
+// Do not use virtual functions: let's functions be inlined by templates
 #define VIRTUAL(x)
 
 /**
@@ -58,7 +58,7 @@ class Reactor
 {
   public:
     /**
-	 * Proceed record	 
+	 * Process record	 
 	 */
     VIRTUAL(void react(T const& record));
 	
@@ -113,7 +113,7 @@ class RddReactorFactory : public ReactorFactory<R>
 };
 
 /**
- * Compbination of ChainReactorFactory and RddReactporFactory
+ * Combination of ChainReactorFactory and RddReactorFactory
  */
 template<class Rdd,class Parent,class Child>
 class ChainRddReactorFactory : public ReactorFactory<Child>
@@ -149,7 +149,7 @@ class ChannelReactorFactory : public ReactorFactory<R>
 
 
 /**
- * Schedule executing in parallel jobs of one stage and waiting there completion before staring new stage
+ * Schedule executing in parallel jobs of one stage and waiting their completion before staring new stage
  */
 class StagedScheduler : public Scheduler
 {
@@ -170,7 +170,8 @@ class StagedScheduler : public Scheduler
         jobs[stage].push_back(job);
     }
 
-    Job* getJob() { 
+    Job* getJob() 
+	{ 
         CriticalSection cs(mutex);
         while (currStage < jobs.size()) {
             if (currJob < jobs[currStage].size()) {
@@ -187,11 +188,12 @@ class StagedScheduler : public Scheduler
         return NULL;
     }
 
-    void jobFinished(Job* job) {
+    void jobFinished(Job* job) 
+	{
         CriticalSection cs(mutex);
-        assert(nActiveJobs == 0);
+        assert(nActiveJobs > 0);
         if (--nActiveJobs == 0) {
-            printf("Stage %u finisihed in %ld microseconds\n", currStage, stageStartTime - getCurrentTime());
+            printf("Stage %u finisihed in %ld microseconds\n", currStage, getCurrentTime() - stageStartTime);
             stageDone.signal();
         }
     }
@@ -221,7 +223,7 @@ class RDD
     T elem;
 
 	/** 
-	 * Mutex to sycnhronize access to RDD
+	 * Mutex to synchronize access to RDD shared state
 	 */
     Mutex mutex;
 
@@ -244,7 +246,7 @@ class RDD
 };
 
 /**
- * Reactor for shufling records for distribution key among cluster nodes
+ * Reactor for shuffling records by distribution key among cluster nodes
  */
 template<class T, class K, void (*dist_key)(K& key, T const& record)>
 class Scatter : public Reactor<T>
@@ -253,11 +255,13 @@ public:
 	Scatter(Channel* chan) 
 	: channel(chan), cluster(Cluster::instance.get()), nNodes(cluster->nNodes), bufferSize(cluster->bufferSize), buffers(nNodes)
 	{
+		channel->attach();
 		for (size_t i = 0; i < nNodes; i++) { 
 			buffers[i] = Buffer::create(channel->cid, bufferSize);
 			buffers[i]->size = 0;
 		}
 	}
+
 	void react(T const& record)
 	{
 		K key;
@@ -273,14 +277,15 @@ public:
 		buffers[node]->size += size;
 	}
 	
-	~Scatter() { 
+	~Scatter() 
+	{ 
 		for (size_t i = 0; i < nNodes; i++) { 
 			if (buffers[i]->size != 0) { 
 				cluster->send(i, channel, buffers[i]);
 			}
 			delete buffers[i];
 		}
-		if (channel->done()) { 
+		if (channel->detach()) { 
 			for (size_t i = 0; i < nNodes; i++) { 
 				cluster->sendEof(i, channel);
 			}
@@ -303,25 +308,34 @@ template<class T>
 class Sender : public Reactor<T>
 {
 public:
-	Sender(Channel* chan, size_t destination = COORDINATOR) : cluster(Cluster::instance.get()), channel(chan), node(destination) { 
+	Sender(Channel* chan, size_t destination = COORDINATOR) 
+	: cluster(Cluster::instance.get()), channel(chan), node(destination) 
+	{ 
 		msg = Buffer::create(channel->cid, cluster->bufferSize);
 		msg->size = 0;
+		channel->attach();
 	}
 
-	void react(T const& record) { 
+	void react(T const& record) 
+	{ 
 		if (msg->size + sizeof(T) > cluster->bufferSize) { 
 			cluster->send(node, channel, msg);
 			msg->size = 0;
 		}
-		msg->size += pack(record, msg->data + msg->size);
+		size_t size = pack(record, msg->data + msg->size);
+		assert(size <= sizeof(T));
+		msg->size += size;
 	}
 
-	~Sender() {
+	~Sender() 
+	{
 		if (msg->size != 0) { 
 			cluster->send(node, channel, msg);
 		}
-		cluster->sendEof(node, channel);
 		delete msg;
+		if (channel->detach()) { 
+			cluster->sendEof(node, channel);
+		}
 	}
 	
   private:
@@ -339,7 +353,8 @@ template<class T>
 class Broadcaster : public Reactor<T>
 {
   public:
-	void react(T const& record) { 
+	void react(T const& record) 
+	{ 
 		if (msg->size + sizeof(T) > cluster->bufferSize) { 
 			for (size_t i = 0; i < cluster->nNodes; i++) { 
 				if (i != cluster->nodeId) { 
@@ -348,15 +363,20 @@ class Broadcaster : public Reactor<T>
 			}
 			msg->size = 0;
 		}
-		msg->size += pack(record, msg->data + msg->size);
+		size_t size = pack(record, msg->data + msg->size);
+		assert(size <= sizeof(T));
+		msg->size += size;
 	}
 
-	Broadcaster(Channel* chan) : cluster(Cluster::instance.get()), channel(chan) { 
+	Broadcaster(Channel* chan) : cluster(Cluster::instance.get()), channel(chan) 
+	{ 
 		msg = Buffer::create(channel->cid, cluster->bufferSize);
 		msg->size = 0;
+		channel->attach();
 	}
 
-	~Broadcaster() {
+	~Broadcaster() 
+	{
 		if (msg->size != 0) { 
 			for (size_t i = 0; i < cluster->nNodes; i++) { 
 				if (i != cluster->nodeId) { 
@@ -364,12 +384,15 @@ class Broadcaster : public Reactor<T>
 				}
 			}
 		}
-		for (size_t i = 0; i < cluster->nNodes; i++) { 
-			if (i != cluster->nodeId) { 
-				cluster->sendEof(i, channel);
+		delete msg;
+
+		if (channel->detach()) { 
+			for (size_t i = 0; i < cluster->nNodes; i++) { 
+				if (i != cluster->nodeId) { 
+					cluster->sendEof(i, channel);
+				}
 			}
 		}
-		delete msg;
 	}
 	
   private:

@@ -80,14 +80,19 @@ class Channel
 	Cluster* const cluster;
 	ChannelProcessor* processor;
 
-	bool done() { 
-		return __sync_add_and_fetch(&nConnections, -1) == 0;
+	void attach() {
+		nProducers += 1;
 	}
 
-	Channel(cid_t cid, Cluster* cluster, ChannelProcessor* processor);
+	bool detach() { 
+		return __sync_add_and_fetch(&nProducers, -1) == 0;
+	}
+
+	Channel(cid_t cid, Cluster* cluster, ChannelProcessor* processor)
+	: cid(id), cluster(clu), processor(cp), nProducers(0) {}
 
   private:	
-	int nConnections;
+	int nProducers;
 };
 
 /**
