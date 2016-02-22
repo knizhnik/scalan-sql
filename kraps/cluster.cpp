@@ -24,11 +24,18 @@ class ReceiveJob : public Job
             while (!cluster->shutdown) {
                 cluster->nodes[node].socket->read(buf, BUF_HDR_SIZE);
                 totalReceived += BUF_HDR_SIZE + buf->size;
-                
+               				
                 if (buf->kind == MSG_SHUTDOWN) { 
                     break;
+				} else if (buf->kind == MSG_BARRIER) { 
+                    cluster->sync();
                 } else {
-                    cluster->channels[buf->cid]->processor->process(buf, node);
+					if (buf->size != 0) { 
+						cluster->nodes[node].socket->read(buf->data, buf->size);
+					}
+					//printf("Receive message %d from node %ld channel %d processor=%p\n", buf->kind, node, buf->cid, cluster->channels[buf->cid]->processor);
+					//fflush(stdout);
+					cluster->channels[buf->cid]->processor->process(buf, node);
                 }
             }
         } catch (std::exception& x) {
@@ -48,6 +55,7 @@ void Cluster::send(size_t node, Channel* channel, Buffer* buf)
         channel->processor->process(buf, node);
     } else {
         CriticalSection cs(nodes[node].mutex);
+		buf->cid = channel->cid;
 		nodes[node].socket->write(buf, BUF_HDR_SIZE + buf->size);
     }
 }
@@ -58,17 +66,41 @@ void Cluster::sendEof(size_t node, Channel* channel)
 		Buffer buf(MSG_EOF, channel->cid);
 		CriticalSection cs(nodes[node].mutex);
 		nodes[node].socket->write(&buf, BUF_HDR_SIZE);
-    }
+	}		
 }
 
 Channel* Cluster::getChannel(ChannelProcessor* processor)
 {
-    assert(cid < channels.size());
-    Channel* channel = channels[cid++];
-	channel->processor = processor;
+	Channel* channel = new Channel(channels.size(), this, processor);
+	channels.push_back(channel);
 	processor->channel = channel;
     return channel;
 
+}
+
+void Cluster::sync()
+{
+	semaphore.signal(mutex);
+}
+
+void Cluster::barrier()
+{
+	Buffer buf(MSG_BARRIER, 0);
+	for (size_t i = 0; i < nNodes; i++) { 
+		if (i != nodeId) { 
+			CriticalSection cs(nodes[i].mutex);
+			nodes[i].socket->write(&buf, BUF_HDR_SIZE);
+		}
+	}
+	semaphore.wait(mutex, nNodes-1); // wait responses rfom all nodes
+}
+
+void Cluster::reset()
+{
+	for (size_t i = 0; i < channels.size(); i++) { 
+		delete channels[i];
+	}
+	channels.clear();
 }
 
 bool Cluster::isLocalNode(char const* host)
@@ -79,23 +111,21 @@ bool Cluster::isLocalNode(char const* host)
 }
 
     
-Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nThreads, size_t nChannels, size_t bufSize, size_t broadcastThreshold, bool sharedNothingDFS, size_t fileSplit) 
-: nNodes(nHosts), nodeId(selfId), bufferSize(bufSize), broadcastJoinThreshold(broadcastThreshold), split(fileSplit), sharedNothing(sharedNothingDFS), shutdown(false), userData(NULL), threadPool(nThreads), nodes(nNodes), channels(nChannels)
+Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nThreads, size_t bufSize, size_t socketBufferSize, size_t broadcastThreshold, bool sharedNothingDFS, size_t fileSplit) 
+: nNodes(nHosts), nodeId(selfId), bufferSize(bufSize), broadcastJoinThreshold(broadcastThreshold), split(fileSplit), sharedNothing(sharedNothingDFS), shutdown(false), userData(NULL), threadPool(nThreads), nodes(nNodes) 
 {
     instance.set(this);
     this->hosts = hosts;
 
-    cid = 0;
-    
     for (size_t i = 0; i < selfId; i++) { 
-        nodes[i].socket = Socket::connect(hosts[i]);
+        nodes[i].socket = Socket::connect(hosts[i], socketBufferSize);
         nodes[i].socket->write(&nodeId, sizeof nodeId);
     }
 
     char* sep = strchr(hosts[selfId], ':');
     int port = atoi(sep+1);
-    Socket* localGateway = Socket::createLocal(port, nHosts);
-    Socket* globalGateway = Socket::createGlobal(port, nHosts);
+    Socket* localGateway = Socket::createLocal(port, socketBufferSize, nHosts);
+    Socket* globalGateway = Socket::createGlobal(port, socketBufferSize, nHosts);
 
     size_t n, hostLen = strchr(hosts[0], ':') - hosts[0];    
     for (n = 1; n < nHosts && strncmp(hosts[0], hosts[n], hostLen) == 0 && hosts[n][hostLen] == ':'; n++);
@@ -109,6 +139,7 @@ Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nThreads, si
         assert(nodes[node].socket == NULL);
         nodes[node].socket = s;
     }
+
     delete localGateway;
     delete globalGateway;
 

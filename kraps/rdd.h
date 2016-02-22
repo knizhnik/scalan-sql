@@ -53,19 +53,23 @@ enum JoinKind
 /**
  * Main interface for PUSH mode: react on pushed events
  */
+class AbstractReactor 
+{
+public:
+	/**
+	 * Destructor is used to inform consumer that end of data is reached 
+	 */
+	virtual~AbstractReactor() {} 
+};	
+
 template<class T>
-class Reactor
+class Reactor : public AbstractReactor
 {
   public:
     /**
 	 * Process record	 
 	 */
     VIRTUAL(void react(T const& record));
-	
-	/**
-	 * Destructor is used to inform consumer that end of data is reached 
-	 */
-	virtual~Reactor() {} 
 };
 
 /**
@@ -178,9 +182,11 @@ class StagedScheduler : public Scheduler
                 nActiveJobs += 1;
                 return jobs[currStage][currJob++];
             }
-            while (nActiveJobs != 0) {
+            if (nActiveJobs != 0) {
                 stageDone.wait(mutex);
+				continue;
             }
+            printf("Stage %u finisihed in %ld microseconds\n", currStage, getCurrentTime() - stageStartTime);
             stageStartTime = getCurrentTime();
             currStage += 1;
             currJob = 0;
@@ -193,8 +199,7 @@ class StagedScheduler : public Scheduler
         CriticalSection cs(mutex);
         assert(nActiveJobs > 0);
         if (--nActiveJobs == 0) {
-            printf("Stage %u finisihed in %ld microseconds\n", currStage, getCurrentTime() - stageStartTime);
-            stageDone.signal();
+            stageDone.broadcast();
         }
     }
 
@@ -293,10 +298,10 @@ public:
 	}
 
   private:
-	Channel* channel;
-	Cluster* cluster;
-	size_t nNodes;
-	size_t bufferSize;
+	Channel* const channel;
+	Cluster* const cluster;
+	size_t const nNodes;
+	size_t const bufferSize;
 	vector<Buffer*> buffers;
 };
 
@@ -308,8 +313,8 @@ template<class T>
 class Sender : public Reactor<T>
 {
 public:
-	Sender(Channel* chan, size_t destination = COORDINATOR) 
-	: cluster(Cluster::instance.get()), channel(chan), node(destination) 
+	Sender(Channel* chan, AbstractReactor* r, size_t destination = COORDINATOR) 
+	: cluster(Cluster::instance.get()), channel(chan), reactor(r), node(destination) 
 	{ 
 		msg = Buffer::create(channel->cid, cluster->bufferSize);
 		msg->size = 0;
@@ -333,8 +338,9 @@ public:
 			cluster->send(node, channel, msg);
 		}
 		delete msg;
-		if (channel->detach()) { 
+		if (channel->detach()) { 	
 			cluster->sendEof(node, channel);
+			delete reactor;
 		}
 	}
 	
@@ -342,9 +348,29 @@ public:
 	Cluster* cluster;
 	Channel* channel;
 	Buffer* msg;
+	AbstractReactor* reactor;
 	size_t node;
 };
 
+
+/**
+ * Reactor factory for sender reactor
+ */
+template<class T>
+class SenderReactorFactory : public ReactorFactory< Sender<T> > 
+{
+  public:
+	SenderReactorFactory(Channel* chan, AbstractReactor* r, size_t destination = COORDINATOR) : channel(chan), reactor(r), node(destination) {}
+
+    Sender<T>* getReactor() { 
+		return new Sender<T>(channel, reactor, node);
+	}
+	
+  private:
+	Channel* const channel;
+	AbstractReactor* const reactor;
+	size_t const node;
+};
 
 /**
  * Reactor for broadcastig data to all cluster nodes
@@ -357,9 +383,7 @@ class Broadcaster : public Reactor<T>
 	{ 
 		if (msg->size + sizeof(T) > cluster->bufferSize) { 
 			for (size_t i = 0; i < cluster->nNodes; i++) { 
-				if (i != cluster->nodeId) { 
-					cluster->send(i, channel, msg);
-				}
+				cluster->send(i, channel, msg);
 			}
 			msg->size = 0;
 		}
@@ -379,18 +403,14 @@ class Broadcaster : public Reactor<T>
 	{
 		if (msg->size != 0) { 
 			for (size_t i = 0; i < cluster->nNodes; i++) { 
-				if (i != cluster->nodeId) { 
-					cluster->send(i, channel, msg);
-				}
+				cluster->send(i, channel, msg);
 			}
 		}
 		delete msg;
 
 		if (channel->detach()) { 
 			for (size_t i = 0; i < cluster->nNodes; i++) { 
-				if (i != cluster->nodeId) { 
-					cluster->sendEof(i, channel);
-				}
+				cluster->sendEof(i, channel);
 			}
 		}
 	}
@@ -513,7 +533,6 @@ class DirRDD : public RDD<T>
                 }
                 fseek(f, 0, SEEK_END);
                 size_t nRecords = (ftell(f)/sizeof(T)+split-1)/split;
-                size_t recNo = 0;
                 int rc = fseek(f, nRecords*(segno%split)*sizeof(T), SEEK_SET);
                 assert(rc == 0);
 
@@ -574,7 +593,7 @@ class FilterRDD : public RDD<T>
 
   private:
     template<class R>
-    class FilterReactor {
+    class FilterReactor : public Reactor<T> {
 	  public:
 		FilterReactor(R* r) : reactor(r) {}
 
@@ -604,7 +623,7 @@ class BarrierJob : public Job
 		channel->wait();
 	}
 
-  private:
+  protected:
 	Channel* const channel;
 };
     
@@ -629,13 +648,13 @@ class ReduceRDD : public RDD<S>
 			scheduler.schedule(++stage, new BarrierJob(channel));		
 			scheduler.schedule(++stage, new SendJob<R>(state, factory.getReactor()));
 		} else { 
-			scheduler.schedule(++stage, new SendJob< Sender<S> >(state, new Sender<S>(channel)));
+			scheduler.schedule(++stage, new SendJob< Sender<S> >(state, new Sender<S>(channel, factory.getReactor())));
 		}		
 		return stage;
     }
 
   private:
-	class ReduceReactor {
+	class ReduceReactor : public Reactor<S> {
         ReduceRDD& rdd;
 		S state;
 
@@ -722,7 +741,7 @@ class MapReduceRDD : public RDD< Pair<K,V> >
 				scheduler.schedule(stage, hashMap.iterate(factory.getReactor(), i, nPartitions));
 			}
 		} else { 
-			scheduler.schedule(++stage, hashMap.iterate(new Sender< Pair<K,V> >(channel)));
+			scheduler.schedule(++stage, hashMap.iterate(new Sender< Pair<K,V> >(channel, factory.getReactor())));
 		}
 		return stage;
 	}
@@ -795,7 +814,7 @@ class ProjectRDD : public RDD<P>
 
   private:
     template<class R>
-    class ProjectReactor {
+    class ProjectReactor : public Reactor<T> {
 	  public:
 		ProjectReactor(R* r) : reactor(r) {}
 
@@ -831,7 +850,7 @@ class SortRDD : public RDD<T>
     stage_t schedule(Scheduler& scheduler, stage_t stage, ReactorFactory<R>& factory) {
         Cluster* cluster = Cluster::instance.get();
 		Channel* channel = cluster->getChannel(new AppendProcessor(*this));
-		ChannelReactorFactory< Sender<T> > sender(channel);
+		SenderReactorFactory<T> sender(channel, cluster->isCoordinator() ? NULL : factory.getReactor());
         stage = in->schedule(scheduler, stage, sender);
 		if (cluster->isCoordinator()) {
 			scheduler.schedule(++stage, new BarrierJob(channel));		
@@ -906,7 +925,7 @@ class TopRDD : public RDD<T>
 			// Create just one job because most likely we want ot preserve sort order
 			scheduler.schedule(++stage, new IterateArrayJob<T,R>(factory.getReactor(), heap.buf));
 		} else { 
-			scheduler.schedule(++stage, new IterateArrayJob<T,Sender<T> >(new Sender<T>(channel), heap.buf));
+			scheduler.schedule(++stage, new IterateArrayJob<T,Sender<T> >(new Sender<T>(channel, factory.getReactor()), heap.buf));
 		}
 		return stage;
     }
@@ -1004,7 +1023,10 @@ class HashJoinRDD : public RDD< Join<O,I> >
 {
 public:
     HashJoinRDD(ORdd* outerRDD, IRdd* innerRDD, size_t estimation, JoinKind joinKind) 
-    : kind(joinKind), outer(outerRDD), inner(innerRDD), initSize(estimation), hashTable(estimation) {}
+    : kind(joinKind), outer(outerRDD), inner(innerRDD), initSize(estimation), hashTable(estimation) 
+	{
+		memset(&null, 0, sizeof null);
+	}
 	
 	~HashJoinRDD() { 
 		inner->release();
@@ -1037,12 +1059,25 @@ public:
 			ChannelReactorFactory< Scatter<O, K, outerKey> > outerScatter(channel);
             stage = outer->schedule(scheduler, ++stage, outerScatter);
 
-            scheduler.schedule(++stage, new BarrierJob(channel));
+            scheduler.schedule(++stage, new JoinBarrierJob(channel));
         }
         return stage;
     }
 
   private:
+	class JoinBarrierJob : public BarrierJob
+	{
+	public:
+		JoinBarrierJob(Channel* channel) : BarrierJob(channel) {}
+		
+		void run() { 
+			Buffer buf(MSG_EOF, channel->cid);			
+			BarrierJob::run();
+			delete channel->processor;
+			channel->processor = NULL;				
+		}
+	};
+
 	class InnerProcessor : public ChannelProcessor { 
 	  public:
 		void process(Buffer* buf, size_t node) { 
@@ -1071,7 +1106,6 @@ public:
 		void process(Buffer* buf, size_t node) { 
 			if (buf->kind == MSG_EOF) { 
 				channel->eof();
-                delete reactors[node];
 			} else {
 				char* src = buf->data;
 				char* end = src + buf->size;
@@ -1079,19 +1113,20 @@ public:
 				while (src < end) {
                     K key;
                     size_t nMatches = 0;
-					src += unpack(join, src);
+					src += unpack((O&)join, src);
                     outerKey(key, (O&)join);                    
                     for (typename HashTable<I,K,innerKey>::Entry* entry = rdd.hashTable.get(key); 
 						 entry != NULL; 
 						 entry = entry->collision) 
 					{
-                        if (entry->equalsKey(key)) {
+                        if (entry->equalsKey(key)) {							
                             (I&)join = entry->record;
                             reactors[node]->react(join);
                             nMatches += 1;
                         }
                     }
                     if (nMatches == 0 && rdd.kind == OuterJoin){ 
+						(I&)join = rdd.null;
                         reactors[node]->react(join);
                     }
 				}
@@ -1104,13 +1139,20 @@ public:
 			}
 		}
 
+		~OuterProcessor() {
+			for (size_t i = 0; i != reactors.size(); i++) { 
+				delete reactors[i];
+			}
+		}
+			
+
 	  private:
 		HashJoinRDD& rdd;
         vector<R*> reactors;
 	};	
 
     template<class R>
-    class JoinReactor : public Reactor< Join<O,I> >
+    class JoinReactor : public Reactor<O>
     {
       public:
         void react(O const& outer) {
@@ -1130,7 +1172,7 @@ public:
                 }
             }
             if (nMatches == 0 && rdd.kind == OuterJoin) { 
-				(I&)join = I();
+				(I&)join = rdd.null;
                 reactor->react(join);
             }
         }
@@ -1145,12 +1187,17 @@ public:
     };
         
     JoinKind const kind;
-    ORdd* const outer;
-    IRdd* const inner;
-	size_t  const initSize;
+    ORdd*    const outer;
+    IRdd*    const inner;
+	size_t   const initSize;
+	I        null;
     HashTable<I,K,innerKey> hashTable;
 };
   
+/**
+ * Scheduler performing sequential execution of jobs.
+ * It is used for populating cache, but also can be used for debugging
+ */
 class SequentialScheduler : public Scheduler
 {
   public:
@@ -1167,7 +1214,11 @@ class SequentialScheduler : public Scheduler
 		while (busy) { 
 			event.wait(mutex);
 		}
-		return currJob == jobs.size() ? NULL : jobs[currJob++];
+		if (currJob == jobs.size()) { 
+			return NULL;
+		}
+		busy = true;
+		return jobs[currJob++];
 	}
 
     virtual void   jobFinished(Job* job) { 
@@ -1203,12 +1254,8 @@ class CachedRDD : public RDD<T>
   public:
     CachedRDD(DirRDD<T>* input, size_t estimation) { 
 		array.reserve(estimation);
-		SequentialScheduler scheduler;
-		RddReactorFactory<CachedRDD,AppendArray> factory(*this);
-		input->schedule(scheduler, 0, factory);
-		scheduler.execute();
-		input->release();
-    }
+		load(input);
+	}
 
 	template<class R>
 	stage_t schedule(Scheduler& scheduler, stage_t stage, ReactorFactory<R>& factory)
@@ -1224,6 +1271,17 @@ class CachedRDD : public RDD<T>
 	virtual void release() {}
 
   private:
+
+	void load(DirRDD<T>* input)
+	{
+		SequentialScheduler scheduler;
+		RddReactorFactory<CachedRDD,AppendArray> factory(*this);
+		input->schedule(scheduler, 0, factory);
+		scheduler.execute();
+		input->release();
+    }
+
+
 	class AppendArray : Reactor<T> { 
 	  public:
 		void react(T const& record) { 
@@ -1231,6 +1289,7 @@ class CachedRDD : public RDD<T>
 		}
 
 		AppendArray(CachedRDD& cache) : rdd(cache) {}
+
 	  private:
 		CachedRDD& rdd;
 	};
@@ -1246,13 +1305,11 @@ template<class H, class V, class C>
 class ColumnarRDD : public RDD<V>
 {
   public:
-    ColumnarRDD(DirRDD<H>* input, size_t estimation) : cache(estimation) { 
-		SequentialScheduler scheduler;
-		RddReactorFactory<ColumnarRDD,AppendCache> factory(*this);
-		input->schedule(scheduler, 0, factory);
-		scheduler.execute();
-		input->release();
-    }
+    ColumnarRDD(DirRDD<H>* input, size_t estimation) : cache(estimation) 
+	{
+		load(input);
+	}
+
 
 	template<class R>
 	stage_t schedule(Scheduler& scheduler, stage_t stage, ReactorFactory<R>& factory)
@@ -1271,6 +1328,15 @@ class ColumnarRDD : public RDD<V>
 	virtual void release() {}
 
   private:
+
+	void load(DirRDD<H>* input)
+	{
+		SequentialScheduler scheduler;
+		RddReactorFactory<ColumnarRDD,AppendCache> factory(*this);
+		input->schedule(scheduler, 0, factory);
+		scheduler.execute();
+		input->release();
+    }
 
 	template<class R>
 	class IterateCacheJob : public Job
@@ -1395,8 +1461,9 @@ public:
 	void react(T const& record) { 
 		CriticalSection cs(rdd.mutex);
 		print(record, out);
+		fputc('\n', out);
 	}
-	
+
 private:
 	Rdd&  rdd;
 	FILE* out;
@@ -1425,10 +1492,15 @@ private:
 template<class T, class Rdd>
 inline void output(Rdd* in, FILE* out)
 {
+	Cluster* cluster = Cluster::instance.get();
 	OutputReactorFactory<T,Rdd> factory(*in, out);
 	StagedScheduler scheduler;
 	in->schedule(scheduler, 0, factory);
-	Cluster::instance->threadPool.run(scheduler);
+	cluster->barrier();
+	cluster->threadPool.run(scheduler);	
+	in->release();
+	cluster->barrier();
+	cluster->reset();
 }
 
 

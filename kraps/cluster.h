@@ -11,6 +11,7 @@ const size_t MAX_PATH_LEN = 1024;
 const size_t MAX_SIZE_T = (size_t)~0;
 
 class Cluster;
+class ReceiveJob;
 
 typedef uint32_t cid_t;
 
@@ -18,6 +19,7 @@ enum MessageKind
 { 
     MSG_DATA,
     MSG_EOF,
+	MSG_BARRIER,
     MSG_SHUTDOWN
 };
 
@@ -92,19 +94,16 @@ class Channel
 		return __sync_add_and_fetch(&nProducers, -1) == 0;
 	}
 
-	void eof() { 
-		CriticalSection cs(mutex);
+	void eof() {
 		semaphore.signal(mutex);
 	}
 
 	void wait() { 
-		CriticalSection cs(mutex);
 		semaphore.wait(mutex, nConsumers);
-		delete processor;
-		processor = NULL;
 	}
 
 	Channel(cid_t cid, Cluster* cluster, ChannelProcessor* processor);
+	~Channel() { delete processor; }
 
   private:	
 	int nProducers;
@@ -118,32 +117,7 @@ class Channel
  */
 class Cluster 
 {
-	struct Node { 
-		Mutex   mutex;
-		Socket* socket;
-        Thread* receiver;
-		
-		Node() : socket(NULL), receiver(NULL) {}
-		~Node() { delete socket; }		
-	};
   public:
-    size_t const nNodes;
-    size_t const nodeId;
-    size_t const bufferSize;
-    size_t const broadcastJoinThreshold;
-    size_t const split;
-    bool   const sharedNothing;
-    char   const*tmpDir;
-
-    char** hosts;
-    cid_t cid;
-    Thread* receiver;
-    bool shutdown;
-    void* userData;
-    ThreadPool threadPool;
-	vector<Node> nodes;
-	vector<Channel*> channels;
-	
     /**
      * Check if this node is coordinator. Coordinator is forst node in the cluster and it is used to collect all
      * local results from other nodes
@@ -158,15 +132,83 @@ class Cluster
     Channel* getChannel(ChannelProcessor* proc);
 
     /**
-     * Send message to the node or place it in locasl queue
+     * Send message to the node or process it at local node
      * @param node destination node
-     * @param channel if node is self node, then message is placed directly in this queue, otherwise it is sent to 
+     * @param channel if node is self node, then message is processed directly, otherwise it is sent to 
      * the remote node with cid (channel identifier) taken from this channel
      * @param buf message to be delivered
      */
     void send(size_t node, Channel* channel, Buffer* buf);
     
+    /**
+     * Send EOF message to the node
+     * @param node destination node
+     * @param channel if node is self node, then do nothing, otherwise it is sent to 
+     * the remote node with cid (channel identifier) taken from this channel
+     */
 	void sendEof(size_t node, Channel* channel);
+	
+	/**
+	 * Wait untillall nodes of the cluster reach barrier
+	 */
+	void barrier();
+
+	/**
+	 * Reset set of cluster: clear channels
+	 */
+	void reset();
+
+    /**
+     * Cluster constructor 
+     * @param nodeId identifier of this cluster node (nodes are enumerated from 0)
+     * @param nHosts number of nodes in clisters
+     * @param hosts addresses of cluster node. Each address includes host name and port separated by column, i.e. "localhost:5011"
+     * @param nThreads concurrency level (8)
+     * @param bufferSize size of buffer used for internode communication  (256kb)
+     * @param broadcastJoinThreshold threshold for choosing broadcast of inner table for join rather than shuffle method (10 000)
+     * @param sharedNothing trues if each nodes is given its own local files, false if files in DFS are shared by all nodes
+     * @param split split factor. Using split factor greater than 1 it is posisble to spawn more cluster nodes than there are 
+     * physical partitions (files)
+     */
+    Cluster(size_t nodeId, size_t nHosts, char** hosts, size_t nThreads = 8, size_t bufferSize = 64*1024, size_t socketBufferSize = 64*1024*1024, size_t broadcastJoinThreshold = 10000, bool sharedNothing = true, size_t split = 1);
+    ~Cluster();
+
+  public:
+    size_t const nNodes;
+    size_t const nodeId;
+    size_t const bufferSize;
+    size_t const broadcastJoinThreshold;
+    size_t const split;
+    bool   const sharedNothing;
+
+    bool shutdown;
+    void* userData;
+    ThreadPool threadPool;
+
+    static ThreadLocal<Cluster> instance;
+
+  private:
+	friend class ReceiveJob;
+
+	struct Node { 
+		Mutex   mutex;
+		Socket* socket;
+        Thread* receiver;
+		
+		Node() : socket(NULL), receiver(NULL) {}
+		~Node() { delete socket; }		
+	};
+
+	vector<Node> nodes;
+    char** hosts;
+	vector<Channel*> channels;
+	Semaphore semaphore;
+	Mutex mutex;
+	
+	/**
+	 * Handle BARRIER message
+	 */
+	void sync();
 
     /**
      * Check if sepcified address corresponds to local node
@@ -174,23 +216,6 @@ class Cluster
      * @return true if host is localhost or matchs with name returned by uname
      */
     bool isLocalNode(char const* host);
-
-    /**
-     * Cluster constructor 
-     * @param nodeId identifier of this cluster node (nodes are enumerated from 0)
-     * @param nHosts number of nodes in clisters
-     * @param hosts addresses of cluster node. Each address includes host name and port separated by column, i.e. "localhost:5011"
-     * @param nQueues maximal number of receive queues  (64)
-     * @param bufferSize size of buffer used for internode communication  (256kb)
-     * @param broadcastJoinThreshold threshold for choosing broadcast of inner table for join rather than shuffle method (10 000)
-     * @param sharedNothing trues if each nodes is given its own local files, false if files in DFS are shared by all nodes
-     * @param split split factor. Using split factor greater than 1 it is posisble to spawn more cluster nodes than there are 
-     * physical partitions (files)
-     */
-    Cluster(size_t nodeId, size_t nHosts, char** hosts, size_t nThreads = 8, size_t nChannels = 64, size_t bufferSize = 4*64*1024, size_t broadcastJoinThreshold = 10000, bool sharedNothing = true, size_t split = 1);
-    ~Cluster();
-
-    static ThreadLocal<Cluster> instance;
 };
 
 

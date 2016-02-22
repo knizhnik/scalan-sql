@@ -16,9 +16,9 @@ private:
 class Socket 
 {
 public:
-    static Socket* createLocal(int port, size_t listenQueueSize);
-    static Socket* createGlobal(int port, size_t listenQueueSize);
-    static Socket* connect(char const* address, size_t maxAttempts = 10);
+    static Socket* createLocal(int port, size_t socketBufferSize, size_t listenQueueSize);
+    static Socket* createGlobal(int port, size_t socketBufferSize, size_t listenQueueSize);
+    static Socket* connect(char const* address, size_t socketBufferSize = 1024*1024,  size_t maxAttempts = 10);
     Socket* accept();
     void read(void* buf, size_t size);    
     void write(void const* buf, size_t size);

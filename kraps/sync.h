@@ -155,7 +155,7 @@ class ThreadPool
         return threads.size();
     }
 
-    ThreadPool(size_t nThreads) : threads(nThreads), shutdown(false), hasMoreWork(false), scheduler(NULL), nActiveJobs(0) {
+    ThreadPool(size_t nThreads) : threads(nThreads), shutdown(false), idle(true), scheduler(NULL), nActiveJobs(0), nIdleThreads(0) {
         for (size_t i = 0; i < nThreads; i++) {
             threads[i] = new Thread(new PoolJob(*this));
         }
@@ -174,58 +174,68 @@ class ThreadPool
     }
     
     Job* getJob() {
-        CriticalSection cs(mutex);
         while (true) { 
-            while (!hasMoreWork) { 
-                go.wait(mutex);
-                if (shutdown) {
-                    return NULL;
-                }
-            }
+			{
+				CriticalSection cs(mutex);
+				while (idle) {
+					if (++nIdleThreads == threads.size()) {
+						done.signal();
+					}
+					go.wait(mutex);
+					nIdleThreads -= 1;
+					if (shutdown) {
+						return NULL;
+					}
+				}
+			}
             Job* job = scheduler->getJob();
-            if (job == NULL) {
-                scheduler = NULL;
-                if (nActiveJobs == 0) { 
-                    done.signal();
-                }
-            } else {
-                nActiveJobs += 1;
-                return job;
-            }
+			{
+				CriticalSection cs(mutex);
+				if (job == NULL) {
+					idle = true;
+				} else {
+					nActiveJobs += 1;
+					return job;
+				}
+			}
         }
     }
 
     void jobFinished(Job* job) {
-        CriticalSection cs(mutex);
-        assert(nActiveJobs > 0);
+		{
+			CriticalSection cs(mutex);
+			assert(nActiveJobs > 0);
+			nActiveJobs -= 1;
+		}
         scheduler->jobFinished(job);
         delete job;
-        if (--nActiveJobs == 0 && !hasMoreWork) { 
-            done.signal();
-        }
     }
     
     void run(Scheduler& sched) {
         CriticalSection cs(mutex);
         assert(!shutdown);
         scheduler = &sched;
+		idle = false;
         go.broadcast();
-        while (hasMoreWork || nActiveJobs != 0) {
+        while (!idle || nIdleThreads != threads.size()) {
             done.wait(mutex);
         }
+		assert(nActiveJobs == 0);
         scheduler = NULL;
     }
   private:
     class PoolJob : public Job {
       public:
         void run() {
-            Job* job = pool.getJob();
-            if (job == NULL) {
-                return;
-            }
-            job->run();
-            pool.jobFinished(job);
-        }
+			while (true) {
+				Job* job = pool.getJob();
+				if (job == NULL) {
+					return;
+				}
+				job->run();
+				pool.jobFinished(job);
+			}
+		}
         PoolJob(ThreadPool& owner) : pool(owner) {}
 
   	  private:
@@ -236,9 +246,10 @@ class ThreadPool
     Event go;
     Event done;
     bool  shutdown;
-    bool  hasMoreWork;
+	bool  idle;
     Scheduler* scheduler;
     size_t nActiveJobs;   
+	size_t nIdleThreads;
 };
                         
     

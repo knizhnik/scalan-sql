@@ -1738,14 +1738,12 @@ void execute(char const* name, Rdd* (*query)())
     time_t start = getCurrentTime();
     Rdd* result = query();
 	output<typeof(result),Rdd>(result, stdout);
-    result->release();
 
     if (Cluster::instance->nodeId == 0) {
         FILE* results = fopen("results.csv", "a");
         fprintf(results, "%s,%d\n", name, (int)(getCurrentTime() - start));
         fclose(results);
     }
-       
     printf("Elapsed time for %s: %d milliseconds\n", name, (int)(getCurrentTime() - start));
     fflush(stdout);
 }
@@ -1755,8 +1753,8 @@ class TPCHJob : public Job
     Cluster cluster;
 
   public:
-    TPCHJob(size_t nodeId, size_t nHosts, char** hosts = NULL, size_t nThreads = 8, size_t nChannels = 64, size_t bufferSize = 64*1024, size_t broadcastJoinThreshold = 10000, bool sharedNothing = false, size_t split = 1)
-    : cluster(nodeId, nHosts, hosts, nThreads, nChannels, bufferSize, broadcastJoinThreshold, sharedNothing, split)
+    TPCHJob(size_t nodeId, size_t nHosts, char** hosts = NULL, size_t nThreads = 8, size_t bufferSize = 64*1024, size_t socketBufferSize = 64*1024*1024, size_t broadcastJoinThreshold = 10000, bool sharedNothing = false, size_t split = 1)
+    : cluster(nodeId, nHosts, hosts, nThreads, bufferSize, socketBufferSize, broadcastJoinThreshold, sharedNothing, split)
     {}
     
   public:
@@ -1800,8 +1798,8 @@ int main(int argc, char* argv[])
 {
     int i;
     size_t nThreads = 8;
-    size_t nChannels = 64;
-    size_t bufferSize = 4*64*1024;
+    size_t bufferSize = 64*1024;
+	size_t socketBufferSize = 64*1024*1024;
     size_t broadcastJoinThreshold = 10000;
     size_t split = 1;
     bool   sharedNothing = false;
@@ -1818,10 +1816,10 @@ int main(int argc, char* argv[])
                 dataFormat = argv[++i];
             } else if (strcmp(option, "threads") == 0) { 
                 nThreads = atol(argv[++i]);
-            } else if (strcmp(option, "channels") == 0) { 
-                nChannels = atol(argv[++i]);
             } else if (strcmp(option, "buffer") == 0) { 
                 bufferSize = atol(argv[++i]);
+            } else if (strcmp(option, "send-buffer") == 0) { 
+                socketBufferSize = atol(argv[++i]);
             } else if (strcmp(option, "broadcast-threshold") == 0) { 
                 broadcastJoinThreshold = atol(argv[++i]);
             } else if (strcmp(option, "shared-nothing") == 0) { 
@@ -1836,9 +1834,10 @@ int main(int argc, char* argv[])
                       "-dir\tdata directory (.)\n"
                       "-format\tdata format: parquet, plain-file,... ()\n"
                       "-shared-nothing 0/1\tdata is located at executor nodes (1)\n"
-                      "-channels N\tnumber of concurrent threads (8)\n"
+                      "-threads N\tnumber of concurrent threads (8)\n"
                       "-channels N\tnumber of channels (64)\n"
-                      "-buffer SIZE\tbuffer size (256Kb)\n"
+                      "-buffer SIZE\tbuffer size (64Kb)\n"
+                      "-send-buffer SIZE\tsocket send buffer size (64Mb)\n"
                       "-broadcast-threshold SIZE\tbroadcast join threshold (10000)\n"
                       "-split N\tsplit file into N parts (1)\n", stderr);
                 return 1;                
@@ -1857,7 +1856,7 @@ int main(int argc, char* argv[])
         return 1;
     }
 	if (argc == i + nNodes) {
-        TPCHJob test(nodeId, nNodes, &argv[i], nThreads, nChannels, bufferSize, broadcastJoinThreshold, sharedNothing, split);
+        TPCHJob test(nodeId, nNodes, &argv[i], nThreads, bufferSize, socketBufferSize, broadcastJoinThreshold, sharedNothing, split);
         test.run();
     } else {      
         fprintf(stderr, "%d nodes expected, %d given\n", nNodes, i - argc);

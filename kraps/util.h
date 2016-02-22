@@ -131,6 +131,7 @@ class KeyValueMap
 	
 	~KeyValueMap() { 
 		delete[] table;
+		table = NULL;
 	}
 	
 	size_t count() const { 
@@ -261,10 +262,16 @@ class HashTable
     };
         
     HashTable(size_t estimation) {
+		used = 0;
         size = hashTableSize(estimation);
         table = new Entry*[size];
         memset(table, 0, size*sizeof(Entry*));
     }
+
+	~HashTable() { 
+		delete[] table;
+		table = NULL;
+	}
 
     Entry* get(K const& key)
     {
@@ -279,7 +286,6 @@ class HashTable
         size_t partition = h % HASH_PARTITIONS;
         {
             CriticalSection cs(mutex[partition]);
-            Entry* oldValue;
             Entry* entry = allocator[partition].alloc();
             entry->record = record;
             entry->collision = table[h];
@@ -325,7 +331,7 @@ class HashTable
 
     void unlock() { 
         for (size_t i = 0; i < HASH_PARTITIONS; i++) {
-            mutex[i].lock();
+            mutex[i].unlock();
         }
     }
 
@@ -333,23 +339,28 @@ class HashTable
     void extendHash() 
     {
         Entry *entry, *next;
-        size_t newSize = hashTableSize(size+1);
+		size_t oldSize = size;
+        size_t newSize = hashTableSize(oldSize+1);
         Entry** newTable = new Entry*[newSize];
         memset(newTable, 0, newSize*sizeof(Entry*));
         lock();
-        for (size_t i = 0; i < size; i++) { 
-            for (entry = table[i]; entry != NULL; entry = next) { 
-                K key;
-                getKey(key, entry->record);
-                size_t h = MOD(hashCode(key), newSize);
-                next = entry->collision;
-                entry->collision = newTable[h];
-                newTable[h] = entry;
-            }
-        }
-        delete[] table;
-        table = newTable;
-        size = newSize;
+		if (size == oldSize) { 
+			for (size_t i = 0; i < size; i++) { 
+				for (entry = table[i]; entry != NULL; entry = next) { 
+					K key;
+					getKey(key, entry->record);
+					size_t h = MOD(hashCode(key), newSize);
+					next = entry->collision;
+					entry->collision = newTable[h];
+					newTable[h] = entry;
+				}
+			}
+			delete[] table;
+			table = newTable;
+			size = newSize;
+		} else { 
+			delete[] newTable;
+		}
         unlock();
     }
 
