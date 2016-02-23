@@ -33,15 +33,15 @@ class ReceiveJob : public Job
 					if (buf->size != 0) { 
 						cluster->nodes[node].socket->read(buf->data, buf->size);
 					}
-					//printf("Receive message %d from node %ld channel %d processor=%p\n", buf->kind, node, buf->cid, cluster->channels[buf->cid]->processor);
-					//fflush(stdout);
 					cluster->channels[buf->cid]->processor->process(buf, node);
                 }
             }
         } catch (std::exception& x) {
             printf("Receiver catch exception %s\n", x.what());
         } 
-        printf("Totally received %ldMb\n", totalReceived/MB);
+		if (cluster->verbose) { 
+			printf("Totally received %ldMb\n", totalReceived/MB);
+		}
         delete buf;
     }
   private:
@@ -56,6 +56,7 @@ void Cluster::send(size_t node, Channel* channel, Buffer* buf)
     } else {
         CriticalSection cs(nodes[node].mutex);
 		buf->cid = channel->cid;
+		assert(buf->kind == MSG_DATA);
 		nodes[node].socket->write(buf, BUF_HDR_SIZE + buf->size);
     }
 }
@@ -111,8 +112,8 @@ bool Cluster::isLocalNode(char const* host)
 }
 
     
-Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nThreads, size_t bufSize, size_t socketBufferSize, size_t broadcastThreshold, bool sharedNothingDFS, size_t fileSplit) 
-: nNodes(nHosts), nodeId(selfId), bufferSize(bufSize), broadcastJoinThreshold(broadcastThreshold), split(fileSplit), sharedNothing(sharedNothingDFS), shutdown(false), userData(NULL), threadPool(nThreads), nodes(nNodes) 
+Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nThreads, size_t bufSize, size_t socketBufferSize, size_t broadcastThreshold, bool sharedNothingDFS, size_t fileSplit, bool debug) 
+: nNodes(nHosts), nodeId(selfId), bufferSize(bufSize), broadcastJoinThreshold(broadcastThreshold), split(fileSplit), sharedNothing(sharedNothingDFS), verbose(debug), shutdown(false), userData(NULL), threadPool(nThreads), nodes(nNodes) 
 {
     instance.set(this);
     this->hosts = hosts;

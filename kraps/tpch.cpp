@@ -1753,8 +1753,8 @@ class TPCHJob : public Job
     Cluster cluster;
 
   public:
-    TPCHJob(size_t nodeId, size_t nHosts, char** hosts = NULL, size_t nThreads = 8, size_t bufferSize = 64*1024, size_t socketBufferSize = 64*1024*1024, size_t broadcastJoinThreshold = 10000, bool sharedNothing = false, size_t split = 1)
-    : cluster(nodeId, nHosts, hosts, nThreads, bufferSize, socketBufferSize, broadcastJoinThreshold, sharedNothing, split)
+    TPCHJob(size_t nodeId, size_t nHosts, char** hosts = NULL, size_t nThreads = 8, size_t bufferSize = 64*1024, size_t socketBufferSize = 64*1024*1024, size_t broadcastJoinThreshold = 10000, bool sharedNothing = false, size_t split = 1, bool verbose = false)
+    : cluster(nodeId, nHosts, hosts, nThreads, bufferSize, socketBufferSize, broadcastJoinThreshold, sharedNothing, verbose, split)
     {}
     
   public:
@@ -1803,6 +1803,7 @@ int main(int argc, char* argv[])
     size_t broadcastJoinThreshold = 10000;
     size_t split = 1;
     bool   sharedNothing = false;
+	bool verbose = false;
     char const* option;
     
     fclose(fopen("tpch.start", "w")); // needed to innitialize stdio in single threaded environment
@@ -1826,6 +1827,8 @@ int main(int argc, char* argv[])
                 sharedNothing = atoi(argv[++i]) != 0;
              } else if (strcmp(option, "split") == 0) { 
                 split = atoi(argv[++i]);
+             } else if (strcmp(option, "verbose") == 0) { 
+                verbose = atoi(argv[++i]) != 0;
             } else { 
                 fprintf(stderr, "Unrecognized option %s\n", option);
               Usage:
@@ -1834,6 +1837,7 @@ int main(int argc, char* argv[])
                       "-dir\tdata directory (.)\n"
                       "-format\tdata format: parquet, plain-file,... ()\n"
                       "-shared-nothing 0/1\tdata is located at executor nodes (1)\n"
+                      "-verbose 0/1\tprint stage times (0)\n"
                       "-threads N\tnumber of concurrent threads (8)\n"
                       "-channels N\tnumber of channels (64)\n"
                       "-buffer SIZE\tbuffer size (64Kb)\n"
@@ -1856,7 +1860,7 @@ int main(int argc, char* argv[])
         return 1;
     }
 	if (argc == i + nNodes) {
-        TPCHJob test(nodeId, nNodes, &argv[i], nThreads, bufferSize, socketBufferSize, broadcastJoinThreshold, sharedNothing, split);
+        TPCHJob test(nodeId, nNodes, &argv[i], nThreads, bufferSize, socketBufferSize, broadcastJoinThreshold, sharedNothing, verbose, split);
         test.run();
     } else {      
         fprintf(stderr, "%d nodes expected, %d given\n", nNodes, i - argc);

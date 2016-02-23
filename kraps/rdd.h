@@ -158,7 +158,7 @@ class ChannelReactorFactory : public ReactorFactory<R>
 class StagedScheduler : public Scheduler
 {
   public:
-    StagedScheduler() : currStage(0), currJob(0), nActiveJobs(0), stageStartTime(getCurrentTime()) {}
+    StagedScheduler(bool debug = false) : currStage(0), currJob(0), nActiveJobs(0), stageStartTime(getCurrentTime()), verbose(debug) {}
     
 	size_t getDefaultConcurrency() 
 	{
@@ -186,7 +186,9 @@ class StagedScheduler : public Scheduler
                 stageDone.wait(mutex);
 				continue;
             }
-            printf("Stage %u finisihed in %ld microseconds\n", currStage, getCurrentTime() - stageStartTime);
+			if (verbose){ 
+				printf("Stage %u finisihed in %ld microseconds\n", currStage, getCurrentTime() - stageStartTime);
+			}
             stageStartTime = getCurrentTime();
             currStage += 1;
             currJob = 0;
@@ -210,7 +212,8 @@ class StagedScheduler : public Scheduler
     stage_t  currStage;
     size_t   currJob;
     size_t   nActiveJobs;
-    time_t   stageStartTime;    
+    time_t   stageStartTime;
+	bool     verbose;
 };
         
 #define typeof(rdd) decltype((rdd)->elem)
@@ -1107,6 +1110,7 @@ public:
 			if (buf->kind == MSG_EOF) { 
 				channel->eof();
 			} else {
+				CriticalSection cs(mutex[node]);
 				char* src = buf->data;
 				char* end = src + buf->size;
 				Join<O,I> join;
@@ -1133,7 +1137,7 @@ public:
 			}
 		}
 
-		OuterProcessor(HashJoinRDD& join, ReactorFactory<R>& factory) : rdd(join), reactors(Cluster::instance->nNodes) {
+		OuterProcessor(HashJoinRDD& join, ReactorFactory<R>& factory) : rdd(join), reactors(Cluster::instance->nNodes), mutex(Cluster::instance->nNodes) {
 			for (size_t i = 0; i != reactors.size(); i++) { 
 				reactors[i] = factory.getReactor();
 			}
@@ -1149,6 +1153,7 @@ public:
 	  private:
 		HashJoinRDD& rdd;
         vector<R*> reactors;
+		vector<Mutex> mutex;
 	};	
 
     template<class R>
@@ -1494,7 +1499,7 @@ inline void output(Rdd* in, FILE* out)
 {
 	Cluster* cluster = Cluster::instance.get();
 	OutputReactorFactory<T,Rdd> factory(*in, out);
-	StagedScheduler scheduler;
+	StagedScheduler scheduler(cluster->verbose);
 	in->schedule(scheduler, 0, factory);
 	cluster->barrier();
 	cluster->threadPool.run(scheduler);	

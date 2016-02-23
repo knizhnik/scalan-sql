@@ -170,7 +170,7 @@ class Cluster
      * @param split split factor. Using split factor greater than 1 it is posisble to spawn more cluster nodes than there are 
      * physical partitions (files)
      */
-    Cluster(size_t nodeId, size_t nHosts, char** hosts, size_t nThreads = 8, size_t bufferSize = 64*1024, size_t socketBufferSize = 64*1024*1024, size_t broadcastJoinThreshold = 10000, bool sharedNothing = true, size_t split = 1);
+    Cluster(size_t nodeId, size_t nHosts, char** hosts, size_t nThreads = 8, size_t bufferSize = 64*1024, size_t socketBufferSize = 64*1024*1024, size_t broadcastJoinThreshold = 10000, bool sharedNothing = true, size_t split = 1, bool verbose=false);
     ~Cluster();
 
   public:
@@ -180,6 +180,7 @@ class Cluster
     size_t const broadcastJoinThreshold;
     size_t const split;
     bool   const sharedNothing;
+	bool   const verbose;
 
     bool shutdown;
     void* userData;
