@@ -41,7 +41,7 @@ bool Socket::isLocalHost(char const* address)
             (address[localHostNodeNameLen] == ':' || address[localHostNodeNameLen] == '.'));
 }
     
-Socket* Socket::createGlobal(int port, size_t listenQueueSize)
+Socket* Socket::createGlobal(int port, size_t socketBufferSize, size_t listenQueueSize)
 {
     struct sockaddr_in sock; 
     sock.sin_family = AF_INET;
@@ -51,12 +51,15 @@ Socket* Socket::createGlobal(int port, size_t listenQueueSize)
     if (sd < 0) { 
         throw SocketError("Failed to create global socket");
     }       
-    int on = 1;
-    setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, (char*)&on, sizeof on);
+    int optval = 1;
+    setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, (char*)&optval, sizeof optval);
 
     if (bind(sd, (sockaddr*)&sock, sizeof(sock)) < 0) {
         throw SocketError("Failed to bind socket");
     }    
+	optval = (int)socketBufferSize;
+	setsockopt(sd, SOL_SOCKET, SO_SNDBUF, (char const*)&optval, sizeof(optval));
+
     if (listen(sd, listenQueueSize) < 0) {
         throw SocketError("Failed to listen socket");
     }            
@@ -64,7 +67,7 @@ Socket* Socket::createGlobal(int port, size_t listenQueueSize)
     return new Socket(sd, false);
 }
 
-Socket* Socket::createLocal(int port, size_t listenQueueSize)
+Socket* Socket::createLocal(int port, size_t socketBufferSize, size_t listenQueueSize)
 {
     struct sockaddr sock;
     sock.sa_family = AF_UNIX;
@@ -74,6 +77,9 @@ Socket* Socket::createLocal(int port, size_t listenQueueSize)
     if (sd < 0) { 
         throw SocketError("Failed to create local socket");
     }       
+	int optval = (int)socketBufferSize;
+	setsockopt(sd, SOL_SOCKET, SO_SNDBUF, (char const*)&optval, sizeof(optval));
+
     if (bind(sd, &sock, len) < 0) {
         throw SocketError("Failed to bind socket");
     }    
@@ -107,7 +113,7 @@ static bool getAddrsByName(const char *hostname, unsigned* addrs, size_t* n_addr
     return true;
 }
 
-Socket* Socket::connect(char const* address, size_t maxAttempts)
+Socket* Socket::connect(char const* address, size_t socketBufferSize, size_t maxAttempts)
 {
     char* sep = (char*)strchr(address, ':');
     if (sep == NULL) { 
@@ -115,6 +121,7 @@ Socket* Socket::connect(char const* address, size_t maxAttempts)
     }
     int port = atoi(sep+1);
     int rc = 0;
+	int optval;
     int sd;
     while (1) {
         bool isLocal;
@@ -125,7 +132,10 @@ Socket* Socket::connect(char const* address, size_t maxAttempts)
             sd = socket(AF_UNIX, SOCK_STREAM, 0); 
             if (sd < 0) { 
                 throw SocketError("Failed to create local socket");
-            }    
+            } 
+			optval = (int)socketBufferSize;
+			setsockopt(sd, SOL_SOCKET, SO_SNDBUF, (char const*)&optval, sizeof(optval));
+
             size_t len = ((char*)sock.sa_data - (char*)&sock) + sprintf(sock.sa_data, "%sp%u", unixSocketDir, port);
             do { 
                 rc = ::connect(sd, &sock, len);
@@ -147,6 +157,9 @@ Socket* Socket::connect(char const* address, size_t maxAttempts)
             if (sd < 0) { 
                 throw SocketError("Failed to create global socket");
             }       
+			optval = (int)socketBufferSize;
+			setsockopt(sd, SOL_SOCKET, SO_SNDBUF, (char const*)&optval, sizeof(optval));
+
             for (size_t i = 0; i < n_addrs; ++i) {
                 memcpy(&sock_inet.sin_addr, &addrs[i], sizeof sock_inet.sin_addr);
                 do { 
@@ -178,6 +191,7 @@ Socket* Socket::connect(char const* address, size_t maxAttempts)
         }
     }
 }
+
 
 void Socket::read(void* buf, size_t size)
 {

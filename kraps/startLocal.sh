@@ -1,5 +1,6 @@
 n_nodes=4
 nodes=""
+pkill -9 tpch
 for ((i=0;i<n_nodes;i++))
 do
     nodes="$nodes localhost:700$i"

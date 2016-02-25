@@ -7,9 +7,15 @@ const size_t MB = 1024*1024;
 ThreadLocal<Cluster> Cluster::instance;
 
 Channel::Channel(cid_t id, Cluster* clu, ChannelProcessor* cp)
-: cid(id), cluster(clu), processor(cp), nProducers(0), nConsumers(cluster->nNodes) {}
+: cid(id), cluster(clu), processor(cp), queue(cluster->nNodes-1), nProducers(0), nConsumer(cluster->nNodes-1) {}
 
-
+void Channel::gather(stage_t stage, Scheduler& scheduler)
+{
+	size_t concurrency = scheduler.getDefautlConcurrency();
+	for (size_t i = 0; i < concurrency; i++) {
+		scheduler.schedule(stage+1, new GatherJob(this));
+	}
+}
 
 class ReceiveJob : public Job
 {
@@ -24,19 +30,27 @@ class ReceiveJob : public Job
 				Buffer* buf = Buffer::create(0, cluster->bufferSize);
                 cluster->nodes[node].socket->read(buf, BUF_HDR_SIZE);
                 totalReceived += BUF_HDR_SIZE + buf->size;
-                
+               				
                 if (buf->kind == MSG_SHUTDOWN) { 
+					delete buf;
                     break;
+				} else if (buf->kind == MSG_BARRIER) { 
+					delete buf;
+                    cluster->sync();
                 } else {
-					
-                    cluster->channels[buf->cid]->processor->process(buf, node);
+					if (buf->size != 0) { 
+						cluster->nodes[node].socket->read(buf->data, buf->size);
+					}
+					buf->node = node;
+					cluster->channels[buf->cid].queue.put(buf);
                 }
             }
         } catch (std::exception& x) {
             printf("Receiver catch exception %s\n", x.what());
         } 
-        printf("Totally received %ldMb\n", totalReceived/MB);
-        delete buf;
+		if (cluster->verbose) { 
+			printf("Totally received %ldMb\n", totalReceived/MB);
+		}
     }
   private:
     Cluster* cluster;
@@ -49,29 +63,53 @@ void Cluster::send(size_t node, Channel* channel, Buffer* buf)
         channel->processor->process(buf, node);
     } else {
         CriticalSection cs(nodes[node].mutex);
+		buf->cid = channel->cid;
+		assert(buf->kind == MSG_DATA);
 		nodes[node].socket->write(buf, BUF_HDR_SIZE + buf->size);
     }
 }
 
 void Cluster::sendEof(size_t node, Channel* channel)
 {
-	Buffer buf(MSG_EOF, channel->cid);
-    if (node == nodeId) {
-        channel->processor->process(&buf, node);
-    } else {
+    if (node != nodeId) {
+		Buffer buf(MSG_EOF, channel->cid);
 		CriticalSection cs(nodes[node].mutex);
 		nodes[node].socket->write(&buf, BUF_HDR_SIZE);
-    }
+	}		
 }
 
 Channel* Cluster::getChannel(ChannelProcessor* processor)
 {
-    assert(cid < channels.size());
-    Channel* channel = channels[cid++];
-	channel->processor = processor;
+	Channel* channel = new Channel(channels.size(), this, processor);
+	channels.push_back(channel);
 	processor->channel = channel;
     return channel;
 
+}
+
+void Cluster::sync()
+{
+	semaphore.signal(mutex);
+}
+
+void Cluster::barrier()
+{
+	Buffer buf(MSG_BARRIER, 0);
+	for (size_t i = 0; i < nNodes; i++) { 
+		if (i != nodeId) { 
+			CriticalSection cs(nodes[i].mutex);
+			nodes[i].socket->write(&buf, BUF_HDR_SIZE);
+		}
+	}
+	semaphore.wait(mutex, nNodes-1); // wait responses rfom all nodes
+}
+
+void Cluster::reset()
+{
+	for (size_t i = 0; i < channels.size(); i++) { 
+		delete channels[i];
+	}
+	channels.clear();
 }
 
 bool Cluster::isLocalNode(char const* host)
@@ -82,23 +120,21 @@ bool Cluster::isLocalNode(char const* host)
 }
 
     
-Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nThreads, size_t nChannels, size_t bufSize, size_t broadcastThreshold, bool sharedNothingDFS, size_t fileSplit) 
-: nNodes(nHosts), nodeId(selfId), bufferSize(bufSize), broadcastJoinThreshold(broadcastThreshold), split(fileSplit), sharedNothing(sharedNothingDFS), shutdown(false), userData(NULL), threadPool(nThreads), nodes(nNodes), channels(nChannels), gather(nNodes)
+Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nThreads, size_t bufSize, size_t socketBufferSize, size_t broadcastThreshold, bool sharedNothingDFS, size_t fileSplit, bool debug) 
+: nNodes(nHosts), nodeId(selfId), bufferSize(bufSize), broadcastJoinThreshold(broadcastThreshold), split(fileSplit), sharedNothing(sharedNothingDFS), verbose(debug), shutdown(false), userData(NULL), threadPool(nThreads), queue(nNodes), nodes(nNodes) 
 {
     instance.set(this);
     this->hosts = hosts;
 
-    cid = 0;
-    
     for (size_t i = 0; i < selfId; i++) { 
-        nodes[i].socket = Socket::connect(hosts[i]);
+        nodes[i].socket = Socket::connect(hosts[i], socketBufferSize);
         nodes[i].socket->write(&nodeId, sizeof nodeId);
     }
 
     char* sep = strchr(hosts[selfId], ':');
     int port = atoi(sep+1);
-    Socket* localGateway = Socket::createLocal(port, nHosts);
-    Socket* globalGateway = Socket::createGlobal(port, nHosts);
+    Socket* localGateway = Socket::createLocal(port, socketBufferSize, nHosts);
+    Socket* globalGateway = Socket::createGlobal(port, socketBufferSize, nHosts);
 
     size_t n, hostLen = strchr(hosts[0], ':') - hosts[0];    
     for (n = 1; n < nHosts && strncmp(hosts[0], hosts[n], hostLen) == 0 && hosts[n][hostLen] == ':'; n++);
@@ -112,6 +148,7 @@ Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nThreads, si
         assert(nodes[node].socket == NULL);
         nodes[node].socket = s;
     }
+
     delete localGateway;
     delete globalGateway;
 

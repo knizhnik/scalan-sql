@@ -15,14 +15,14 @@ JAVA_HOME?=/Library/Java/JavaVirtualMachines/jdk1.8.0_60.jdk/Contents/Home
 
 COMMON_FLAGS=-std=c++1y -g -pthread -fPIC -Wall 
 OPT_FLAGS=-O3
-#DEFS=-DSHOW_HASH_STATISTIC -DCOLUMNAR_STORE
+DEFS=-DSHOW_HASH_STATISTIC -DCOLUMNAR_STORE
 #DEFS=-DSHOW_HASH_STATISTIC -I ~/.nix-profile/include -DUSE_ZLIB -DCOLUMNAR_STORE
 #DEFS=-DUSE_MESSAGE_HANDLER -DSHOW_HASH_STATISTIC
 #DEFS=-DUSE_ZLIB -I $(HOME)/.nix-profile/include/
 #DEFS=-DUSE_LZH
 #DEFS=-DUSE_SIMDCOMP -I $(SIMDCOMP_HOME)/include
 #DEFS=-DUSE_ZLIB
-DEFS=-Wno-unused-value -Wno-unused-variable -Wno-sign-compare -DUSE_ZLIB -DUSE_PARQUET -DCOLUMNAR_STORE -I $(PARQUET_CPP_HOME)/src -I $(PARQUET_CPP_HOME)/generated -I $(HADOOP_HOME)/include 
+#DEFS=-Wno-unused-value -Wno-unused-variable -Wno-sign-compare -DUSE_ZLIB -DUSE_PARQUET -DCOLUMNAR_STORE -I $(PARQUET_CPP_HOME)/src -I $(PARQUET_CPP_HOME)/generated -I $(HADOOP_HOME)/include 
 
 #CPP=/usr/local/bin/g++-4.9  $(COMMON_FLAGS) $(OPT_FLAGS) $(DEFS)
 CPP=g++ $(COMMON_FLAGS) $(OPT_FLAGS) $(DEFS)
