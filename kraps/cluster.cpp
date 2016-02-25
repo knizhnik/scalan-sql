@@ -7,15 +7,29 @@ const size_t MB = 1024*1024;
 ThreadLocal<Cluster> Cluster::instance;
 
 Channel::Channel(cid_t id, Cluster* clu, ChannelProcessor* cp)
-: cid(id), cluster(clu), processor(cp), queue(cluster->nNodes-1), nProducers(0), nConsumer(cluster->nNodes-1) {}
+: cid(id), cluster(clu), processor(cp), queue(cluster->nNodes-1), nProducers(0), nConsumers(0) {}
 
 void Channel::gather(stage_t stage, Scheduler& scheduler)
 {
-	size_t concurrency = scheduler.getDefautlConcurrency();
+	size_t concurrency = scheduler.getDefaultConcurrency();
 	for (size_t i = 0; i < concurrency; i++) {
 		scheduler.schedule(stage+1, new GatherJob(this));
 	}
 }
+
+void GatherJob::run() 
+{
+	while (true) { 
+		Buffer* buf = channel->queue.get();
+		if (buf == NULL) { 
+			channel->detachConsumer();
+			return;
+		}
+		channel->processor->process(buf, buf->node);
+		delete buf;
+	}
+}
+
 
 class ReceiveJob : public Job
 {
@@ -42,14 +56,14 @@ class ReceiveJob : public Job
 						cluster->nodes[node].socket->read(buf->data, buf->size);
 					}
 					buf->node = node;
-					cluster->channels[buf->cid].queue.put(buf);
+					cluster->channels[buf->cid]->queue.put(buf);
                 }
             }
         } catch (std::exception& x) {
             printf("Receiver catch exception %s\n", x.what());
         } 
 		if (cluster->verbose) { 
-			printf("Totally received %ldMb\n", totalReceived/MB);
+			printf("Node %ld received %ldMb\n", node, totalReceived/MB);
 		}
     }
   private:
@@ -121,7 +135,7 @@ bool Cluster::isLocalNode(char const* host)
 
     
 Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nThreads, size_t bufSize, size_t socketBufferSize, size_t broadcastThreshold, bool sharedNothingDFS, size_t fileSplit, bool debug) 
-: nNodes(nHosts), nodeId(selfId), bufferSize(bufSize), broadcastJoinThreshold(broadcastThreshold), split(fileSplit), sharedNothing(sharedNothingDFS), verbose(debug), shutdown(false), userData(NULL), threadPool(nThreads), queue(nNodes), nodes(nNodes) 
+: nNodes(nHosts), nodeId(selfId), bufferSize(bufSize), broadcastJoinThreshold(broadcastThreshold), split(fileSplit), sharedNothing(sharedNothingDFS), verbose(debug), shutdown(false), userData(NULL), threadPool(nThreads), nodes(nNodes) 
 {
     instance.set(this);
     this->hosts = hosts;

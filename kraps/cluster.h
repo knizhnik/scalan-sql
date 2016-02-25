@@ -52,7 +52,7 @@ struct Buffer
      * @param id channel ID (needed to locate recipient channel at target node)
      * @param len buffer data size (not including header)
      */
-    Buffer(MessageKind type, cid_t id, size_t len = 0) : compressedSize((uint32_t)len), size((uint32_t)len), cid(id), kind(type) {}
+    Buffer(MessageKind type, cid_t id, size_t len = 0) : size((uint32_t)len), kind(type), cid(id) {}
 
     void* operator new(size_t hdrSize, size_t bufSize) {
         return malloc(BUF_HDR_SIZE + bufSize);
@@ -94,7 +94,7 @@ class Queue
 			*tail = elem;
 			elem->next = NULL;
 			elem->buf = buf;
-			tail = &elem;
+			tail = &elem->next;
 			ready.signal();
 		}
 	}
@@ -102,20 +102,23 @@ class Queue
 	Buffer* get() 
 	{ 
 		CriticalSection cs(mutex);
-		Buffer* buf;
-		while ((buf = head) == NULL && nProducers != 0) {
+		Buffer* buf = NULL;
+		Elem* elem;
+		while ((elem = head) == NULL && nProducers != 0) {
 			ready.wait(mutex);
 		}
-		if (buf != NULL) { 
-			head = buf->next;
+		if (elem != NULL) { 
+			head = elem->next;
 			if (head == NULL) { 
 				tail = &head;
 			}
+			buf = elem->buf;
+			delete elem;
 		}
 		return buf;
 	}
 	
-	Queue(size_t n) : nNodes(n), head(NULL), tail(&head), nProducers(0) {}
+	Queue(size_t n) : nProducers(n), head(NULL), tail(&head) {}
 
   private:
 	struct Elem { 
@@ -123,12 +126,11 @@ class Queue
 		Buffer* buf;
 	};
 
-	size_t const nNodes;
 	size_t nProducers;
 	Elem*  head;
 	Elem** tail;	
-	Mutex mutex;
-	Event ready;
+	Mutex  mutex;
+	Event  ready;
 };
 		
 class Channel
@@ -139,16 +141,20 @@ class Channel
 	ChannelProcessor* processor;
 	Queue queue;
 
-	void attach() {
+	void attachProducer() {
 		nProducers += 1;
 	}
 
-	bool detach() { 
+	void attachConsumer() {
+		nConsumers += 1;
+	}
+
+	bool detachProducer() { 
 		return __sync_add_and_fetch(&nProducers, -1) == 0;
 	}
 
-	void release() { 
-		if (__sync_add_and_fetch(&nConsumer, -1) == 0) { 
+	void detachConsumer() { 
+		if (__sync_add_and_fetch(&nConsumers, -1) == 0) { 
 			delete processor;
 			processor = NULL;
 		}
@@ -161,24 +167,17 @@ class Channel
 
   private:	
 	int nProducers;
-	int nConsumer;
+	int nConsumers;
 };
 
 class GatherJob : public Job
 {
   public:
-	GatherJob(Channel* chan) : channel(chan) {}
-
-	void run() {
-		while (true) { 
-			Buffer* buf = channel->cluster->get(channel);
-			if (buf == NULL) { 
-				channel->release();
-				return;
-			}
-			channel->processor->process(buf, buf->node);
-		}
+	GatherJob(Channel* chan) : channel(chan) {
+		channel->attachConsumer();
 	}
+
+	void run();
 
   protected:
 	Channel* const channel;

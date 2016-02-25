@@ -263,7 +263,7 @@ public:
 	Scatter(Channel* chan) 
 	: channel(chan), cluster(Cluster::instance.get()), nNodes(cluster->nNodes), bufferSize(cluster->bufferSize), buffers(nNodes)
 	{
-		channel->attach();
+		channel->attachProducer();
 		for (size_t i = 0; i < nNodes; i++) { 
 			buffers[i] = Buffer::create(channel->cid, bufferSize);
 			buffers[i]->size = 0;
@@ -293,7 +293,7 @@ public:
 			}
 			delete buffers[i];
 		}
-		if (channel->detach()) { 
+		if (channel->detachProducer()) { 
 			for (size_t i = 0; i < nNodes; i++) { 
 				cluster->sendEof(i, channel);
 			}
@@ -321,7 +321,7 @@ public:
 	{ 
 		msg = Buffer::create(channel->cid, cluster->bufferSize);
 		msg->size = 0;
-		channel->attach();
+		channel->attachProducer();
 	}
 
 	void react(T const& record) 
@@ -341,7 +341,7 @@ public:
 			cluster->send(node, channel, msg);
 		}
 		delete msg;
-		if (channel->detach()) { 	
+		if (channel->detachProducer()) { 	
 			cluster->sendEof(node, channel);
 			delete reactor;
 		}
@@ -399,7 +399,7 @@ class Broadcaster : public Reactor<T>
 	{ 
 		msg = Buffer::create(channel->cid, cluster->bufferSize);
 		msg->size = 0;
-		channel->attach();
+		channel->attachProducer();
 	}
 
 	~Broadcaster() 
@@ -411,7 +411,7 @@ class Broadcaster : public Reactor<T>
 		}
 		delete msg;
 
-		if (channel->detach()) { 
+		if (channel->detachProducer()) { 
 			for (size_t i = 0; i < cluster->nNodes; i++) { 
 				cluster->sendEof(i, channel);
 			}
