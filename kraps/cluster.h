@@ -76,7 +76,57 @@ class ChannelProcessor
 	virtual ~ChannelProcessor() {}
 };
 	
+class Gather
+{
+  public:
+	void put(Buffer* buf) { 
+		CriticalSection cs(mutex);
+		if (buf->kind == MSG_EOF) { 
+			if (--nProducers == 0) { 
+				if (nBlocked != 0) { 
+					ready.broadcast();
+				}
+			}
+		} else { 				
+			Elem* elem = new Elem();
+			*tail = elem;
+			elem->next = NULL;
+			tail = &elem;
+			if (nBlocked != 0) { 
+				ready.signal();
+			}
+		}
+	}
 
+	Buffer* get() { 
+		CriticalSection cs(mutex);
+		Buffer* buf;
+		while ((buf = head) == NULL && nProducers != 0) { 
+			ready.wait(mutex);
+		}
+		if (buf != NULL) { 
+			head = buf->next;
+			if (head == NULL) { 
+				tail = &head;
+			}
+		}
+		return buf;
+	}
+	
+	void reset() { 
+		assert(head == NULL);
+		nProducers = nNodes-1;		
+	}
+
+	Gather(size_t n) : nNodes(n), head(NULL), tail(&head) {}
+
+  private:
+	size_t const nNodes;
+	size_t nProducers;
+	Elem*  head;
+	Elem** tail;
+};
+		
 class Channel
 {
   public:
@@ -92,25 +142,11 @@ class Channel
 		return __sync_add_and_fetch(&nProducers, -1) == 0;
 	}
 
-	void eof() { 
-		CriticalSection cs(mutex);
-		semaphore.signal(mutex);
-	}
-
-	void wait() { 
-		CriticalSection cs(mutex);
-		semaphore.wait(mutex, nConsumers);
-		delete processor;
-		processor = NULL;
-	}
-
 	Channel(cid_t cid, Cluster* cluster, ChannelProcessor* processor);
 
   private:	
 	int nProducers;
 	int nConsumers;
-	Mutex mutex;
-	Semaphore semaphore;
 };
 
 /**
@@ -143,7 +179,8 @@ class Cluster
     ThreadPool threadPool;
 	vector<Node> nodes;
 	vector<Channel*> channels;
-	
+    Gather gather;
+
     /**
      * Check if this node is coordinator. Coordinator is forst node in the cluster and it is used to collect all
      * local results from other nodes

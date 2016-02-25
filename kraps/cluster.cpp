@@ -18,16 +18,17 @@ class ReceiveJob : public Job
     
     void run()
     {
-        Buffer* buf = Buffer::create(0, cluster->bufferSize);
         size_t totalReceived = 0;
         try { 
             while (!cluster->shutdown) {
+				Buffer* buf = Buffer::create(0, cluster->bufferSize);
                 cluster->nodes[node].socket->read(buf, BUF_HDR_SIZE);
                 totalReceived += BUF_HDR_SIZE + buf->size;
                 
                 if (buf->kind == MSG_SHUTDOWN) { 
                     break;
                 } else {
+					
                     cluster->channels[buf->cid]->processor->process(buf, node);
                 }
             }
@@ -82,7 +83,7 @@ bool Cluster::isLocalNode(char const* host)
 
     
 Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nThreads, size_t nChannels, size_t bufSize, size_t broadcastThreshold, bool sharedNothingDFS, size_t fileSplit) 
-: nNodes(nHosts), nodeId(selfId), bufferSize(bufSize), broadcastJoinThreshold(broadcastThreshold), split(fileSplit), sharedNothing(sharedNothingDFS), shutdown(false), userData(NULL), threadPool(nThreads), nodes(nNodes), channels(nChannels)
+: nNodes(nHosts), nodeId(selfId), bufferSize(bufSize), broadcastJoinThreshold(broadcastThreshold), split(fileSplit), sharedNothing(sharedNothingDFS), shutdown(false), userData(NULL), threadPool(nThreads), nodes(nNodes), channels(nChannels), gather(nNodes)
 {
     instance.set(this);
     this->hosts = hosts;
