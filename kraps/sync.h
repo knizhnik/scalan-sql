@@ -77,10 +77,10 @@ class Semaphore
 public:
     void wait(Mutex& mutex, size_t n) { 
         CriticalSection cs(mutex);
-        while (n != count) { 
+        while (n > count) { 
             event.wait(mutex);
         }
-        count = 0;
+        count -= n;
     }
     void signal(Mutex& mutex) {
         CriticalSection cs(mutex);

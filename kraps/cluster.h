@@ -30,10 +30,10 @@ enum MessageKind
  */
 struct Buffer 
 { 
-    uint32_t    compressedSize; // compressed size 
     uint32_t    size;  // size without header
-	cid_t       cid;   // identifier of destination channel
+    uint32_t    node;  // sender nodeId
     MessageKind kind;  // message kind
+	cid_t       cid;   // identifier of destination channel
     char        data[1];
     
     /**
@@ -52,7 +52,7 @@ struct Buffer
      * @param id channel ID (needed to locate recipient channel at target node)
      * @param len buffer data size (not including header)
      */
-    Buffer(MessageKind type, cid_t id, size_t len = 0) : compressedSize((uint32_t)len), size((uint32_t)len), cid(id), kind(type) {}
+    Buffer(MessageKind type, cid_t id, size_t len = 0) : size((uint32_t)len), kind(type), cid(id) {}
 
     void* operator new(size_t hdrSize, size_t bufSize) {
         return malloc(BUF_HDR_SIZE + bufSize);
@@ -78,29 +78,89 @@ class ChannelProcessor
 	virtual ~ChannelProcessor() {}
 };
 	
+class Queue
+{
+  public:
+	void put(Buffer* buf) 
+	{ 
+		CriticalSection cs(mutex);
+		if (buf->kind == MSG_EOF) { 
+			delete buf;
+			if (--nProducers == 0) { 
+				ready.broadcast();
+			}
+		} else { 				
+			Elem* elem = new Elem();
+			*tail = elem;
+			elem->next = NULL;
+			elem->buf = buf;
+			tail = &elem->next;
+			ready.signal();
+		}
+	}
 
+	Buffer* get() 
+	{ 
+		CriticalSection cs(mutex);
+		Buffer* buf = NULL;
+		Elem* elem;
+		while ((elem = head) == NULL && nProducers != 0) {
+			ready.wait(mutex);
+		}
+		if (elem != NULL) { 
+			head = elem->next;
+			if (head == NULL) { 
+				tail = &head;
+			}
+			buf = elem->buf;
+			delete elem;
+		}
+		return buf;
+	}
+	
+	Queue(size_t n) : nProducers(n), head(NULL), tail(&head) {}
+
+  private:
+	struct Elem { 
+		Elem* next;
+		Buffer* buf;
+	};
+
+	size_t nProducers;
+	Elem*  head;
+	Elem** tail;	
+	Mutex  mutex;
+	Event  ready;
+};
+		
 class Channel
 {
   public:
 	cid_t const cid;
 	Cluster* const cluster;
 	ChannelProcessor* processor;
+	Queue queue;
 
-	void attach() {
+	void attachProducer() {
 		nProducers += 1;
 	}
 
-	bool detach() { 
+	void attachConsumer() {
+		nConsumers += 1;
+	}
+
+	bool detachProducer() { 
 		return __sync_add_and_fetch(&nProducers, -1) == 0;
 	}
 
-	void eof() {
-		semaphore.signal(mutex);
+	void detachConsumer() { 
+		if (__sync_add_and_fetch(&nConsumers, -1) == 0) { 
+			delete processor;
+			processor = NULL;
+		}
 	}
-
-	void wait() { 
-		semaphore.wait(mutex, nConsumers);
-	}
+		
+	void gather(stage_t stage, Scheduler& scheduler);
 
 	Channel(cid_t cid, Cluster* cluster, ChannelProcessor* processor);
 	~Channel() { delete processor; }
@@ -108,9 +168,21 @@ class Channel
   private:	
 	int nProducers;
 	int nConsumers;
-	Mutex mutex;
-	Semaphore semaphore;
 };
+
+class GatherJob : public Job
+{
+  public:
+	GatherJob(Channel* chan) : channel(chan) {
+		channel->attachConsumer();
+	}
+
+	void run();
+
+  protected:
+	Channel* const channel;
+};
+    
 
 /**
  * Main cluster class.
@@ -127,7 +199,7 @@ class Cluster
     /** 
      * Get new channel. It is expected that channels are created in the same order by all nodes, so
      * them are given same identifiers. This is why it is possible to use CID to identify recipient at target node.
-     * @param hnd optional message handler used for push-style processing for this queue
+     * @param hnd optional message handler used for push-style processing for this channel
      */
     Channel* getChannel(ChannelProcessor* proc);
 

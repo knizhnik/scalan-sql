@@ -7,8 +7,28 @@ const size_t MB = 1024*1024;
 ThreadLocal<Cluster> Cluster::instance;
 
 Channel::Channel(cid_t id, Cluster* clu, ChannelProcessor* cp)
-: cid(id), cluster(clu), processor(cp), nProducers(0), nConsumers(cluster->nNodes-1) {}
+: cid(id), cluster(clu), processor(cp), queue(cluster->nNodes-1), nProducers(0), nConsumers(0) {}
 
+void Channel::gather(stage_t stage, Scheduler& scheduler)
+{
+	size_t concurrency = scheduler.getDefaultConcurrency();
+	for (size_t i = 0; i < concurrency; i++) {
+		scheduler.schedule(stage+1, new GatherJob(this));
+	}
+}
+
+void GatherJob::run() 
+{
+	while (true) { 
+		Buffer* buf = channel->queue.get();
+		if (buf == NULL) { 
+			channel->detachConsumer();
+			return;
+		}
+		channel->processor->process(buf, buf->node);
+		delete buf;
+	}
+}
 
 
 class ReceiveJob : public Job
@@ -18,31 +38,33 @@ class ReceiveJob : public Job
     
     void run()
     {
-        Buffer* buf = Buffer::create(0, cluster->bufferSize);
         size_t totalReceived = 0;
         try { 
             while (!cluster->shutdown) {
+				Buffer* buf = Buffer::create(0, cluster->bufferSize);
                 cluster->nodes[node].socket->read(buf, BUF_HDR_SIZE);
                 totalReceived += BUF_HDR_SIZE + buf->size;
                				
                 if (buf->kind == MSG_SHUTDOWN) { 
+					delete buf;
                     break;
 				} else if (buf->kind == MSG_BARRIER) { 
+					delete buf;
                     cluster->sync();
                 } else {
 					if (buf->size != 0) { 
 						cluster->nodes[node].socket->read(buf->data, buf->size);
 					}
-					cluster->channels[buf->cid]->processor->process(buf, node);
+					buf->node = node;
+					cluster->channels[buf->cid]->queue.put(buf);
                 }
             }
         } catch (std::exception& x) {
             printf("Receiver catch exception %s\n", x.what());
         } 
 		if (cluster->verbose) { 
-			printf("Totally received %ldMb\n", totalReceived/MB);
+			printf("Node %ld received %ldMb\n", node, totalReceived/MB);
 		}
-        delete buf;
     }
   private:
     Cluster* cluster;

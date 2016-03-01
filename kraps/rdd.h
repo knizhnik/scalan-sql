@@ -263,7 +263,7 @@ public:
 	Scatter(Channel* chan) 
 	: channel(chan), cluster(Cluster::instance.get()), nNodes(cluster->nNodes), bufferSize(cluster->bufferSize), buffers(nNodes)
 	{
-		channel->attach();
+		channel->attachProducer();
 		for (size_t i = 0; i < nNodes; i++) { 
 			buffers[i] = Buffer::create(channel->cid, bufferSize);
 			buffers[i]->size = 0;
@@ -293,7 +293,7 @@ public:
 			}
 			delete buffers[i];
 		}
-		if (channel->detach()) { 
+		if (channel->detachProducer()) { 
 			for (size_t i = 0; i < nNodes; i++) { 
 				cluster->sendEof(i, channel);
 			}
@@ -321,7 +321,7 @@ public:
 	{ 
 		msg = Buffer::create(channel->cid, cluster->bufferSize);
 		msg->size = 0;
-		channel->attach();
+		channel->attachProducer();
 	}
 
 	void react(T const& record) 
@@ -341,7 +341,7 @@ public:
 			cluster->send(node, channel, msg);
 		}
 		delete msg;
-		if (channel->detach()) { 	
+		if (channel->detachProducer()) { 	
 			cluster->sendEof(node, channel);
 			delete reactor;
 		}
@@ -399,7 +399,7 @@ class Broadcaster : public Reactor<T>
 	{ 
 		msg = Buffer::create(channel->cid, cluster->bufferSize);
 		msg->size = 0;
-		channel->attach();
+		channel->attachProducer();
 	}
 
 	~Broadcaster() 
@@ -411,7 +411,7 @@ class Broadcaster : public Reactor<T>
 		}
 		delete msg;
 
-		if (channel->detach()) { 
+		if (channel->detachProducer()) { 
 			for (size_t i = 0; i < cluster->nNodes; i++) { 
 				cluster->sendEof(i, channel);
 			}
@@ -616,20 +616,6 @@ class FilterRDD : public RDD<T>
     Rdd* const in;
 };
 
-
-class BarrierJob : public Job
-{
-  public:
-	BarrierJob(Channel* chan) : channel(chan) {}
-
-	void run() { 
-		channel->wait();
-	}
-
-  protected:
-	Channel* const channel;
-};
-    
 /**
  * Perform aggregation of input data (a-la Scala fold)
  */
@@ -648,7 +634,7 @@ class ReduceRDD : public RDD<S>
         Cluster* cluster = Cluster::instance.get();
 		Channel* channel = cluster->getChannel(new ReduceProcessor(*this));
 		if (cluster->isCoordinator()) {
-			scheduler.schedule(++stage, new BarrierJob(channel));		
+			channel->gather(++stage, scheduler);		
 			scheduler.schedule(++stage, new SendJob<R>(state, factory.getReactor()));
 		} else { 
 			scheduler.schedule(++stage, new SendJob< Sender<S> >(state, new Sender<S>(channel, factory.getReactor())));
@@ -677,16 +663,12 @@ class ReduceRDD : public RDD<S>
 	class ReduceProcessor : public ChannelProcessor { 
 	  public:
 		void process(Buffer* buf, size_t node) { 
-			if (buf->kind == MSG_EOF) { 
-				channel->eof();
-			} else {
-				S state;
-				size_t size = unpack(state, buf->data);
-				assert(size == buf->size);
-				{
-					CriticalSection cs(rdd.mutex);
-					combine(rdd.state, state);
-				}
+			S state;
+			size_t size = unpack(state, buf->data);
+			assert(size == buf->size);
+			{
+				CriticalSection cs(rdd.mutex);
+				combine(rdd.state, state);
 			}
 		}
 
@@ -737,7 +719,7 @@ class MapReduceRDD : public RDD< Pair<K,V> >
         Cluster* cluster = Cluster::instance.get();
 		Channel* channel = cluster->getChannel(new MapReduceProcessor(*this));
 		if (cluster->isCoordinator()) {
-			scheduler.schedule(++stage, new BarrierJob(channel));		
+			channel->gather(++stage, scheduler);		
 			stage += 1;
 			size_t nPartitions = scheduler.getDefaultConcurrency();
 			for (size_t i = 0; i < nPartitions; i++) { 				
@@ -772,18 +754,14 @@ class MapReduceRDD : public RDD< Pair<K,V> >
 	class MapReduceProcessor : public ChannelProcessor { 
 	public:
 		void process(Buffer* buf, size_t node) { 
-			if (buf->kind == MSG_EOF) { 
-				channel->eof();					
-			} else {
-				CriticalSection cs(rdd.mutex);
-				char* src = buf->data;
-				char* end = src + buf->size;
-				Pair<K,V> pair;
-				
-				while (src < end) { 
-					src += unpack(pair, src);
-					rdd.hashMap.add(pair);
-				}
+			CriticalSection cs(rdd.mutex);
+			char* src = buf->data;
+			char* end = src + buf->size;
+			Pair<K,V> pair;
+			
+			while (src < end) { 
+				src += unpack(pair, src);
+				rdd.hashMap.add(pair);
 			}
 		}
 
@@ -856,7 +834,7 @@ class SortRDD : public RDD<T>
 		SenderReactorFactory<T> sender(channel, cluster->isCoordinator() ? NULL : factory.getReactor());
         stage = in->schedule(scheduler, stage, sender);
 		if (cluster->isCoordinator()) {
-			scheduler.schedule(++stage, new BarrierJob(channel));		
+			channel->gather(++stage, scheduler);		
 			scheduler.schedule(++stage, new SortJob(*this));
 			// Create just one job because most likely we want ot preserve sort order
 			scheduler.schedule(++stage, new IterateArrayJob<T,R>(factory.getReactor(), array));
@@ -868,17 +846,13 @@ class SortRDD : public RDD<T>
 	class AppendProcessor : public ChannelProcessor { 
 	public:
 		void process(Buffer* buf, size_t node) { 
-			if (buf->kind == MSG_EOF) { 
-				channel->eof();
-			} else {
-				CriticalSection cs(rdd.mutex);
-				char* src = buf->data;
-				char* end = src + buf->size;
-				T record;
-				while (src < end) { 
-					src += unpack(record, src);
-					rdd.array.push_back(record);
-				}
+			CriticalSection cs(rdd.mutex);
+			char* src = buf->data;
+			char* end = src + buf->size;
+			T record;
+			while (src < end) { 
+				src += unpack(record, src);
+				rdd.array.push_back(record);
 			}
 		}
 
@@ -924,7 +898,7 @@ class TopRDD : public RDD<T>
 		RddReactorFactory<TopRDD,TopReactor> topReactor(*this);
         stage = in->schedule(scheduler, stage, topReactor);
 		if (cluster->isCoordinator()) {
-			scheduler.schedule(++stage, new BarrierJob(channel));		
+			channel->gather(++stage, scheduler);		
 			// Create just one job because most likely we want ot preserve sort order
 			scheduler.schedule(++stage, new IterateArrayJob<T,R>(factory.getReactor(), heap.buf));
 		} else { 
@@ -938,17 +912,13 @@ class TopRDD : public RDD<T>
 	class MergeSortProcessor : public ChannelProcessor { 
 	  public:
 		void process(Buffer* buf, size_t node) { 
-			if (buf->kind == MSG_EOF) { 
-				channel->eof();
-			} else {
-				CriticalSection cs(rdd.mutex);
-				char* src = buf->data;
-				char* end = src + buf->size;
-				T record;
-				while (src < end) { 
-					src += unpack(record, src);
-					rdd.heap.add(record);
-				}
+			CriticalSection cs(rdd.mutex);
+			char* src = buf->data;
+			char* end = src + buf->size;
+			T record;
+			while (src < end) { 
+				src += unpack(record, src);
+				rdd.heap.add(record);
 			}
 		}
 
@@ -1046,7 +1016,7 @@ public:
 			ChannelReactorFactory< Broadcaster<I> > broadcast(channel);
             stage = inner->schedule< Broadcaster<I> >(scheduler, stage, broadcast);
 
-            scheduler.schedule(++stage, new BarrierJob(channel));
+			channel->gather(++stage, scheduler);		
 
 			ChainRddReactorFactory< HashJoinRDD,R,JoinReactor<R> > join(*this, factory);
             stage = outer->schedule(scheduler, ++stage, join);
@@ -1055,45 +1025,28 @@ public:
 			ChannelReactorFactory< Scatter<I, K, innerKey> > innerScatter(channel);
             stage = inner->schedule(scheduler, stage, innerScatter);
 
-            scheduler.schedule(++stage, new BarrierJob(channel));
+			channel->gather(++stage, scheduler);		
 
             channel = cluster->getChannel(new OuterProcessor<R>(*this, factory));
 
 			ChannelReactorFactory< Scatter<O, K, outerKey> > outerScatter(channel);
             stage = outer->schedule(scheduler, ++stage, outerScatter);
 
-            scheduler.schedule(++stage, new JoinBarrierJob(channel));
+			channel->gather(++stage, scheduler);		
         }
         return stage;
     }
 
   private:
-	class JoinBarrierJob : public BarrierJob
-	{
-	public:
-		JoinBarrierJob(Channel* channel) : BarrierJob(channel) {}
-		
-		void run() { 
-			Buffer buf(MSG_EOF, channel->cid);			
-			BarrierJob::run();
-			delete channel->processor;
-			channel->processor = NULL;				
-		}
-	};
-
 	class InnerProcessor : public ChannelProcessor { 
 	  public:
 		void process(Buffer* buf, size_t node) { 
-			if (buf->kind == MSG_EOF) { 
-				channel->eof();
-			} else {
-				char* src = buf->data;
-				char* end = src + buf->size;
-				I record;
-				while (src < end) { 
-					src += unpack(record, src);
-					rdd.hashTable.add(record);
-				}
+			char* src = buf->data;
+			char* end = src + buf->size;
+			I record;
+			while (src < end) { 
+				src += unpack(record, src);
+				rdd.hashTable.add(record);
 			}
 		}
 
@@ -1107,32 +1060,28 @@ public:
 	class OuterProcessor : public ChannelProcessor { 
 	  public:
 		void process(Buffer* buf, size_t node) { 
-			if (buf->kind == MSG_EOF) { 
-				channel->eof();
-			} else {
-				CriticalSection cs(mutex[node]);
-				char* src = buf->data;
-				char* end = src + buf->size;
-				Join<O,I> join;
-				while (src < end) {
-                    K key;
-                    size_t nMatches = 0;
-					src += unpack((O&)join, src);
-                    outerKey(key, (O&)join);                    
-                    for (typename HashTable<I,K,innerKey>::Entry* entry = rdd.hashTable.get(key); 
-						 entry != NULL; 
-						 entry = entry->collision) 
-					{
-                        if (entry->equalsKey(key)) {							
-                            (I&)join = entry->record;
-                            reactors[node]->react(join);
-                            nMatches += 1;
-                        }
-                    }
-                    if (nMatches == 0 && rdd.kind == OuterJoin){ 
-						(I&)join = rdd.null;
-                        reactors[node]->react(join);
-                    }
+			CriticalSection cs(mutex[node]);
+			char* src = buf->data;
+			char* end = src + buf->size;
+			Join<O,I> join;
+			while (src < end) {
+				K key;
+				size_t nMatches = 0;
+				src += unpack((O&)join, src);
+				outerKey(key, (O&)join);                    
+				for (typename HashTable<I,K,innerKey>::Entry* entry = rdd.hashTable.get(key); 
+					 entry != NULL; 
+					 entry = entry->collision) 
+				{
+					if (entry->equalsKey(key)) {							
+						(I&)join = entry->record;
+						reactors[node]->react(join);
+						nMatches += 1;
+					}
+				}
+				if (nMatches == 0 && rdd.kind == OuterJoin){ 
+					(I&)join = rdd.null;
+					reactors[node]->react(join);
 				}
 			}
 		}
