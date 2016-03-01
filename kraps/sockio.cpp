@@ -58,8 +58,10 @@ Socket* Socket::createGlobal(int port, size_t socketBufferSize, size_t listenQue
         throw SocketError("Failed to bind socket");
     }    
 	optval = (int)socketBufferSize;
-	setsockopt(sd, SOL_SOCKET, SO_SNDBUF, (char const*)&optval, sizeof(optval));
-
+	int rc = setsockopt(sd, SOL_SOCKET, SO_SNDBUF, (char const*)&optval, sizeof(optval));
+    if (rc != 0) {
+        throw SocketError("Failed to set sndbuffer");
+    }
     if (listen(sd, listenQueueSize) < 0) {
         throw SocketError("Failed to listen socket");
     }            
