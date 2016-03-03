@@ -138,11 +138,11 @@ class KeyValueMap
 		return size;
 	}
 
-	void add(Pair<K,V> const& pair) {
+	void add(Pair<K,V> const& pair) __attribute__((always_inline)) {
 		Entry* entry;
 		size_t hash = hashCode(pair.key);
 		size_t h = MOD(hash, size);            
-		for (entry = table[h]; entry != NULL && !(entry->pair.key == pair.key); entry = entry->collision);
+		for (entry = table[h]; !(entry == NULL || pair.key == entry->pair.key); entry = entry->collision);
 		if (entry == NULL) { 
 			entry = allocator.alloc();
 			entry->collision = table[h];
