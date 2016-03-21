@@ -45,7 +45,8 @@ inline time_t getCurrentTime()
 template<class T>
 class SparkRDD : public RDD<T>
 {
-    T tile[TILE_SIZE];
+    T data[TILE_SIZE];
+    jlong tile[TILE_SIZE];
     int size;
     int used;
     ThreadLocal<JNIEnv> context;
@@ -65,7 +66,7 @@ class SparkRDD : public RDD<T>
             JNIEnv* env = context.get();
             if (env == NULL) {
                 ctx->jvm->AttachCurrentThread((void**)&env, NULL);
-				context = env;
+                context = env;
             }
             jobject input = env->GetObjectArrayElement(ctx->inputs, inputNo);
             size = env->CallIntMethod(input, nextTile, (jlong)(size_t)tile, TILE_SIZE);
@@ -76,11 +77,11 @@ class SparkRDD : public RDD<T>
             calls += 1;
             #endif
             if (size == 0) {
-                ctx->jvm->DetachCurrentThread();                
+                ctx->jvm->DetachCurrentThread();
                 return false;
             }
         }
-        row = tile[used++];
+        row = *(reinterpret_cast<T*>(tile[used++]));
         return true;
     }
     
@@ -93,8 +94,12 @@ class SparkRDD : public RDD<T>
     {
         jclass rowIteratorClass = (jclass)env->FindClass("kraps/RowIterator");
         nextTile = env->GetMethodID(rowIteratorClass, "nextTile", "(JI)I");
-		assert(nextTile);
-    } 
+        assert(nextTile);
+        
+        for (size_t i = 0; i < TILE_SIZE; i++) {
+            tile[i] = reinterpret_cast<jlong>(data + i);
+        }
+    }
     ~SparkRDD() {
         #ifdef MEASURE_SPARK_TIME
         FILE* log = fopen("SparkRDD.log", "w");
