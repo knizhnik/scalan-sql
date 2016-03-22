@@ -45,7 +45,6 @@ inline time_t getCurrentTime()
 template<class T>
 class SparkRDD : public RDD<T>
 {
-    T data[TILE_SIZE];
     jlong tile[TILE_SIZE];
     int size;
     int used;
@@ -95,10 +94,6 @@ class SparkRDD : public RDD<T>
         jclass rowIteratorClass = (jclass)env->FindClass("kraps/RowIterator");
         nextTile = env->GetMethodID(rowIteratorClass, "nextTile", "(JI)I");
         assert(nextTile);
-        
-        for (size_t i = 0; i < TILE_SIZE; i++) {
-            tile[i] = reinterpret_cast<jlong>(data + i);
-        }
     }
     ~SparkRDD() {
         #ifdef MEASURE_SPARK_TIME
