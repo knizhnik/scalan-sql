@@ -45,6 +45,7 @@ inline time_t getCurrentTime()
 template<class T>
 class SparkRDD : public RDD<T>
 {
+    jobjectArray objectArray;
     jlong tile[TILE_SIZE];
     int size;
     int used;
@@ -61,14 +62,14 @@ class SparkRDD : public RDD<T>
             #ifdef MEASURE_SPARK_TIME
             time_t start = getCurrentTime();
             #endif
-            JavaContext* ctx = (JavaContext*)Cluster::instance->userData;
             JNIEnv* env = context.get();
+            JavaContext* ctx = (JavaContext*)Cluster::instance->userData;
             if (env == NULL) {
                 ctx->jvm->AttachCurrentThread((void**)&env, NULL);
                 context = env;
             }
             jobject input = env->GetObjectArrayElement(ctx->inputs, inputNo);
-            size = env->CallIntMethod(input, nextTile, (jlong)(size_t)tile, TILE_SIZE);
+            size = env->CallIntMethod(input, nextTile, objectArray, (jlong)(size_t)tile, TILE_SIZE);
             used = 0;
             env->DeleteLocalRef(input);
             #ifdef MEASURE_SPARK_TIME
@@ -92,8 +93,12 @@ class SparkRDD : public RDD<T>
     SparkRDD(JNIEnv* env, jint no) : size(0), used(0), inputNo(no), elapsed(0), calls(0)
     {
         jclass rowIteratorClass = (jclass)env->FindClass("kraps/RowIterator");
-        nextTile = env->GetMethodID(rowIteratorClass, "nextTile", "(JI)I");
+        nextTile = env->GetMethodID(rowIteratorClass, "nextTile", "([Ljava/lang/Object;JI)I");
         assert(nextTile);
+
+        jclass objectCls = (jclass)env->FindClass("java/lang/Object");
+        objectArray = env->NewObjectArray(TILE_SIZE, objectCls, NULL);
+        assert(NULL != objectArray);
     }
     ~SparkRDD() {
         #ifdef MEASURE_SPARK_TIME
