@@ -93,6 +93,7 @@ class SparkRDD : public RDD<T>
     SparkRDD(JNIEnv* env, jint no) : size(0), used(0), inputNo(no), elapsed(0), calls(0)
     {
         jclass rowIteratorClass = (jclass)env->FindClass("kraps/RowIterator");
+        assert(rowIteratorClass);
         nextTile = env->GetMethodID(rowIteratorClass, "nextTile", "([Ljava/lang/Object;JI)I");
         assert(nextTile);
 
