@@ -4,6 +4,13 @@
 #include "sys/time.h"
 
 /**
+ * Returns a pointer to string from base address and offset
+ */
+inline char const* getStr(void const*base, uint32_t offs) {
+    return (static_cast<char const*>(base) + offs);
+}
+
+/**
  * Interface for accessing result of Kraps query exectiion from Spark
  */
 class KrapsIterator
@@ -101,6 +108,7 @@ class SparkRDD : public RDD<T>
         objectArray = env->NewObjectArray(TILE_SIZE, objectCls, NULL);
         assert(NULL != objectArray);
     }
+    
     ~SparkRDD() {
         #ifdef MEASURE_SPARK_TIME
         FILE* log = fopen("SparkRDD.log", "w");
