@@ -8,6 +8,7 @@
 #include "cluster.h"
 #include "pack.h"
 #include "hash.h"
+#include "flint_debug.h"
 
 #ifndef PARALLEL_INNER_OUTER_TABLES_LOAD
 #define PARALLEL_INNER_OUTER_TABLES_LOAD 1
@@ -320,6 +321,8 @@ public:
             buffers[i]->size = 0;
         }
 
+        print_debug("\t-> ScatterJob(%u)", queue->qid);
+
         while (input->next(record)) { 
             dist_key(key, record);
             size_t hash = hashCode(key);
@@ -355,6 +358,9 @@ public:
                 cluster->send(node, queue, buffers[node]);
             }                
         }
+
+        print_debug("\t-> ScatterJob(%u) finished", queue->qid);
+
         delete[] buffers;
     }
 private:
@@ -380,6 +386,7 @@ public:
             switch (buf->kind) { 
             case MSG_EOF:
                 if (--nWorkers == 0) { 
+                    print_debug("\t-> GatherRDD(%u) finished.", queue->qid);
                     return false;
                 }                
                 continue;
@@ -398,11 +405,14 @@ public:
         return true;
     }
 
-    GatherRDD(Queue* q) : buf(NULL), used(0), size(0), queue(q), nWorkers(Cluster::instance->nNodes) {}
+    GatherRDD(Queue* q) : buf(NULL), used(0), size(0), queue(q), nWorkers(Cluster::instance->nNodes) {
+        print_debug("\t-> GatherRDD(%u)", queue->qid);
+    }
     ~GatherRDD() { 
         if (buf != NULL) { 
             buf->release(); 
         }
+        print_debug("\t-> GatherRDD(%u) deleted", queue->qid);
     }
 private:
     Buffer* buf;
@@ -455,6 +465,8 @@ public:
         size_t size = 0;
         size_t sent = 0;
 
+        print_debug("\t-> BroadcastJob(%u) started", queue->qid);
+
         while (input->next(record)) { 
             if (size + sizeof(T) > bufferSize) {
                 sent += size;
@@ -489,6 +501,7 @@ public:
             }
             cluster->send(node, queue, Buffer::eof(queue->qid));
         }
+        print_debug("\t-> BroadcastJob(%u) finished", queue->qid);
     }
 private:
     RDD<T>* const input;
@@ -645,7 +658,9 @@ template<class T, bool (*predicate)(T const&)>
 class FilterRDD : public RDD<T>
 {
   public:
-    FilterRDD(RDD<T>* input) : in(input) {}
+    FilterRDD(RDD<T>* input) : in(input) {
+        print_debug("\t-> FilterRDD() \n");
+    }
 
     bool next(T& record) {
         while (in->next(record)) { 
@@ -656,7 +671,10 @@ class FilterRDD : public RDD<T>
         return false;
     }
 
-    ~FilterRDD() { delete in; }
+    ~FilterRDD() {
+        delete in;
+        print_debug("\t-> FilterRDD() deleted");
+    }
 
   private:
     RDD<T>* const in;
@@ -670,6 +688,7 @@ class ReduceRDD : public RDD<S>
 {    
   public:
     ReduceRDD(RDD<T>* input, S const& initState) : state(initState), first(true) {
+        print_debug("\t-> ReduceRDD() created");
         aggregate(input);
     }
     bool next(S& record) {
@@ -679,6 +698,10 @@ class ReduceRDD : public RDD<S>
             return true;
         }
         return false;
+    }
+
+    ~ReduceRDD() {
+        print_debug("\t-> ReduceRDD() finished");
     }
 
   private:
@@ -700,6 +723,7 @@ class ReduceRDD : public RDD<S>
             sendToCoordinator<S>(this, queue);            
         }
         delete input;
+        print_debug("\t-> ReduceRDD() aggregated");
     }
     
     S state;
@@ -714,6 +738,7 @@ class MapReduceRDD : public RDD< Pair<K,V> >
 {    
   public:
     MapReduceRDD(RDD<T>* input, size_t estimation) : size(hashTableSize(estimation)), table(new Entry*[size]) {
+        print_debug("\t-> MapReduceRDD() \n");
         loadHash(input);
     }
 
@@ -833,7 +858,9 @@ template<class T, class P, void project(P& out, T const& in)>
 class ProjectRDD : public RDD<P>
 {
   public:
-    ProjectRDD(RDD<T>* input) : in(input) {}
+    ProjectRDD(RDD<T>* input) : in(input) {
+        print_debug("\t-> ProjectRDD()");
+    }
 
     bool next(P& projection) { 
         T record;
@@ -844,7 +871,10 @@ class ProjectRDD : public RDD<P>
         return false;
     }
 
-    ~ProjectRDD() { delete in; }
+    ~ProjectRDD() {
+        delete in;
+        print_debug("\t-> ProjectRDD() deleted");
+    }
 
   private:
     RDD<T>* const in;
@@ -858,6 +888,7 @@ class SortRDD : public RDD<T>
 {
   public:
     SortRDD(RDD<T>* input, size_t estimation) {
+        print_debug("\t-> SortRDD() \n");
         loadArray(input, estimation);
     }
 
@@ -994,6 +1025,7 @@ public:
     : kind(joinKind), table(NULL), size(hashTableSize(estimation)), innerSize(0), entry(NULL), inner(innerRDD), outer(outerRDD), scatter(NULL), innerIsShuffled(false) 
     {
         assert(kind != AntiJoin);
+        print_debug("\t-> HashJoinRDD() created \n");
 
         Cluster* cluster = Cluster::instance.get();
 #ifdef USE_MESSAGE_HANDLER
@@ -1030,10 +1062,13 @@ public:
 #if !PARALLEL_INNER_OUTER_TABLES_LOAD
             loadOuterTable(replicateInner);
 #endif
+            print_debug("\t-> HashJoinRDD() table is built \n");
         }
+        
         if (entry == NULL) { 
             do { 
                 if (!outer->next(outerRec)) { 
+                    print_debug("\t-> HashJoinRDD() finished \n");
                     entry = NULL;
                     return false;
                 }
@@ -1103,6 +1138,7 @@ protected:
     {
         Entry *entry, *next;
         size_t newSize = hashTableSize(size+1);
+        print_debug("\t-> HashJoinRDD() extend hash table %lu\n", newSize);
         Entry** newTable = new Entry*[newSize];
         memset(newTable, 0, newSize*sizeof(Entry*));
         for (size_t i = 0; i < size; i++) { 
