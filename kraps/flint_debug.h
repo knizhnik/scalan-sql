@@ -41,7 +41,7 @@ inline void force_print_debug(const char *fmt, ...)
     vsprintf(msg, fmt, args);
     va_end(args);
 
-    printf("[%lu] %s (%0.3f)\n", cluster->nodeId, msg, TOC(app_start_time)/1000.0);
+    printf("[%8.3f] [%lu] %s\n", TOC(app_start_time)/1000.0, cluster->nodeId, msg);
     fflush(stdout);
 }
 

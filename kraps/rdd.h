@@ -659,7 +659,7 @@ class FilterRDD : public RDD<T>
 {
   public:
     FilterRDD(RDD<T>* input) : in(input) {
-        print_debug("\t-> FilterRDD() \n");
+        print_debug("\t-> FilterRDD()");
     }
 
     bool next(T& record) {
@@ -735,10 +735,10 @@ class ReduceRDD : public RDD<S>
  */
 template<class T,class K,class V,void (*map)(Pair<K,V>& out, T const& in), void (*reduce)(V& dst, V const& src)>
 class MapReduceRDD : public RDD< Pair<K,V> > 
-{    
+{
   public:
     MapReduceRDD(RDD<T>* input, size_t estimation) : size(hashTableSize(estimation)), table(new Entry*[size]) {
-        print_debug("\t-> MapReduceRDD() \n");
+        print_debug("\t-> MapReduceRDD()");
         loadHash(input);
     }
 
@@ -888,7 +888,7 @@ class SortRDD : public RDD<T>
 {
   public:
     SortRDD(RDD<T>* input, size_t estimation) {
-        print_debug("\t-> SortRDD() \n");
+        print_debug("\t-> SortRDD()");
         loadArray(input, estimation);
     }
 
@@ -1022,10 +1022,10 @@ class HashJoinRDD : public RDD< Join<O,I> >, MessageHandler
 {
 public:
     HashJoinRDD(RDD<O>* outerRDD, RDD<I>* innerRDD, size_t estimation, JoinKind joinKind) 
-    : kind(joinKind), table(NULL), size(hashTableSize(estimation)), innerSize(0), entry(NULL), inner(innerRDD), outer(outerRDD), scatter(NULL), innerIsShuffled(false) 
+    : kind(joinKind), table(NULL), size(hashTableSize(estimation)), innerSize(0), entry(NULL), inner(innerRDD), outer(outerRDD), scatter(NULL), innerIsShuffled(false)
     {
         assert(kind != AntiJoin);
-        print_debug("\t-> HashJoinRDD() created \n");
+        print_debug("\t-> HashJoinRDD() created");
 
         Cluster* cluster = Cluster::instance.get();
 #ifdef USE_MESSAGE_HANDLER
@@ -1062,13 +1062,13 @@ public:
 #if !PARALLEL_INNER_OUTER_TABLES_LOAD
             loadOuterTable(replicateInner);
 #endif
-            print_debug("\t-> HashJoinRDD() table is built \n");
+            print_debug("\t-> HashJoinRDD() table is built");
         }
-        
-        if (entry == NULL) { 
-            do { 
-                if (!outer->next(outerRec)) { 
-                    print_debug("\t-> HashJoinRDD() finished \n");
+
+        if (entry == NULL) {
+            do {
+                if (!outer->next(outerRec)) {
+                    print_debug("\t-> HashJoinRDD() finished");
                     entry = NULL;
                     return false;
                 }
@@ -1138,10 +1138,10 @@ protected:
     {
         Entry *entry, *next;
         size_t newSize = hashTableSize(size+1);
-        print_debug("\t-> HashJoinRDD() extend hash table %lu\n", newSize);
+        print_debug("\t-> HashJoinRDD() extend hash table %lu", newSize);
         Entry** newTable = new Entry*[newSize];
         memset(newTable, 0, newSize*sizeof(Entry*));
-        for (size_t i = 0; i < size; i++) { 
+        for (size_t i = 0; i < size; i++) {
             for (entry = table[i]; entry != NULL; entry = next) {
                 K key;
                 innerKey(key, entry->record);
