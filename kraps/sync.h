@@ -152,7 +152,7 @@ class ThreadPool
 {
   public:
     size_t getDefaultConcurrency() {
-        return threads.size();
+        return threads.size()/2;
     }
 
     ThreadPool(size_t nThreads) : threads(nThreads), shutdown(false), idle(true), scheduler(NULL), nActiveJobs(0), nIdleThreads(0) {

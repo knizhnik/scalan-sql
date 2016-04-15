@@ -784,29 +784,32 @@ template<class T,class K,class V,void (*map)(Pair<K,V>& out, T const& in), void 
 class ContinuousMapReduceRDD : public RDD< Pair<K,V> > 
 {    
   public:
-    ContinuousMapReduceRDD(Rdd* input, size_t estimation) : initSize(estimation), hashMap(estimation), in(input), consumerScheduled(false), nActiveReactors(0) {}
+    ContinuousMapReduceRDD(Rdd* input, size_t estimation) : initSize(estimation), hashMap(estimation), in(input), nActiveReactors(0) 
+	{
+		Cluster* cluster = Cluster::instance.get();
+		StagedScheduler scheduler(cluster->verbose);
+		RddReactorFactory<ContinuousMapReduceRDD,MapReduceReactor> reducer(*this);
+		in->schedule(scheduler, 0, reducer);
+		cluster->threadPool.run(scheduler);	
+	}
 	~ContinuousMapReduceRDD() { in->release(); }
 			
+	void release() {}
+
     template<class R>
     stage_t schedule(Scheduler& scheduler, stage_t stage, ReactorFactory<R>& factory) 
 	{
-		if (!consumerScheduled) { 
-			RddReactorFactory<ContinuousMapReduceRDD,MapReduceReactor> reducer(*this);
-			stage = in->schedule(scheduler, stage, reducer);
-			consumerScheduled = true;
-		} else { 
-			Cluster* cluster = Cluster::instance.get();
-			Channel* channel = cluster->getChannel(new MapReduceProcessor(*this));
-			if (cluster->isCoordinator()) {
-				channel->gather(++stage, scheduler);		
-				stage += 1;
-				size_t nPartitions = scheduler.getDefaultConcurrency();
-				for (size_t i = 0; i < nPartitions; i++) { 				
-					scheduler.schedule(stage, hashMap.iterate(factory.getReactor(), i, nPartitions));
-				}
-			} else { 
-				scheduler.schedule(++stage, hashMap.iterate(new Sender< Pair<K,V> >(channel, factory.getReactor())));
+		Cluster* cluster = Cluster::instance.get();
+		Channel* channel = cluster->getChannel(new MapReduceProcessor(*this));
+		if (cluster->isCoordinator()) {
+			channel->gather(++stage, scheduler);		
+			stage += 1;
+			size_t nPartitions = scheduler.getDefaultConcurrency();
+			for (size_t i = 0; i < nPartitions; i++) { 				
+				scheduler.schedule(stage, hashMap.iterate(factory.getReactor(), i, nPartitions));
 			}
+		} else { 
+			scheduler.schedule(++stage, hashMap.iterate(new Sender< Pair<K,V> >(channel, factory.getReactor())));
 		}
 		return stage;
 	}
@@ -868,7 +871,6 @@ class ContinuousMapReduceRDD : public RDD< Pair<K,V> >
 	size_t const initSize;
     ConcurrentKeyValueMap<K,V,reduce> hashMap;	
 	Rdd* const in;
-	bool consumerScheduled;
 	Semaphore semaphore;
 	size_t nActiveReactors;
 };
