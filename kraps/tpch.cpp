@@ -279,6 +279,63 @@ namespace Q1
               (mapReduce<Lineitem,GroupBy,Aggregate,map,reduce>
                (filter<Lineitem,predicate>(TABLE(Lineitem)), 10000)), 100));
     }
+
+    struct LineitemProjection 
+    {
+        date_t l_shipdate;
+        double l_extendedprice;
+        double l_discount;
+        double l_quantity;
+        double l_tax;
+		char   l_returnflag;
+		char   l_linestatus;
+    };
+
+    inline void projectLineitem(LineitemProjection& out, Lineitem const& in)
+    {
+        out.l_extendedprice = in.l_extendedprice();
+        out.l_discount = in.l_discount();
+        out.l_tax = in.l_tax();
+		out.l_quantity = in.l_quantity();
+		out.l_shipdate = in.l_shipdate();
+		out.l_returnflag = in.l_returnflag();
+		out.l_linestatus = in.l_linestatus();
+    }
+
+    inline bool predicate(LineitemProjection const& lineitem) 
+    {
+        return lineitem.l_shipdate <= 19981201;
+    }
+
+    inline void map(Pair<GroupBy,Aggregate>& pair, LineitemProjection const& lineitem)
+    {
+        pair.key.l_returnflag = lineitem.l_returnflag;
+        pair.key.l_linestatus = lineitem.l_linestatus;
+        pair.value.sum_qty = lineitem.l_quantity;
+        pair.value.sum_base_price = lineitem.l_extendedprice;
+        pair.value.sum_disc_price = lineitem.l_extendedprice*(1-lineitem.l_discount);
+        pair.value.sum_charge = lineitem.l_extendedprice*(1-lineitem.l_discount)*(1+lineitem.l_tax);
+        pair.value.sum_disc = lineitem.l_discount;
+        pair.value.count_order = 1;
+    }
+
+    auto streamConsumer() 
+    { 
+        return
+              (continuousMapReduce<LineitemProjection,GroupBy,Aggregate,map,reduce>
+               (filter<LineitemProjection,predicate>
+				(project<Lineitem,LineitemProjection,projectLineitem>
+				 (new DirRDD<Lineitem>(filePath("Lineitem")))), 10000));
+    }
+
+	template<class Rdd>
+    auto continuousView(Rdd* stream) 
+    { 
+        return
+            (sort<Projection,compare>
+             (project<Pair<GroupBy,Aggregate>,Projection, projection>
+			  (stream), 100));
+	}
 }
 namespace Q3
 {
@@ -1748,6 +1805,22 @@ void execute(char const* name, Rdd* (*query)())
     fflush(stdout);
 }
 
+template<class I, class O>
+void continuousExecute(char const* name, I* in, O* (*query)(I*)) 
+{
+    time_t start = getCurrentTime();
+    O* result = query(in);
+	output<typeof(result),O>(result, stdout);
+
+    if (Cluster::instance->nodeId == 0) {
+        FILE* results = fopen("results.csv", "a");
+        fprintf(results, "%s,%d\n", name, (int)(getCurrentTime() - start));
+        fclose(results);
+    }
+    printf("Elapsed time for %s: %d milliseconds\n", name, (int)(getCurrentTime() - start));
+    fflush(stdout);
+}
+
 class TPCHJob : public Job
 {
     Cluster cluster;
@@ -1762,8 +1835,17 @@ class TPCHJob : public Job
         Cluster::instance.set(&cluster);
         printf("Node %d started...\n", (int)cluster.nodeId);
 
-        time_t start = getCurrentTime();
+#ifdef STREAM_DB
+		auto stream = Q1::streamConsumer();
+		do {
+			auto result = Q1::continuousView(stream);
+			append(result, stdout);
+		} while (!stream->exhausted());
 
+		delete stream;
+#else
+		
+        time_t start = getCurrentTime();
 
 #ifdef COLUMNAR_STORE
         cluster.userData = (void*)new ColumnarStore();
@@ -1789,6 +1871,7 @@ class TPCHJob : public Job
        delete (ColumnarStore*)cluster.userData;
 #else
        delete (CachedData*)cluster.userData;
+#endif
 #endif
         printf("Node %d finished.\n", (int)cluster.nodeId);
     }

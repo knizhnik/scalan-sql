@@ -778,6 +778,102 @@ class MapReduceRDD : public RDD< Pair<K,V> >
 };
 
 /**
+ * Continuous Map-Reduce
+ */
+template<class T,class K,class V,void (*map)(Pair<K,V>& out, T const& in), void (*reduce)(V& dst, V const& src), class Rdd >
+class ContinuousMapReduceRDD : public RDD< Pair<K,V> > 
+{    
+  public:
+    ContinuousMapReduceRDD(Rdd* input, size_t estimation) : initSize(estimation), hashMap(estimation), in(input), consumerScheduled(false), nActiveReactors(0) {}
+	~ContinuousMapReduceRDD() { in->release(); }
+			
+    template<class R>
+    stage_t schedule(Scheduler& scheduler, stage_t stage, ReactorFactory<R>& factory) 
+	{
+		if (!consumerScheduled) { 
+			RddReactorFactory<ContinuousMapReduceRDD,MapReduceReactor> reducer(*this);
+			stage = in->schedule(scheduler, stage, reducer);
+			consumerScheduled = true;
+		} else { 
+			Cluster* cluster = Cluster::instance.get();
+			Channel* channel = cluster->getChannel(new MapReduceProcessor(*this));
+			if (cluster->isCoordinator()) {
+				channel->gather(++stage, scheduler);		
+				stage += 1;
+				size_t nPartitions = scheduler.getDefaultConcurrency();
+				for (size_t i = 0; i < nPartitions; i++) { 				
+					scheduler.schedule(stage, hashMap.iterate(factory.getReactor(), i, nPartitions));
+				}
+			} else { 
+				scheduler.schedule(++stage, hashMap.iterate(new Sender< Pair<K,V> >(channel, factory.getReactor())));
+			}
+		}
+		return stage;
+	}
+	
+	void addReactor() {
+		nActiveReactors += 1;
+	}
+
+	void delReactor() { 
+		__sync_add_and_fetch(&nActiveReactors, -1);
+	}
+
+	bool exhausted() { 
+		return nActiveReactors == 0;
+	}
+		
+  private:
+    class MapReduceReactor : public Reactor<T> {
+		ContinuousMapReduceRDD& rdd;
+
+	  public:
+		MapReduceReactor(ContinuousMapReduceRDD& owner) : rdd(owner)
+		{
+			rdd.addReactor();
+		}
+
+        void react(T const& record) {
+			Pair<K,V> pair;
+            map(pair, record);
+			rdd.hashMap.add(pair);
+        }
+
+		~MapReduceReactor() { 
+			rdd.delReactor();
+		}
+    };
+
+	class MapReduceProcessor : public ChannelProcessor { 
+	public:
+		void process(Buffer* buf, size_t node) { 
+			CriticalSection cs(rdd.mutex);
+			char* src = buf->data;
+			char* end = src + buf->size;
+			Pair<K,V> pair;
+			
+			while (src < end) { 
+				src += unpack(pair, src);
+				rdd.hashMap.add(pair);
+			}
+		}
+
+		MapReduceProcessor(ContinuousMapReduceRDD& owner) : rdd(owner) {}
+
+	private:
+		ContinuousMapReduceRDD& rdd;
+	};	
+
+  private:
+	size_t const initSize;
+    ConcurrentKeyValueMap<K,V,reduce> hashMap;	
+	Rdd* const in;
+	bool consumerScheduled;
+	Semaphore semaphore;
+	size_t nActiveReactors;
+};
+
+/**
  * Project (map) RDD records
  */
 template<class T, class P, void project(P& out, T const& in), class Rdd>
@@ -1362,6 +1458,16 @@ inline auto mapReduce(Rdd* in, size_t estimation = UNKNOWN_ESTIMATION) {
 }
 
 /**
+ * Perfrom continuous map-reduce
+ * @param estimation esimation for number of pairs
+ * @return RDD with &lt;key,value&gt; pairs
+ */
+template<class T,class K,class V,void (*map_f)(Pair<K,V>& out, T const& in), void (*reduce_f)(V& dst, V const& src), class Rdd>
+inline auto continuousMapReduce(Rdd* in, size_t estimation = UNKNOWN_ESTIMATION) {
+    return new ContinuousMapReduceRDD<T,K,V,map_f,reduce_f,Rdd>(in, estimation);
+}
+
+/**
  * Map records of input RDD
  * @return projection of the input RDD. 
  */
@@ -1457,6 +1563,12 @@ inline void output(Rdd* in, FILE* out)
 	cluster->reset();
 }
 
+template<class Rdd>
+inline void append(Rdd* rdd, FILE* out)
+{
+	fputs("---------------------------------------------------\n", out);
+	output<typeof(rdd), Rdd>(rdd, out);
+}
 
 #endif
 
