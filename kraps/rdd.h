@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <assert.h>
 #include "cluster.h"
 #include "pack.h"
@@ -539,8 +540,13 @@ class DirRDD : public RDD<T>
                 int rc = fseek(f, nRecords*(segno%split)*sizeof(T), SEEK_SET);
                 assert(rc == 0);
 
+				int i = 0, n = nRecords/10;
                 while (nRecords-- != 0 && fread(&record, sizeof(T), 1, f) == 1) {
                     reactor->react(record);
+					if (++i == n) { 
+						sleep(1);
+						i = 0;
+					}
                 }
                 fclose(f);
                 segno += step;
@@ -784,15 +790,16 @@ template<class T,class K,class V,void (*map)(Pair<K,V>& out, T const& in), void 
 class ContinuousMapReduceRDD : public RDD< Pair<K,V> > 
 {    
   public:
-    ContinuousMapReduceRDD(Rdd* input, size_t estimation) : initSize(estimation), hashMap(estimation), in(input), nActiveReactors(0) 
+    ContinuousMapReduceRDD(Rdd* input, size_t estimation) : initSize(estimation), hashMap(estimation), in(input), nActiveReactors(0), scheduler(Cluster::instance->verbose)
 	{
-		Cluster* cluster = Cluster::instance.get();
-		StagedScheduler scheduler(cluster->verbose);
 		RddReactorFactory<ContinuousMapReduceRDD,MapReduceReactor> reducer(*this);
 		in->schedule(scheduler, 0, reducer);
-		cluster->threadPool.run(scheduler);	
+		Cluster::instance->streamingThreadPool.start(scheduler);	
 	}
-	~ContinuousMapReduceRDD() { in->release(); }
+	~ContinuousMapReduceRDD() { 
+		in->release(); 
+		Cluster::instance->streamingThreadPool.wait();
+	}
 			
 	void release() {}
 
@@ -873,6 +880,7 @@ class ContinuousMapReduceRDD : public RDD< Pair<K,V> >
 	Rdd* const in;
 	Semaphore semaphore;
 	size_t nActiveReactors;
+	StagedScheduler scheduler;
 };
 
 /**
@@ -1570,6 +1578,7 @@ inline void append(Rdd* rdd, FILE* out)
 {
 	fputs("---------------------------------------------------\n", out);
 	output<typeof(rdd), Rdd>(rdd, out);
+	sleep(1);
 }
 
 #endif

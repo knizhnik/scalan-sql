@@ -152,7 +152,7 @@ class ThreadPool
 {
   public:
     size_t getDefaultConcurrency() {
-        return threads.size()/2;
+        return threads.size();
     }
 
     ThreadPool(size_t nThreads) : threads(nThreads), shutdown(false), idle(true), scheduler(NULL), nActiveJobs(0), nIdleThreads(0) {
@@ -211,17 +211,27 @@ class ThreadPool
         delete job;
     }
     
-    void run(Scheduler& sched) {
+    void start(Scheduler& sched) {
         CriticalSection cs(mutex);
         assert(!shutdown);
         scheduler = &sched;
 		idle = false;
         go.broadcast();
+	}
+
+	void wait()
+	{
+		CriticalSection cs(mutex);
         while (!idle || nIdleThreads != threads.size()) {
             done.wait(mutex);
         }
 		assert(nActiveJobs == 0);
         scheduler = NULL;
+	}	
+	
+    void run(Scheduler& sched) {
+		start(sched);
+		wait();
     }
   private:
     class PoolJob : public Job {

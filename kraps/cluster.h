@@ -257,6 +257,7 @@ class Cluster
     bool shutdown;
     void* userData;
     ThreadPool threadPool;
+    ThreadPool streamingThreadPool;
 
     static ThreadLocal<Cluster> instance;
 
