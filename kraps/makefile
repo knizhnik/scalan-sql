@@ -14,7 +14,7 @@ SPARK_HOME=~/spark
 JAVA_HOME?=/Library/Java/JavaVirtualMachines/jdk1.8.0_60.jdk/Contents/Home
 
 COMMON_FLAGS=-std=c++1y -g -pthread -fPIC -Wall 
-OPT_FLAGS=-O0
+OPT_FLAGS=-O3
 DEFS=-DSTREAM_DB
 #DEFS=-DSHOW_HASH_STATISTIC -DCOLUMNAR_STORE
 #DEFS=-DSHOW_HASH_STATISTIC -I ~/.nix-profile/include -DUSE_ZLIB -DCOLUMNAR_STORE

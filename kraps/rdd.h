@@ -540,13 +540,8 @@ class DirRDD : public RDD<T>
                 int rc = fseek(f, nRecords*(segno%split)*sizeof(T), SEEK_SET);
                 assert(rc == 0);
 
-				int i = 0, n = nRecords/10;
                 while (nRecords-- != 0 && fread(&record, sizeof(T), 1, f) == 1) {
                     reactor->react(record);
-					if (++i == n) { 
-						sleep(1);
-						i = 0;
-					}
                 }
                 fclose(f);
                 segno += step;
@@ -790,7 +785,7 @@ template<class T,class K,class V,void (*map)(Pair<K,V>& out, T const& in), void 
 class ContinuousMapReduceRDD : public RDD< Pair<K,V> > 
 {    
   public:
-    ContinuousMapReduceRDD(Rdd* input, size_t estimation) : initSize(estimation), hashMap(estimation), in(input), nActiveReactors(0), scheduler(Cluster::instance->verbose)
+    ContinuousMapReduceRDD(Rdd* input, size_t estimation) : initSize(estimation), hashMap(estimation), finalHashMap(NULL), in(input), nActiveReactors(0), scheduler(Cluster::instance->verbose)
 	{
 		RddReactorFactory<ContinuousMapReduceRDD,MapReduceReactor> reducer(*this);
 		in->schedule(scheduler, 0, reducer);
@@ -798,6 +793,7 @@ class ContinuousMapReduceRDD : public RDD< Pair<K,V> >
 	}
 	~ContinuousMapReduceRDD() { 
 		in->release(); 
+        delete finalHashMap;
 		Cluster::instance->streamingThreadPool.wait();
 	}
 			
@@ -809,11 +805,13 @@ class ContinuousMapReduceRDD : public RDD< Pair<K,V> >
 		Cluster* cluster = Cluster::instance.get();
 		Channel* channel = cluster->getChannel(new MapReduceProcessor(*this));
 		if (cluster->isCoordinator()) {
+            delete finalHashMap;
+            finalHashMap = NULL;
 			channel->gather(++stage, scheduler);		
 			stage += 1;
 			size_t nPartitions = scheduler.getDefaultConcurrency();
 			for (size_t i = 0; i < nPartitions; i++) { 				
-				scheduler.schedule(stage, hashMap.iterate(factory.getReactor(), i, nPartitions));
+				scheduler.schedule(stage, finalHashMap->iterate(factory.getReactor(), i, nPartitions));
 			}
 		} else { 
 			scheduler.schedule(++stage, hashMap.iterate(new Sender< Pair<K,V> >(channel, factory.getReactor())));
@@ -857,14 +855,24 @@ class ContinuousMapReduceRDD : public RDD< Pair<K,V> >
 	class MapReduceProcessor : public ChannelProcessor { 
 	public:
 		void process(Buffer* buf, size_t node) { 
-			CriticalSection cs(rdd.mutex);
+            bool initializeFinalMap = false; 
+            {
+                CriticalSection cs(rdd.mutex);
+                if (rdd.finalHashMap == NULL) {
+                    rdd.finalHashMap = new ConcurrentKeyValueMap<K,V,reduce>(rdd.initSize);
+                    initializeFinalMap = true;
+                }
+            }
+            if (initializeFinalMap) {
+                rdd.finalHashMap->copy(rdd.hashMap);
+            }
 			char* src = buf->data;
 			char* end = src + buf->size;
 			Pair<K,V> pair;
 			
 			while (src < end) { 
 				src += unpack(pair, src);
-				rdd.hashMap.add(pair);
+				rdd.finalHashMap->add(pair);
 			}
 		}
 
@@ -877,6 +885,7 @@ class ContinuousMapReduceRDD : public RDD< Pair<K,V> >
   private:
 	size_t const initSize;
     ConcurrentKeyValueMap<K,V,reduce> hashMap;	
+    ConcurrentKeyValueMap<K,V,reduce>* finalHashMap;	
 	Rdd* const in;
 	Semaphore semaphore;
 	size_t nActiveReactors;
@@ -1566,7 +1575,7 @@ inline void output(Rdd* in, FILE* out)
 	OutputReactorFactory<T,Rdd> factory(*in, out);
 	StagedScheduler scheduler(cluster->verbose);
 	in->schedule(scheduler, 0, factory);
-	cluster->barrier();
+	//cluster->barrier();
 	cluster->threadPool.run(scheduler);	
 	in->release();
 	cluster->barrier();
@@ -1576,9 +1585,9 @@ inline void output(Rdd* in, FILE* out)
 template<class Rdd>
 inline void append(Rdd* rdd, FILE* out)
 {
-	fputs("---------------------------------------------------\n", out);
+    time_t start = getCurrentTime();
 	output<typeof(rdd), Rdd>(rdd, out);
-	sleep(1);
+    printf("Elapsed time: %d milliseconds\n", (int)(getCurrentTime() - start));
 }
 
 #endif

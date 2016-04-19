@@ -1837,10 +1837,12 @@ class TPCHJob : public Job
 
 #ifdef STREAM_DB
 		auto stream = Q1::streamConsumer();
+        bool exhausted;
 		do {
+            exhausted = stream->exhausted();
 			auto result = Q1::continuousView(stream);
 			append(result, stdout);
-		} while (!stream->exhausted());
+		} while (!exhausted);
 
 		delete stream;
 #else

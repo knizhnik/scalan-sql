@@ -227,7 +227,16 @@ class ConcurrentKeyValueMap
 	Job* iterate(R* reactor, size_t from = 0, size_t step = 1) { 
 		return new IterateJob<R>(*this, reactor, from, step);
 	}
-	
+
+    void copy(ConcurrentKeyValueMap const& other) {
+        assert(size == other.size);
+        for (size_t i = 0; i < size; i++) { 
+            for (Entry* entry = other.table[i]; entry != NULL; entry = entry->collision) {
+                add(entry->pair);
+            }
+        }
+    }
+    
 	ConcurrentKeyValueMap(size_t estimation) { 
 		used = 0;
 		size = hashTableSize(estimation);
