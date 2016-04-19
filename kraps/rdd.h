@@ -806,7 +806,8 @@ class ContinuousMapReduceRDD : public RDD< Pair<K,V> >
 		Channel* channel = cluster->getChannel(new MapReduceProcessor(*this));
 		if (cluster->isCoordinator()) {
             delete finalHashMap;
-            finalHashMap = NULL;
+			finalHashMap = new ConcurrentKeyValueMap<K,V,reduce>(initSize);
+            scheduler.schedule(++stage, new CopyHashJob(*this));
 			channel->gather(++stage, scheduler);		
 			stage += 1;
 			size_t nPartitions = scheduler.getDefaultConcurrency();
@@ -827,11 +828,23 @@ class ContinuousMapReduceRDD : public RDD< Pair<K,V> >
 		__sync_add_and_fetch(&nActiveReactors, -1);
 	}
 
-	bool exhausted() { 
-		return nActiveReactors == 0;
+	bool exhausted() { 		
+		return Cluster::instance->barrier(nActiveReactors == 0);
 	}
 		
   private:
+	class CopyHashJob : public Job {
+		ContinuousMapReduceRDD& rdd;
+
+	  public:
+		CopyHashJob(ContinuousMapReduceRDD& owner) : rdd(owner) {}
+
+		void run() { 
+			rdd.finalHashMap->copy(rdd.hashMap);
+		}
+	};
+			
+	
     class MapReduceReactor : public Reactor<T> {
 		ContinuousMapReduceRDD& rdd;
 
@@ -855,17 +868,6 @@ class ContinuousMapReduceRDD : public RDD< Pair<K,V> >
 	class MapReduceProcessor : public ChannelProcessor { 
 	public:
 		void process(Buffer* buf, size_t node) { 
-            bool initializeFinalMap = false; 
-            {
-                CriticalSection cs(rdd.mutex);
-                if (rdd.finalHashMap == NULL) {
-                    rdd.finalHashMap = new ConcurrentKeyValueMap<K,V,reduce>(rdd.initSize);
-                    initializeFinalMap = true;
-                }
-            }
-            if (initializeFinalMap) {
-                rdd.finalHashMap->copy(rdd.hashMap);
-            }
 			char* src = buf->data;
 			char* end = src + buf->size;
 			Pair<K,V> pair;
@@ -1575,7 +1577,7 @@ inline void output(Rdd* in, FILE* out)
 	OutputReactorFactory<T,Rdd> factory(*in, out);
 	StagedScheduler scheduler(cluster->verbose);
 	in->schedule(scheduler, 0, factory);
-	//cluster->barrier();
+	cluster->barrier();
 	cluster->threadPool.run(scheduler);	
 	in->release();
 	cluster->barrier();

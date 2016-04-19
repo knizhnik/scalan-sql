@@ -223,7 +223,7 @@ class Cluster
 	/**
 	 * Wait untillall nodes of the cluster reach barrier
 	 */
-	void barrier();
+	bool barrier(bool vote = true);
 
 	/**
 	 * Reset set of cluster: clear channels
@@ -253,7 +253,7 @@ class Cluster
     size_t const split;
     bool   const sharedNothing;
 	bool   const verbose;
-
+	bool verdict;
     bool shutdown;
     void* userData;
     ThreadPool threadPool;
@@ -282,7 +282,7 @@ class Cluster
 	/**
 	 * Handle BARRIER message
 	 */
-	void sync();
+	void sync(bool vote);
 
     /**
      * Check if sepcified address corresponds to local node

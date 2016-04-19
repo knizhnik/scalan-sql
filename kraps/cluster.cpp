@@ -50,7 +50,7 @@ class ReceiveJob : public Job
                     break;
 				} else if (buf->kind == MSG_BARRIER) { 
 					delete buf;
-                    cluster->sync();
+                    cluster->sync(buf->cid != 0);
                 } else {
 					if (buf->size != 0) { 
 						cluster->nodes[node].socket->read(buf->data, buf->size);
@@ -101,14 +101,16 @@ Channel* Cluster::getChannel(ChannelProcessor* processor)
 
 }
 
-void Cluster::sync()
+void Cluster::sync(bool vote)
 {
 	semaphore.signal(mutex);
+	verdict &= vote;
 }
 
-void Cluster::barrier()
+bool Cluster::barrier(bool vote)
 {
-	Buffer buf(MSG_BARRIER, 0);
+	Buffer buf(MSG_BARRIER, vote);
+	verdict &= vote;
 	for (size_t i = 0; i < nNodes; i++) { 
 		if (i != nodeId) { 
 			CriticalSection cs(nodes[i].mutex);
@@ -116,6 +118,9 @@ void Cluster::barrier()
 		}
 	}
 	semaphore.wait(mutex, nNodes-1); // wait responses rfom all nodes
+	bool result = verdict;
+	verdict = true; // for next barrier synchronization
+	return result;
 }
 
 void Cluster::reset()
@@ -135,7 +140,7 @@ bool Cluster::isLocalNode(char const* host)
 
     
 Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nThreads, size_t bufSize, size_t socketBufferSize, size_t broadcastThreshold, bool sharedNothingDFS, size_t fileSplit, bool debug) 
-  : nNodes(nHosts), nodeId(selfId), bufferSize(bufSize), broadcastJoinThreshold(broadcastThreshold), split(fileSplit), sharedNothing(sharedNothingDFS), verbose(debug), shutdown(false), userData(NULL), threadPool(nThreads), streamingThreadPool(nThreads), nodes(nNodes) 
+: nNodes(nHosts), nodeId(selfId), bufferSize(bufSize), broadcastJoinThreshold(broadcastThreshold), split(fileSplit), sharedNothing(sharedNothingDFS), verbose(debug), verdict(true), shutdown(false), userData(NULL), threadPool(nThreads), streamingThreadPool(nThreads), nodes(nNodes) 
 {
     instance.set(this);
     this->hosts = hosts;
