@@ -1,4 +1,4 @@
-n_nodes=4
+n_nodes=2
 nodes=""
 pkill -9 tpch
 for ((i=0;i<n_nodes;i++))
@@ -7,6 +7,6 @@ do
 done
 for ((i=0;i<n_nodes;i++))
 do
-    ./tpch -dir /home/knizhnik/tpch-dbgen $i $n_nodes $nodes > node$i.log 2>&1 &
+    ./tpch -dir /home/knizhnik/tpch-dbgen -threads 2  $i $n_nodes $nodes > node$i.log 2>&1 &
 done
 wait

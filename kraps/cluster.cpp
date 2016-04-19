@@ -135,7 +135,7 @@ bool Cluster::isLocalNode(char const* host)
 
     
 Cluster::Cluster(size_t selfId, size_t nHosts, char** hosts, size_t nThreads, size_t bufSize, size_t socketBufferSize, size_t broadcastThreshold, bool sharedNothingDFS, size_t fileSplit, bool debug) 
-: nNodes(nHosts), nodeId(selfId), bufferSize(bufSize), broadcastJoinThreshold(broadcastThreshold), split(fileSplit), sharedNothing(sharedNothingDFS), verbose(debug), shutdown(false), userData(NULL), threadPool(nThreads), nodes(nNodes) 
+  : nNodes(nHosts), nodeId(selfId), bufferSize(bufSize), broadcastJoinThreshold(broadcastThreshold), split(fileSplit), sharedNothing(sharedNothingDFS), verbose(debug), shutdown(false), userData(NULL), threadPool(nThreads), streamingThreadPool(nThreads), nodes(nNodes) 
 {
     instance.set(this);
     this->hosts = hosts;

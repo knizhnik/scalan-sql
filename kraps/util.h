@@ -217,6 +217,90 @@ private:
 	size_t size;
 };
 
+#define HASH_PARTITIONS 64
+
+template<class K, class V, void (*reduce)(V& dst, V const& src)>
+class ConcurrentKeyValueMap
+{
+  public:
+	template<class R> 
+	Job* iterate(R* reactor, size_t from = 0, size_t step = 1) { 
+		return new IterateJob<R>(*this, reactor, from, step);
+	}
+	
+	ConcurrentKeyValueMap(size_t estimation) { 
+		used = 0;
+		size = hashTableSize(estimation);
+		table = new Entry*[size];
+		memset(table, 0, size*sizeof(Entry*));
+	}
+	
+	~ConcurrentKeyValueMap() { 
+		delete[] table;
+		table = NULL;
+	}
+	
+	size_t count() const { 
+		return size;
+	}
+
+	void add(Pair<K,V> const& pair) __attribute__((always_inline)) {
+		Entry* entry;
+		size_t hash = hashCode(pair.key);
+		size_t h = MOD(hash, size);            
+		size_t partition = h % HASH_PARTITIONS;
+		{
+			CriticalSection cs(mutex[partition]);
+			for (entry = table[h]; !(entry == NULL || pair.key == entry->pair.key); entry = entry->collision);
+			if (entry == NULL) { 
+				entry = allocator[partition].alloc();
+				entry->collision = table[h];
+				entry->pair = pair;	
+				__sync_synchronize();
+				table[h] = entry;
+				used += 1; // race condition here is not critical
+			} else { 
+				reduce(entry->pair.value, pair.value);
+				return;
+			}
+		}
+	}
+		
+  private:
+    struct Entry {
+        Pair<K,V> pair;
+        Entry* collision;
+    };
+
+	template<class R>
+	class IterateJob : public Job
+	{
+	  public:
+		IterateJob(ConcurrentKeyValueMap& m, R* r, size_t origin, size_t inc) : map(m), reactor(r), from(origin), step(inc) { }
+		
+		void run() { 
+			for (size_t i = from; i < map.size; i += step) { 
+				for (Entry* entry = map.table[i]; entry != NULL; entry = entry->collision) { 
+					reactor->react(entry->pair);
+				}
+			}
+			delete reactor;
+		}
+	  private:
+		ConcurrentKeyValueMap& map;
+		R* reactor;
+		size_t const from;
+		size_t const step;
+	};
+
+private:
+	Entry** table;
+	size_t used;
+	size_t size;
+    BlockAllocator<Entry> allocator[HASH_PARTITIONS];
+    Mutex mutex[HASH_PARTITIONS];
+};
+
 
 inline time_t getCurrentTime()
 {
@@ -244,7 +328,6 @@ private:
 	size_t const step;
 };
 
-#define HASH_PARTITIONS 64
 
 template<class T, class K, void (*getKey)(K& key, T const& record)>  
 class HashTable

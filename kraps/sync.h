@@ -211,17 +211,27 @@ class ThreadPool
         delete job;
     }
     
-    void run(Scheduler& sched) {
+    void start(Scheduler& sched) {
         CriticalSection cs(mutex);
         assert(!shutdown);
         scheduler = &sched;
 		idle = false;
         go.broadcast();
+	}
+
+	void wait()
+	{
+		CriticalSection cs(mutex);
         while (!idle || nIdleThreads != threads.size()) {
             done.wait(mutex);
         }
 		assert(nActiveJobs == 0);
         scheduler = NULL;
+	}	
+	
+    void run(Scheduler& sched) {
+		start(sched);
+		wait();
     }
   private:
     class PoolJob : public Job {

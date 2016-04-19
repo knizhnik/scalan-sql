@@ -168,7 +168,7 @@ create table lineitem(
    l_dummy char(1));
 
 create table orders(
-    o_orderkey integer,
+    o_orderkey integer primary key,
     o_custkey integer,
     o_orderstatus char,
     o_totalprice real,
