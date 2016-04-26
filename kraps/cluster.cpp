@@ -13,7 +13,7 @@ void Channel::gather(stage_t stage, Scheduler& scheduler)
 {
 	size_t concurrency = scheduler.getDefaultConcurrency();
 	for (size_t i = 0; i < concurrency; i++) {
-		scheduler.schedule(stage+1, new GatherJob(this));
+		scheduler.schedule(stage, new GatherJob(this));
 	}
 }
 

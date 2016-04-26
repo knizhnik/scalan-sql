@@ -154,7 +154,11 @@ PARQUET_LAZY_UNPACK(Class)
 
 #else
 
+#ifdef WITHOUT_GETTERS 
+#define HSTRUCT_FIELD(NAME,TYPE) TYPE NAME;
+#else
 #define HSTRUCT_FIELD(NAME,TYPE) TYPE _##NAME; TYPE NAME() const { return _##NAME; }
+#endif
 
 #define SCHEMA(Class)                           \
 struct Class {                                  \
