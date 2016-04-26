@@ -223,7 +223,7 @@ class Cluster
 	/**
 	 * Wait untillall nodes of the cluster reach barrier
 	 */
-	bool barrier(bool vote = true);
+	bool barrier(bool vote = false);
 
 	/**
 	 * Reset set of cluster: clear channels
@@ -253,7 +253,6 @@ class Cluster
     size_t const split;
     bool   const sharedNothing;
 	bool   const verbose;
-	bool verdict;
     bool shutdown;
     void* userData;
     ThreadPool threadPool;
@@ -276,13 +275,16 @@ class Cluster
 	vector<Node> nodes;
     char** hosts;
 	vector<Channel*> channels;
-	Semaphore semaphore;
+	Semaphore semaphore[2];
 	Mutex mutex;
-	
+    uint64_t nodeMask[2];
+	bool verdict[2];
+    int barrierNo;
+    
 	/**
 	 * Handle BARRIER message
 	 */
-	void sync(bool vote);
+	void sync(size_t node, int reply);
 
     /**
      * Check if sepcified address corresponds to local node

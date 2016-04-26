@@ -1875,7 +1875,8 @@ class TPCHJob : public Job
        delete (CachedData*)cluster.userData;
 #endif
 #endif
-        printf("Node %d finished.\n", (int)cluster.nodeId);
+       sleep(1);
+       printf("Node %d finished.\n", (int)cluster.nodeId);
     }
 };
 

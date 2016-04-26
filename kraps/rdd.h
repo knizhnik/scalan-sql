@@ -889,7 +889,6 @@ class ContinuousMapReduceRDD : public RDD< Pair<K,V> >
     ConcurrentKeyValueMap<K,V,reduce> hashMap;	
     ConcurrentKeyValueMap<K,V,reduce>* finalHashMap;	
 	Rdd* const in;
-	Semaphore semaphore;
 	size_t nActiveReactors;
 	StagedScheduler scheduler;
 };
