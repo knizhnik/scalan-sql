@@ -1855,8 +1855,11 @@ class TPCHJob : public Job
         cluster.userData = (void*)new CachedData();
 #endif
         printf("Elapsed time for loading all data in memory: %d milliseconds\n", (int)(getCurrentTime() - start));
-    
+ 
         execute("Q1",  Q1::query);
+execute("Q1",  Q1::query);
+execute("Q1",  Q1::query);
+
         execute("Q3",  Q3::query);
         execute("Q4",  Q4::query);
         execute("Q5",  Q5::query);
