@@ -481,6 +481,13 @@ struct Char
         return body;
     }
 
+	void operator = (char const* str) 
+    {
+        strncpy(body, str, size);
+    }
+		
+
+
     int compare(Char const& other) const
     {
         return strncmp(body, other.body, size);

@@ -1,3 +1,6 @@
+#define WITHOUT_GETTERS 1
+#undef COLUMNAR_STORE
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,6 +9,7 @@
 #include <sys/types.h>
 #include "tpch.h"
 
+#define strncpy(x,y,z) x = y
 
 int split(char* columns[], char* buf, char sep)
 {
