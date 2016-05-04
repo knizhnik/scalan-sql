@@ -52,6 +52,8 @@ class ColumnarStore
 #else
 
 #define TABLE(x) &((CachedData*)Cluster::instance->userData)->_##x
+#define STREAM(x) new DirRDD<x>(filePath(#x))
+#define BROADCAST(x) new DirRDD<x>(filePath(#x), true)
 
 class CachedData
 {
@@ -325,7 +327,7 @@ namespace Q1
               (continuousMapReduce<LineitemProjection,GroupBy,Aggregate,map,reduce>
                (filter<LineitemProjection,predicate>
 				(project<Lineitem,LineitemProjection,projectLineitem>
-				 (new DirRDD<Lineitem>(filePath("Lineitem")))), 10000));
+				 (STREAM(Lineitem))), 10000));
     }
 
 	template<class Rdd>
@@ -698,6 +700,32 @@ namespace Q5
         auto s14 = project<Pair<name_t,double>,Revenue,revenue>(s13);
         return sort<Revenue,byRevenue>(s14, 25);
     }    
+
+    auto streamConsumer() 
+    { 
+        auto s1 = project<Lineitem,LineitemProjection,projectLineitem>(STREAM(Lineitem));
+        auto s2 = filter<Orders,orderRange>(BROADCAST(Orders));
+        auto s3 = project<Orders,OrdersProjection,projectOrders>(s2);
+        auto s4 = join<LineitemProjection,OrdersProjection,long,lineitemOrderKey,orderKey>(s1, s3, SCALE(1500000));
+        auto s5 = project<Supplier,SupplierProjection,projectSupplier>(BROADCAST(Supplier));
+        auto s6 = join<typeof(s4),SupplierProjection,int,lineitemSupplierKey,supplierKey>(s4, s5, SCALE(10000));
+        auto s7 = project<Customer,CustomerProjection,projectCustomer>(BROADCAST(Customer));
+        auto s8 = join<typeof(s6),CustomerProjection,int,orderCustomerKey,customerKey>(s6, s7, SCALE(150000));
+        auto s9 = filter<typeof(s8),sameNation>(s8);        
+        auto s10 = join<typeof(s9),NationProjection,int,customerNationKey,nationKey>(s9, nationProjection(), 25);
+        auto s11 = join<typeof(s10),RegionProjection,int,nationRegionKey,regionKey>(s10, regionProjection(), 5);
+        auto s12 = filter<typeof(s11),asiaRegion>(s11);
+        return continuousMapReduce<typeof(s12),name_t,double,map,sum>(s12, 25);
+	}
+
+	template<class Rdd>
+    auto continuousView(Rdd* stream) 
+    { 
+        return
+            (sort<Revenue,byRevenue>
+             (project<Pair<name_t,double>,Revenue,revenue>
+			  (stream), 25));
+	}
 }
 namespace Q6
 {
@@ -1836,11 +1864,11 @@ class TPCHJob : public Job
         printf("Node %d started...\n", (int)cluster.nodeId);
 
 #ifdef STREAM_DB
-		auto stream = Q1::streamConsumer();
+		auto stream = Q5::streamConsumer();
         bool exhausted;
 		do {
             exhausted = stream->exhausted();
-			auto result = Q1::continuousView(stream);
+			auto result = Q5::continuousView(stream);
 			append(result, stdout);
 		} while (!exhausted);
 
@@ -1948,6 +1976,9 @@ int main(int argc, char* argv[])
         fprintf(stderr, "Invalid node ID %d\n", nodeId);
         return 1;
     }
+#ifdef STREAM_DB
+	broadcastJoinThreshold = (size_t)-1; // always use broadcast joi 
+#endif
 	if (argc == i + nNodes) {
         TPCHJob test(nodeId, nNodes, &argv[i], nThreads, bufferSize, socketBufferSize, broadcastJoinThreshold, sharedNothing, verbose, split);
         test.run();

@@ -501,8 +501,8 @@ template<class T>
 class DirRDD : public RDD<T>
 {
   public:
-    DirRDD(char* dirPath)
-    : path(dirPath), segno(Cluster::instance->nodeId), step(Cluster::instance->nNodes), split(Cluster::instance->split) {}
+    DirRDD(char* dirPath, bool broadcast = false)
+    : path(dirPath), segno(broadcast ? 0 : Cluster::instance->nodeId), step(broadcast ? 1 : Cluster::instance->nNodes), split(Cluster::instance->split) {}
 
     ~DirRDD() {
         delete[] path;
@@ -1129,11 +1129,15 @@ public:
 
         if (initSize <= cluster->broadcastJoinThreshold) {
             // broadcast inner table
+#ifdef STREAM_DB 
+			RddReactorFactory<HashJoinRDD,HashReactor> hashInner(*this);
+			stage = inner->schedule(scheduler, stage, hashInner);
+#else
 			ChannelReactorFactory< Broadcaster<I> > broadcast(channel);
             stage = inner->schedule< Broadcaster<I> >(scheduler, stage, broadcast);
 
 			channel->gather(++stage, scheduler);		
-
+#endif
 			ChainRddReactorFactory< HashJoinRDD,R,JoinReactor<R> > join(*this, factory);
             stage = outer->schedule(scheduler, ++stage, join);
         } else {
@@ -1154,6 +1158,17 @@ public:
     }
 
   private:
+	class HashReactor : public Reactor<I> {
+        HashJoinRDD& rdd;
+
+	  public:
+		HashReactor(HashJoinRDD& hash) : rdd(hash) {}
+
+        void react(I const& record) {
+			rdd.hashTable.add(record);
+        }
+    };
+
 	class InnerProcessor : public ChannelProcessor { 
 	  public:
 		void process(Buffer* buf, size_t node) { 
