@@ -51,9 +51,12 @@ class ColumnarStore
 
 #else
 
+#ifdef STREAM_DB
+#define TABLE(x) new DirRDD<x>(filePath(#x), false)
+#define STREAM(x) new DirRDD<x>(filePath(#x), true)
+#else
 #define TABLE(x) &((CachedData*)Cluster::instance->userData)->_##x
-#define STREAM(x) new DirRDD<x>(filePath(#x))
-#define BROADCAST(x) new DirRDD<x>(filePath(#x), true)
+#endif
 
 class CachedData
 {
@@ -704,12 +707,12 @@ namespace Q5
     auto streamConsumer() 
     { 
         auto s1 = project<Lineitem,LineitemProjection,projectLineitem>(STREAM(Lineitem));
-        auto s2 = filter<Orders,orderRange>(BROADCAST(Orders));
+        auto s2 = filter<Orders,orderRange>(TABLE(Orders));
         auto s3 = project<Orders,OrdersProjection,projectOrders>(s2);
         auto s4 = join<LineitemProjection,OrdersProjection,long,lineitemOrderKey,orderKey>(s1, s3, SCALE(1500000));
-        auto s5 = project<Supplier,SupplierProjection,projectSupplier>(BROADCAST(Supplier));
+        auto s5 = project<Supplier,SupplierProjection,projectSupplier>(TABLE(Supplier));
         auto s6 = join<typeof(s4),SupplierProjection,int,lineitemSupplierKey,supplierKey>(s4, s5, SCALE(10000));
-        auto s7 = project<Customer,CustomerProjection,projectCustomer>(BROADCAST(Customer));
+        auto s7 = project<Customer,CustomerProjection,projectCustomer>(TABLE(Customer));
         auto s8 = join<typeof(s6),CustomerProjection,int,orderCustomerKey,customerKey>(s6, s7, SCALE(150000));
         auto s9 = filter<typeof(s8),sameNation>(s8);        
         auto s10 = join<typeof(s9),NationProjection,int,customerNationKey,nationKey>(s9, nationProjection(), 25);
@@ -1867,9 +1870,12 @@ class TPCHJob : public Job
 		auto stream = Q5::streamConsumer();
         bool exhausted;
 		do {
+			FILE* csv = fopen("q5.csv", "w");
             exhausted = stream->exhausted();
 			auto result = Q5::continuousView(stream);
-			append(result, stdout);
+			append(result, csv);
+			fclose(csv);
+			system("./csv2html q5.csv q5.html");
 		} while (!exhausted);
 
 		delete stream;
@@ -1976,9 +1982,6 @@ int main(int argc, char* argv[])
         fprintf(stderr, "Invalid node ID %d\n", nodeId);
         return 1;
     }
-#ifdef STREAM_DB
-	broadcastJoinThreshold = (size_t)-1; // always use broadcast joi 
-#endif
 	if (argc == i + nNodes) {
         TPCHJob test(nodeId, nNodes, &argv[i], nThreads, bufferSize, socketBufferSize, broadcastJoinThreshold, sharedNothing, verbose, split);
         test.run();

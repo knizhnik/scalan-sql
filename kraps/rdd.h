@@ -1117,27 +1117,28 @@ public:
 		memset(&null, 0, sizeof null);
 	}
 	
-	~HashJoinRDD() { 
+	~HashJoinRDD() {
 		inner->release();
 		outer->release();
 	}
 
     template<class R>
     stage_t schedule(Scheduler& scheduler, stage_t stage, ReactorFactory<R>& factory) {
+#ifdef STREAM_DB 
+        RddReactorFactory<HashJoinRDD,HashReactor> hashInner(*this);
+        stage = inner->schedule(scheduler, stage, hashInner);
+        ChainRddReactorFactory< HashJoinRDD,R,JoinReactor<R> > join(*this, factory);
+        return outer->schedule(scheduler, stage, join);
+#else
         Cluster* cluster = Cluster::instance.get();
 		Channel* channel = cluster->getChannel(new InnerProcessor(*this));
 
         if (initSize <= cluster->broadcastJoinThreshold) {
             // broadcast inner table
-#ifdef STREAM_DB 
-			RddReactorFactory<HashJoinRDD,HashReactor> hashInner(*this);
-			stage = inner->schedule(scheduler, stage, hashInner);
-#else
 			ChannelReactorFactory< Broadcaster<I> > broadcast(channel);
             stage = inner->schedule< Broadcaster<I> >(scheduler, stage, broadcast);
 
 			channel->gather(++stage, scheduler);		
-#endif
 			ChainRddReactorFactory< HashJoinRDD,R,JoinReactor<R> > join(*this, factory);
             stage = outer->schedule(scheduler, ++stage, join);
         } else {
@@ -1155,6 +1156,7 @@ public:
 			channel->gather(++stage, scheduler);		
         }
         return stage;
+#endif
     }
 
   private:
