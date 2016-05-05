@@ -542,6 +542,7 @@ class DirRDD : public RDD<T>
 
                 while (nRecords-- != 0 && fread(&record, sizeof(T), 1, f) == 1) {
                     reactor->react(record);
+if (step != 1 && nRecords % (1024*1024) ==0) sleep(1);
                 }
                 fclose(f);
                 segno += step;
@@ -1603,9 +1604,9 @@ inline void output(Rdd* in, FILE* out)
 template<class Rdd>
 inline void append(Rdd* rdd, FILE* out)
 {
-    time_t start = getCurrentTime();
+    //time_t start = getCurrentTime();
 	output<typeof(rdd), Rdd>(rdd, out);
-    printf("Elapsed time: %d milliseconds\n", (int)(getCurrentTime() - start));
+    //printf("Elapsed time: %d milliseconds\n", (int)(getCurrentTime() - start));
 }
 
 #endif

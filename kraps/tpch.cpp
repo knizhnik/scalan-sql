@@ -670,7 +670,7 @@ namespace Q5
         double revenue;
 
         friend void print(Revenue const& r, FILE* out) { 
-            printf("%s, %f", r.n_name.cstr(), r.revenue);
+            fprintf(out, "%s, %f", r.n_name.cstr(), r.revenue);
         }
     };
 
@@ -1870,12 +1870,14 @@ class TPCHJob : public Job
 		auto stream = Q5::streamConsumer();
         bool exhausted;
 		do {
-			FILE* csv = fopen("q5.csv", "w");
+			FILE* csv = cluster.isCoordinator() ? fopen("q5.csv", "w") : stdout;
             exhausted = stream->exhausted();
 			auto result = Q5::continuousView(stream);
 			append(result, csv);
-			fclose(csv);
-			system("./csv2html q5.csv q5.html");
+                        if (cluster.isCoordinator()) { 
+			    fclose(csv);
+			    system("./csv2html q5.csv q5.html");
+                        }
 		} while (!exhausted);
 
 		delete stream;

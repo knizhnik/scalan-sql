@@ -18,7 +18,7 @@ int main(int argc, char* argv[])
 			fprintf(out, "%.*s</td><td>", (int)(sep - start), start);
 			start = sep + 1;
 		}
-		fputs("</td></tr>\n", out);
+		fprintf(out, "%.*s</td></tr>\n", (int)strlen(start)-1, start);
 	}
 	fputs("</html>\n", out);
 	return 0;
