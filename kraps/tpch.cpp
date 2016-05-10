@@ -24,6 +24,7 @@ static char* filePath(char const* fileName)
 #ifdef COLUMNAR_STORE
 
 #define TABLE(x) &((ColumnarStore*)Cluster::instance->userData)->_##x
+#define STREAM(x) TABLE(x)
 
 class ColumnarStore
 {
@@ -49,13 +50,15 @@ class ColumnarStore
 
 };
 
+
 #else
 
 #ifdef STREAM_DB
-#define TABLE(x) new DirRDD<x>(filePath(#x), false)
-#define STREAM(x) new DirRDD<x>(filePath(#x), true)
+#define TABLE(x) new DirRDD<x>(filePath(#x), true)
+#define STREAM(x) new DirRDD<x>(filePath(#x), false)
 #else
 #define TABLE(x) &((CachedData*)Cluster::instance->userData)->_##x
+#define STREAM(x) TABLE(x)
 #endif
 
 class CachedData
@@ -1870,13 +1873,13 @@ class TPCHJob : public Job
 		auto stream = Q5::streamConsumer();
         bool exhausted;
 		do {
-			FILE* csv = cluster.isCoordinator() ? fopen("q5.csv", "w") : stdout;
+			FILE* csv = cluster.isCoordinator() ? fopen("q5.tmp", "w") : stdout;
             exhausted = stream->exhausted();
 			auto result = Q5::continuousView(stream);
 			append(result, csv);
                         if (cluster.isCoordinator()) { 
 			    fclose(csv);
-			    system("./csv2html q5.csv q5.html");
+			    rename("q5.tmp", "q5.csv");
                         }
 		} while (!exhausted);
 

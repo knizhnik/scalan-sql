@@ -542,7 +542,7 @@ class DirRDD : public RDD<T>
 
                 while (nRecords-- != 0 && fread(&record, sizeof(T), 1, f) == 1) {
                     reactor->react(record);
-if (step != 1 && nRecords % (1024*1024) ==0) sleep(1);
+//if (step != 1 && nRecords % (1024*1024) ==0) sleep(1);
                 }
                 fclose(f);
                 segno += step;
