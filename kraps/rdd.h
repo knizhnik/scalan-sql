@@ -580,6 +580,79 @@ class FileManager
     }
 };
 
+template<class O, class I,class K,K (*outerKey)(O const&), K (*innerKey)(I const&)>
+class MergeRDD : public RDD< Join<O,I> >
+{
+  public:
+	MergeRDD(char* outerPath, char* inner) : outer(outerPath, false), innerPath(inner) {}
+
+    template<class R>
+    stage_t schedule(Scheduler& scheduler, stage_t stage, ReactorFactory<R>& factory) {
+		ChainRddReactorFactory< MergeRDD,R,MergeReactor<R> > merge(*this, factory);
+        return outer.schedule(scheduler, stage, merge);
+    }
+	
+	~MergeRDD() { 
+		delete innerPath;
+	}
+
+  private:
+    template<class R>
+    class MergeReactor : public Reactor<O> {
+	  public:
+		MergeReactor(MergeRDD& rdd, R* r) : reactor(r), innerPath(rdd.innerPath), innerSegno(0) {
+			if (openSegment()) { 
+				int rc = fread(&innerRecord, sizeof(I), 1, innerFile);
+				assert(rc == 1);
+			}			
+		}
+
+        void react(O const& outerRecord) {
+			if (innerFile != NULL) {
+				while (innerKey(innerRecord) < outerKey(outerRecord)) { 
+					if (fread(&innerRecord, sizeof(I), 1, innerFile) != 1) {
+						fclose(innerFile);
+						if (!openSegment()) { 
+							return;
+						}
+					}
+				}
+				if (innerKey(innerRecord) == outerKey(outerRecord)) { 
+					Join<O,I> join;
+					(O&)join = outerRecord;
+					(I&)join = innerRecord;
+					reactor->react(join);
+				}
+            }
+        }
+
+		~MergeReactor() { 
+			if (innerFile) { 
+				fclose(innerFile);
+			}
+			delete reactor;
+		}
+
+	  private:
+		bool openSegment() { 
+			char path[MAX_PATH_LEN];
+			sprintf(path, "%s/%ld.rdd", innerPath, innerSegno++);
+			innerFile = fopen(path, "rb");
+			return innerFile != NULL;
+		}
+
+        R*     reactor;
+		char*  innerPath;
+		FILE*  innerFile;
+		size_t innerSegno;
+		I      innerRecord;	   
+    };
+
+private:
+	DirRDD<O> outer;
+	char* innerPath;
+};
+
 /**
  * Filter resutls using provided condition
  */

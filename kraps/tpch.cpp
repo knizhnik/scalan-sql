@@ -576,14 +576,16 @@ namespace Q5
 
     struct OrdersProjection
     {
-        long o_orderkey;
-        int  o_custkey;
+        long   o_orderkey;
+        int    o_custkey;
+		date_t o_orderdate;
     };
 
     inline void projectOrders(OrdersProjection& out, Orders const& in)
     {
         out.o_orderkey = in.o_orderkey();
         out.o_custkey = in.o_custkey();
+        out.o_orderdate = in.o_orderdate();
     }            
 
     inline void orderKey(long& key, OrdersProjection const& in)
@@ -706,7 +708,7 @@ namespace Q5
         auto s14 = project<Pair<name_t,double>,Revenue,revenue>(s13);
         return sort<Revenue,byRevenue>(s14, 25);
     }    
-
+#if SIMULATE_LINEIMTE_ORDER_STREAM
     auto streamConsumer() 
     { 
         auto s1 = project<Lineitem,LineitemProjection,projectLineitem>(STREAM(Lineitem));
@@ -723,6 +725,43 @@ namespace Q5
         auto s12 = filter<typeof(s11),asiaRegion>(s11);
         return continuousMapReduce<typeof(s12),name_t,double,map,sum>(s12, 25);
 	}
+#else
+    inline long lineitemMergeKey(Lineitem const& lineitem)
+    {
+        return lineitem.l_orderkey();
+    }
+
+    inline long ordersMergeKey(Orders const& orders)
+    {
+        return orders.o_orderkey();
+    }
+
+    inline bool lineitemOrdersRange(Join<LineitemProjection,OrdersProjection> const& order) 
+    {
+        return order.o_orderdate >= 19960101 && order.o_orderdate < 19970101;
+    }
+
+	void projectLineitemOrders(Join<LineitemProjection,OrdersProjection>& out, Join<Lineitem,Orders> const& in)
+	{
+		projectLineitem((LineitemProjection&)out, (Lineitem const&)in);
+		projectOrders((OrdersProjection&)out, (Orders const&)in);
+	}
+
+    auto streamConsumer() 
+    { 
+        auto s1 = project<Join<Lineitem,Orders>,Join<LineitemProjection,OrdersProjection>,projectLineitemOrders>(new MergeRDD<Lineitem,Orders,long,lineitemMergeKey,ordersMergeKey>(filePath("Lineitem"), filePath("Orders")));
+		auto s4 = filter<typeof(s1),lineitemOrdersRange>(s1);
+        auto s5 = project<Supplier,SupplierProjection,projectSupplier>(TABLE(Supplier));
+        auto s6 = join<typeof(s4),SupplierProjection,int,lineitemSupplierKey,supplierKey>(s4, s5, SCALE(10000));
+        auto s7 = project<Customer,CustomerProjection,projectCustomer>(TABLE(Customer));
+        auto s8 = join<typeof(s6),CustomerProjection,int,orderCustomerKey,customerKey>(s6, s7, SCALE(150000));
+        auto s9 = filter<typeof(s8),sameNation>(s8);        
+        auto s10 = join<typeof(s9),NationProjection,int,customerNationKey,nationKey>(s9, nationProjection(), 25);
+        auto s11 = join<typeof(s10),RegionProjection,int,nationRegionKey,regionKey>(s10, regionProjection(), 5);
+        auto s12 = filter<typeof(s11),asiaRegion>(s11);
+        return continuousMapReduce<typeof(s12),name_t,double,map,sum>(s12, 25);
+	}
+#endif
 
 	template<class Rdd>
     auto continuousView(Rdd* stream) 
