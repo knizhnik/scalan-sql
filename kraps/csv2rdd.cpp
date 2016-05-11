@@ -53,12 +53,16 @@ void closeShards(FILE** files, size_t nShards)
         fclose(files[i]);
     }
 }
+
+#define SHARD(key)  ((hashPartitioning ? (key) : i) % nShards)
+
 int main(int argc, char* argv[]) 
 { 
     char buf[1024];
     char* columns[64];
     FILE* in;
     size_t nShards = argc < 2 ? 1 : atoi(argv[1]);
+	bool hashPartitioning = argc >= 3 && strcmp(argv[2], "hash") == 0;
     FILE** out = new FILE*[nShards];
     size_t i;
 
@@ -86,7 +90,7 @@ int main(int argc, char* argv[])
             strncpy(lineitem.l_shipinstruct, columns[13], sizeof(lineitem.l_shipinstruct));
             strncpy(lineitem.l_shipmode, columns[14], sizeof(lineitem.l_shipmode));
             strncpy(lineitem.l_comment, columns[15], sizeof(lineitem.l_comment));
-            size_t rc = fwrite(&lineitem, sizeof(lineitem), 1, out[i % nShards]);
+            size_t rc = fwrite(&lineitem, sizeof(lineitem), 1, out[SHARD(lineitem.l_orderkey)]);
             assert(rc == 1);
         }
         printf("Load %ld lineitems\n", i);
@@ -111,7 +115,7 @@ int main(int argc, char* argv[])
             strncpy(orders.o_clerk, columns[6], sizeof orders.o_clerk);
             orders.o_shippriority = atoi(columns[7]);
             strncpy(orders.o_comment, columns[8], sizeof(orders.o_comment));
-            size_t rc = fwrite(&orders, sizeof(orders), 1, out[i % nShards]);
+            size_t rc = fwrite(&orders, sizeof(orders), 1, out[SHARD(orders.o_orderkey)]);
             assert(rc == 1);
         }
         printf("Load %ld orders\n", i);
@@ -135,7 +139,7 @@ int main(int argc, char* argv[])
             customer.c_acctball = atof(columns[5]);
             strncpy(customer.c_mktsegment, columns[6], sizeof customer.c_mktsegment);
             strncpy(customer.c_comment, columns[7], sizeof customer.c_comment);
-            size_t rc = fwrite(&customer, sizeof(customer), 1, out[i % nShards]);
+            size_t rc = fwrite(&customer, sizeof(customer), 1, out[SHARD(customer.c_custkey)]);
             assert(rc == 1);
         }
         printf("Load %ld customers\n", i);
@@ -158,7 +162,7 @@ int main(int argc, char* argv[])
             strncpy(supplier.s_phone, columns[4], sizeof supplier.s_phone);
             supplier.s_acctbal = atof(columns[5]);
             strncpy(supplier.s_comment, columns[6], sizeof supplier.s_comment);
-            size_t rc = fwrite(&supplier, sizeof(supplier), 1, out[i % nShards]);
+            size_t rc = fwrite(&supplier, sizeof(supplier), 1, out[SHARD(supplier.s_suppkey)]);
             assert(rc == 1);
         }
         printf("Load %ld suppliers\n", i);
@@ -179,7 +183,7 @@ int main(int argc, char* argv[])
             partsupp.ps_availqty = atoi(columns[2]);
             partsupp.ps_supplycost = atof(columns[3]);
             strncpy(partsupp.ps_comment, columns[4], sizeof partsupp.ps_comment);
-            size_t rc = fwrite(&partsupp, sizeof(partsupp), 1, out[i % nShards]);
+            size_t rc = fwrite(&partsupp, sizeof(partsupp), 1, out[SHARD(((uint64_t)partsupp.ps_partkey << 32) | partsupp.ps_suppkey)]);
             assert(rc == 1);
         }
         printf("Load %ld partsupps\n", i);
@@ -198,7 +202,7 @@ int main(int argc, char* argv[])
             region.r_regionkey = atoi(columns[0]);
             strncpy(region.r_name, columns[1], sizeof region.r_name);
             strncpy(region.r_comment, columns[2], sizeof region.r_comment);
-            size_t rc = fwrite(&region, sizeof(region), 1, out[i % nShards]);
+            size_t rc = fwrite(&region, sizeof(region), 1, out[SHARD(region.r_regionkey)]);
             assert(rc == 1);
         }
         printf("Load %ld regions\n", i);
@@ -218,7 +222,7 @@ int main(int argc, char* argv[])
             strncpy(nation.n_name, columns[1], sizeof nation.n_name);
             nation.n_regionkey = atoi(columns[2]);
             strncpy(nation.n_comment, columns[3], sizeof nation.n_comment);
-            size_t rc = fwrite(&nation, sizeof(nation), 1, out[i % nShards]);
+            size_t rc = fwrite(&nation, sizeof(nation), 1, out[SHARD(nation.n_nationkey)]);
             assert(rc == 1);
         }
         printf("Load %ld nations\n", i);
@@ -243,7 +247,7 @@ int main(int argc, char* argv[])
             strncpy(part.p_container, columns[6], sizeof part.p_container);
             part.p_retailprice = atof(columns[7]);
             strncpy(part.p_comment, columns[8], sizeof part.p_comment);
-            size_t rc = fwrite(&part, sizeof(part), 1, out[i % nShards]);
+            size_t rc = fwrite(&part, sizeof(part), 1, out[SHARD(part.p_partkey)]);
             assert(rc == 1);
         }
         printf("Load %ld parts\n", i);

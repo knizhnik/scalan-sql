@@ -9,6 +9,7 @@ const size_t COORDINATOR = 0;
 const size_t BUF_HDR_SIZE = 16;
 const size_t MAX_PATH_LEN = 1024;
 const size_t MAX_SIZE_T = (size_t)~0;
+const size_t MAX_SHARDS = 64;
 
 class Cluster;
 class ReceiveJob;

@@ -600,52 +600,51 @@ class MergeRDD : public RDD< Join<O,I> >
     template<class R>
     class MergeReactor : public Reactor<O> {
 	  public:
-		MergeReactor(MergeRDD& rdd, R* r) : reactor(r), innerPath(rdd.innerPath), innerSegno(0) {
-			if (openSegment()) { 
-				int rc = fread(&innerRecord, sizeof(I), 1, innerFile);
-				assert(rc == 1);
-			}			
+		MergeReactor(MergeRDD& rdd, R* r) : reactor(r) {
+			size_t i;
+			for (i = 0; i < MAX_SHARDS; i++) { 
+				char path[MAX_PATH_LEN];
+				sprintf(path, "%s/%ld.rdd", rdd.innerPath, i);
+				innerFiles[i] = fopen(path, "rb");
+				if (innerFiles[i] == NULL) { 
+					break;
+				}
+				eof[i] = fread(&innerRecords[i], sizeof(I), 1, innerFiles[i]) != 1;
+			}
+			nShards = i;
 		}
 
         void react(O const& outerRecord) {
-			if (innerFile != NULL) {
-				while (innerKey(innerRecord) < outerKey(outerRecord)) { 
-					if (fread(&innerRecord, sizeof(I), 1, innerFile) != 1) {
-						fclose(innerFile);
-						if (!openSegment()) { 
-							return;
-						}
+			size_t shardNo = outerKey(outerRecord) % nShards;
+			if (!eof[shardNo]) { 
+				while (innerKey(innerRecords[shardNo]) < outerKey(outerRecord)) { 
+					if (fread(&innerRecords[shardNo], sizeof(I), 1, innerFiles[shardNo]) != 1) {
+						eof[shardNo] = true;
+						return;
 					}
 				}
-				if (innerKey(innerRecord) == outerKey(outerRecord)) { 
+				if (innerKey(innerRecords[shardNo]) == outerKey(outerRecord)) { 
 					Join<O,I> join;
 					(O&)join = outerRecord;
-					(I&)join = innerRecord;
+					(I&)join = innerRecords[shardNo];
 					reactor->react(join);
 				}
             }
         }
 
 		~MergeReactor() { 
-			if (innerFile) { 
-				fclose(innerFile);
+			for (size_t i = 0; i < nShards; i++) { 
+				fclose(innerFiles[i]);
 			}
 			delete reactor;
 		}
 
 	  private:
-		bool openSegment() { 
-			char path[MAX_PATH_LEN];
-			sprintf(path, "%s/%ld.rdd", innerPath, innerSegno++);
-			innerFile = fopen(path, "rb");
-			return innerFile != NULL;
-		}
-
         R*     reactor;
-		char*  innerPath;
-		FILE*  innerFile;
-		size_t innerSegno;
-		I      innerRecord;	   
+		size_t nShards;
+		bool   eof[MAX_SHARDS];
+		FILE*  innerFiles[MAX_SHARDS];
+		I      innerRecords[MAX_SHARDS];	   
     };
 
 private:
