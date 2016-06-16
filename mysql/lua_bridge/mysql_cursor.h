@@ -17,7 +17,7 @@ struct MySQLCursor
 	vector<StringBuf> strings;
 	TABLE* table;
 
-	MySQLCursor(TABLE* tab) : fields(nTables), strings(nFields), tab(tab) {}
+	MySQLCursor(TABLE* tab) : fields(nFields), strings(nFields), tab(tab) {}
 };
 
 struct MySQLResultSet
