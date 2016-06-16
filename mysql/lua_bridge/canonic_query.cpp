@@ -62,6 +62,11 @@ string generalize_query(string const& sql, vector<QueryParam>& params)
 			} else { 
 				buf += ch;
 			}
+		} else if (isalpha(ch) || ch == '_') {
+            do { 
+                buf += ch;
+            } while (++i < sql.size() && ((ch = buf[i]) == '_' || isalnum(ch)));
+            i -= 1;
 		} else { 
 			buf += ch;
 		}

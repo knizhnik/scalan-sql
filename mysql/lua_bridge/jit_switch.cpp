@@ -219,18 +219,13 @@ int luaGetSqlTables(lua_State *L) {
     lua_newtable(L);
     int tbl = lua_gettop(L);
 
-    int i;
-    Table *t = NULL;
-    for (i=0; i<pSel->pSrc->nSrc; i++) {
-        Table *t = pSel->pSrc->a[i].pTab;
-        if (!t) {
-            luaL_error(L, "Can't get metainfo for table %s", pSel->pSrc->a[i].zName);
-        }
-        lua_pushstring(L, t->zName);
+    for (int i=0; i < join->table_count; i++) {
+        TABLE *t = join->table[i];
+        lua_pushstring(L, t->s->table_name.str);
         lua_newtable(L);
         int dtab = lua_gettop(L);
         lua_pushstring(L, "id");
-        lua_pushinteger(L, t->tnum);
+        lua_pushinteger(L, i);
         lua_settable(L, dtab);
         lua_pushstring(L, "ptr");
         lua_pushlightuserdata(L, t);
@@ -249,20 +244,14 @@ int luaGetSqlTableColumns(lua_State *L) {
     lua_newtable(L);
     int tbl = lua_gettop(L);
 
-    int i, j;
-    Table *t = NULL;
-    for (i=0; i<pSel->pSrc->nSrc; i++) {
-        const Table *t = pSel->pSrc->a[i].pTab;
-        if (!t) {
-            luaL_error(L, "Can't get metainfo for table %s", pSel->pSrc->a[i].zName);
-        }
-
-        lua_pushstring(L, t->zName);
+    for (int i=0; i < join->table_count; i++) {
+        const TABLE *t = join->table[i];
+        lua_pushstring(L, t->s->table_name.str);
         lua_newtable(L);
         int col_tbl = lua_gettop(L);
-        for (j = 0; j < t->nCol; j++) {
-            const Column *col = &t->aCol[j];
-            lua_pushstring(L, col->zName);
+        Field** field = t->field;
+        for (int j = 0; t->field[j]; j++) {
+            lua_pushstring(L, t->field[j]->field_name);
             lua_pushinteger(L, j);
             lua_settable(L, col_tbl);
         }
