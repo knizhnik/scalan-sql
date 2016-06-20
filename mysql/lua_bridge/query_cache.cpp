@@ -1,9 +1,8 @@
 #include <stdio.h>
-#include <string>
-#include <vector>
 #include <assert.h>
 #include <ctype.h>
 #include <dirent.h>
+
 #include "query_cache.h"
 
 

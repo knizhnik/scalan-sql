@@ -11,12 +11,12 @@ ffi.cdef[[
   typedef long i64;
 
   typedef struct MySQLCursor MySQLCursor;
-  typedef struct JOIN JOIN;
+  typedef struct Query Query;
   typedef struct MySQLResult MySQLResult;
 
   int mysqlNextRecord(MySQLCursor *pCur, int *eof);
 
-  MySQLCursor* mysqlGetCursor(JOIN *join, int k);
+  MySQLCursor* mysqlGetCursor(Engien* query, int k);
 
   typedef struct str_chunk {
     char *ptr;
@@ -41,7 +41,7 @@ ffi.cdef[[
   void flexistring_free(flexistring *fs);
   void flexistring_dbg_print(const flexistring *fs);
 
-  typedef long date_t;
+  typedef unsigned date_t;
 
   void *memcpy(void *dest, const void *src, size_t n);
   int strcmp(const char *s1, const char *s2);
@@ -52,7 +52,7 @@ ffi.cdef[[
   void mysqlGetDate(MySQLCursor* cursor, int columnNo, date_t *place);
   void mysqlGetString(MySQLCursor* cursor, int columnNo, flexistring *fstr);
 
-  MySQLResult* mysqlResultCreate(JOIN* join);
+  MySQLResult* mysqlResultCreate(Query* query);
   void mysqlResultSend(MySQLResult* result);
   void mysqlResultEnd(MySQLResult* result);
 
@@ -122,22 +122,39 @@ ffi.metatype(ffi.typeof("flexistring"), {
                end
 })
 
--- called by JOIN::exec on preparation stage before looping
-function kernel_entry_point(join, kernel_id)
+function kernel_entry_point(query, path)
    jit.flush()
    if os.getenv("JIT_PROFILE") then
       prof.start(os.getenv("JIT_PROFILE"))
    end
 
-   dbg("hello from kernel_entry_point")
-   local ctx = assert(g_ctxs[kernel_id], "kernel context found")
-   local K = assert(ctx.K, 'kernel found')
+   g_kernels = g_kernels or {}
+   local K
+   if not g_kernels[kernel_id] then
+      dbg("compiling kernel ", path)
+      K = loadstring(path, "kernel_code")()
+      g_kernels[kernel_id] = K
+      ffi.cdef(K.ffi_decls)
+   else
+      K = g_kernels[kernel_id]
+   end
 
-   -- opening table iterators
+   local mysql_tables = mysqlGetTables(query)
+   local mysql_columns = mysqlGetTableColumns(queryl)
+   local params = mysqlGetKernelParameters(query)
    local iters = {}
-   for iter_id, cur in pairs(ctx.cursors) do
-      local pCrsr = C.mysqlGetCursor(join, cur.iCsr)
-      local table_info = assert(cur.table_info)
+   -- gen opening cursors
+   for iter_id, k_tbl_data in pairs(K.input_iterators) do
+      local t_name = k_tbl_data.table
+      assert(t_name, "input iterator should supply table name")
+      assert(mysql_tables[k_tbl_data.table], "non-existent table for iterator " .. iter_id)
+      local pTbl = assert(mysql_tables[k_tbl_data.table].ptr, "got Table ptr")
+      local pCrsr = C.mysqlGetCursor(query, iter_id)
+      local table_info = {
+         maxColumn = max_idx,
+         bufferCTypeName = k_tbl_data.buffer_ctype,
+         getColumnId = function(self, c) return mysql_columns[t_name][c] end
+      }
       local iter_data = assert(K.input_iterators[iter_id], "table is known to kernel")
       local tbl_iter = createMySQLTableIter(table_info, pCrsr,
                                             iter_data.unpack_row, iter_data.init_iter_fields)
@@ -146,7 +163,7 @@ function kernel_entry_point(join, kernel_id)
 
    -- preparing result writer object
    local QueryResult = {
-	  result = C.mysqlCreateResult(join)
+	  result = C.mysqlCreateResult(query)
       putInt = function(self, num)
          C.mysqlResultWriteInt(self.result, num)
       end,
@@ -170,12 +187,11 @@ function kernel_entry_point(join, kernel_id)
       end
    }
 
-   local init_res
    if K.kernel_init then
-     init_res = K.kernel_init(ctx.params)
+      K.kernel_init(params)
    end
    -- registering result iterator and result writer for futher calls from iterator_entry_point
-   ctx.result_iter = K.result_iterator(iters, ctx.params, init_res)
+   ctx.result_iter = K.result_iterator(iters)
    ctx.result_builder = QueryResult
 
    if os.getenv("JIT_PROFILE") then
@@ -185,7 +201,7 @@ function kernel_entry_point(join, kernel_id)
    return 0
 end
 
--- called by vdbe loop, returns single result row
+-- called by mysql loop, returns single result row
 function iterator_entry_point(join, kernel_id)
    dbg("hello from iterator_entry_point")
 

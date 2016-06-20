@@ -1,72 +1,14 @@
-#include "jit_switch.h"
-
-#include <select_printer.h>
-#include <select_hasher.h>
-#include <select_comparator.h>
-#include <select_duplicator.h>
-
-#include "tst_queries.h" // TODO: just sample, get rid of
-
-typedef struct {
-    int kernel_id;
-    u32 hash;
-
-    char *kernel_name;
-    char *query_text;
-    char *kernel_code;
-
-    Select *tree;
-} SqlKernel;
-
-#define MAX_KERNELS 1000
-
-static int g_num_kernels = 0;
-static SqlKernel g_kernels[MAX_KERNELS] = {};
-static ParamArray *s_params;
-
-static bool s_jit_enabled = 1;
-static bool s_print_select_tree = 0;
-
-void SetJitEnabled(bool s) {
-    s_jit_enabled = s;
-}
-
-void SetPrintSelectTree(bool s) {
-    s_print_select_tree = s;
-}
-
-void registerKernel(int k_id, const char *kernel_name, const char *query_text, const char *kernel_code) {
-    if (g_num_kernels >= MAX_KERNELS) {
-        JERR(READER, "Can't register kernel, no free slots");
-        return;
-    }
-
-    SqlKernel *kern = &g_kernels[g_num_kernels];
-    memset(kern, 0, sizeof(*kern));
-
-    kern->kernel_id = k_id;
-    kern->kernel_name = strdup(kernel_name);
-    kern->query_text = strdup(query_text); // TODO: currently kernels are not deleted and these strings
-    kern->kernel_code = strdup(kernel_code); // are not freed
-
-    if (!kern->query_text || !kern->kernel_code) {
-        free(kern->kernel_name);
-        free(kern->query_text);
-        free(kern->kernel_code);
-        JERR(READER, "Can't register kernel, no memory");
-    }
-
-    g_num_kernels++;
-}
+#include "mysql_proxy.h"
+#include "engine.h"
 
 // Helpers for lua kernel
 // ones prefixed with 'lua' are standard Lua API calls(needed to pass tables to lua side)
 // ones prefixed with 'lj' are regular C functions designed to be called through LUAJIT FFI
 
 //returns a lua table describing sql tables
-int luaGetSqlTables(lua_State *L) {
+int mysqlGetTables(lua_State *L) {
     assert(lua_islightuserdata(L,1));
-    JOIN* join = (JOIN*)lua_touserdata(L, 1);
+    JOIN* join = ((Query*)lua_touserdata(L, 1))->join;
 
     lua_newtable(L);
     int tbl = lua_gettop(L);
@@ -89,9 +31,10 @@ int luaGetSqlTables(lua_State *L) {
 }
 
 //returns a lua table describing sql table columns
-int luaGetSqlTableColumns(lua_State *L) {
+int mysqlGetTableColumns(lua_State *L) 
+{
     assert(lua_islightuserdata(L,1));
-    Select *pSel = lua_touserdata(L, 1);
+    JOIN* join = ((Query*)lua_touserdata(L, 1))->join;
 
     lua_newtable(L);
     int tbl = lua_gettop(L);
@@ -113,21 +56,24 @@ int luaGetSqlTableColumns(lua_State *L) {
     return 1;
 }
 
-// Reads Parameter table from s_params static structure
-// FIXME, better explicitly pass them, but no spare slots in vdbe fit
-int luaGetKernelParameters(lua_State *L) {
+int mysqlGetKernelParameters(lua_State *L) 
+{
     int i;
     lua_newtable(L);
     int tbl = lua_gettop(L);
-    if (!s_params) return;
-    for (i = 0; i < s_params->num; i++) {
+    Query* query = (Query*)lua_touserdata(L, 1);
+    for (i = 0; i < query->params.size(); i++) {
         lua_pushinteger(L, i+1);
-        switch(s_params->arr[i].kind) {
-        case PAR_INT:
-            lua_pushinteger(L, s_params->arr[i].u.i);
+        switch(query->params[i].type) {
+        case QueryParam::PARAM_INT:
+            lua_pushinteger(L, (int)query->params[i].ival);
+            //lua_pushlong(L, query->params[i].ival);
             break;
-        case PAR_STR:
-            lua_pushstring(L, s_params->arr[i].u.str);
+        case QueryParam::PARAM_REAL:
+            lua_pushdouble(L, query->params[i].ival);
+            break;
+        case QueryParam::PARAM_STRING:
+            lua_pushstring(L, query->params[i].sval.c_str());
             break;
         default:
             assert(false); // unknown paramerer
@@ -135,4 +81,88 @@ int luaGetKernelParameters(lua_State *L) {
         lua_settable(L, tbl);
     }
     return 1;
+}
+
+
+int mysqlNextRecord(MySQLCursor* cursor, int* eof)
+{
+	while (true) { 
+		int rc = table->file->ha_rnd_next(table->record);
+		if (rc == HA_ERR_END_OF_FILE) { 
+			*eof = true;
+			return 0;
+		} else if (rc == HA_ERR_RECORD_DELETED) { 
+			continue;
+		} else { 
+			*eof = false;
+			return rc;
+		}
+	}
+}
+
+void mysqlGetString(MySQLCursor* cursor, int columnNo, flexistring *fstr) 
+{ 
+	cursor->fields[columnNo]->val_str(&cursor->strings[columnsNo].str);
+	fstr->materialized = true;
+	fstr->mem.buf.ptr = &cursor->strings[columnsNo].str[0];
+}
+
+void mysqlGetInt(MySQLCursor* cursor, int columnNo, int* dst) 
+{
+	*dst = (int)cursor->fields[columnNo]->val_int();
+}
+
+void mysqlGetDouble(MySQLCursor* cursor, int columnNo, double* dst) 
+{
+	*dst = cursor->fields[columnNo]->val_real();
+}
+
+void mysqlGetDate(MySQLCursor* cursor, int columnNo, xdate_t* dst) 
+{
+	MYSQL_TIME t;
+	cursor->fields[columnNo]->get_date(&t, TIME_NO_ZERO_DATE);
+	*dst = (date_t)TIME_to_ulonglong(&t);
+}
+
+MySQLCursor* mysqlGetCursor(JOIN *join, int k)
+{
+	return new MySQLCursor(join->table[k]);
+} 
+
+MySQLResult* mysqlResultCreate(JOIN* join)
+{
+	return new MySQLResult(join);
+}
+
+void mysqlResetSend(MySQLResultSet* result)
+{
+	result->join->result->send_data(result->list);
+	result->list.empty();
+}
+
+void mysqlResultWriteInt(MySQLResultSet* result, int val)
+{
+	result->list.push_back(new (result->join->thd->mem_root) Item_int(result->join->thd, val), join->thd->mem_root);}
+
+void mysqlResultWriteDate(MySQLResultSet* result, date_t val)
+{
+	MYSQL_TIME t;
+	unpack_time(&t, val);
+	result->list.push_back(new (result->join->thd->mem_root) Item_date_literal(result->join->thd, &t), join->thd->mem_root);
+}
+
+void mysqlResultWriteDouble(MySQLResultSet* result, double val)
+{
+	result->list.push_back(new (result->join->thd->mem_root) Item_float(result->join->thd, val), join->thd->mem_root);
+}
+
+void mysqlResultWriteString(MySQLResultSet* result, const char *str)
+{
+	result->list.push_back(new (result->join->thd->mem_root) Item_string(result->join->thd, str, strlen(str), system_charset_info), join->thd->mem_root);}
+}
+
+void mysqlResultEnd(MySQLResultSet* result)
+{
+	result->join->send_eof();
+	delete result;
 }
