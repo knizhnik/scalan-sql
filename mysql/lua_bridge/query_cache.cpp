@@ -1,22 +1,11 @@
+#include <stdio.h>
 #include <string>
 #include <vector>
 #include <assert.h>
 #include <ctype.h>
+#include <dirent.h>
+#include "query_cache.h"
 
-using namespace std;
-
-struct QueryParam 
-{
-	enum ParamType {
-		PARAM_INT,
-		PARAM_REAL,
-		PARAM_STRING
-	};
-	ParamType type;
-	long   ival;
-	double rval;
-	string sval;
-};
 
 string generalize_query(string const& sql, vector<QueryParam>& params)
 {
@@ -72,4 +61,41 @@ string generalize_query(string const& sql, vector<QueryParam>& params)
 		}
 	}											
 	return buf;
+}
+
+QueryCache::QueryCache(char const* kernel_dir)
+{
+	DIR* dir = diropen(kernel_dir.c_str());
+	if (dir == NULL) { 
+		perror("diropen");
+		return;
+	}
+	dirent* entry;
+	while ((entry = readdir(dir)) != NULL) { 
+		if (strlen(entry->d_name) > 4 && strcmp(entry->d_name + strlen(entry->d_name) - 4, ".sql") == 0) {
+			string path = kernet_dir + "/" + entry->d_name;
+			FILE* in = fopen(path.c_str(), "r");
+			int ch;
+			string sql;
+			while ((ch = getc(in)) != EOF) { 
+				if (isspace(ch)) { 
+					do { 
+						ch = getc(in);
+					} while (ch != EOF && isspace(ch));
+					ch = ' ';
+				}
+				sql += (char)ch;
+			}
+			hash[sql] = path.replace(path.size() - 3,  3, "lua");
+		}
+	}
+	dirclose(dir);
+
+}
+
+string* QueryCache::find(string const& query)
+{
+	hash.find(query);
+	map<string,string>::iterator it = hash.find(query);
+	return it != hash.end() ? &it->second : NULL;
 }
