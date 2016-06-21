@@ -145,6 +145,25 @@ create table lineitem(
    l_shipmode char(10),
    l_comment char(44));
 
+-- date as string
+create table lineitem(
+   l_orderkey integer,
+   l_partkey integer,
+   l_suppkey integer,
+   l_linenumber integer,
+   l_quantity real,
+   l_extendedprice real,
+   l_discount real,
+   l_tax real,
+   l_returnflag char,
+   l_linestatus char,
+   l_shipdate char(10),
+   l_commitdate char(10),
+   l_receiptdate char(10),
+   l_shipinstruct char(25),
+   l_shipmode char(10),
+   l_comment char(44));
+
 
 PostgreSQL:
 
