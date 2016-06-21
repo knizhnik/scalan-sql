@@ -1,13 +1,11 @@
-extern "C" { 
+#pragma once
 
 #include <luajit-2.1/lua.h>
 #include <luajit-2.1/luajit.h>
 
 #include "helpers.h"
 
-lua_State *InitLua();
+lua_State* LuaInitialize();
 
-int LuaKernelCall(lua_State *L, const char *fun,
-                  void *query, int p1, int p2, int p3);
+int LuaKernelCall(lua_State *L, const char *fun, void *query, char const* code);
 
-}

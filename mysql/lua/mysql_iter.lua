@@ -18,6 +18,7 @@ function createMySQLTableIter(tableInfo, pCrsr, rowParser, initFieldPtrs)
     rowParser = rowParser,
     initFieldPtrs = initFieldPtrs,
     eof = ffi.new("int[1]"),
+    pChunk = ffi.new("str_chunk")
   })
   res:initFieldPtrs(res.rowBuffer)
   return res
@@ -42,6 +43,11 @@ end
 
 function MySQLTableIter:parseString(row, columnId, pBuf)
   C.mysqlGetString(self.pCsr, columnId, pBuf)
+end
+
+function MySQLTableIter:parseByteChunk(row, columnId, pBuf, columnName)
+  C.mysqlGetChunk(self.pCsr, columnId, pBuf)
+  self.rowBuffer[columnName] = pBuf.ptr[0]
 end
 
 function MySQLTableIter:parseDate(row, columnId, pBuf)

@@ -2,14 +2,14 @@
 
 bool Engine::run(JOIN* join)
 {												
-	LEX_STRING* query = thd_query_string(join->thd);
-	if (query != NULL && query->str != NULL) { 
+	LEX_STRING* sql = thd_query_string(join->thd);
+	if (sql != NULL && sql->str != NULL) { 
 		Query query(join);
-		string canonical_sql = generalize_query(query->str, query.params);
-		string* kernel = cache.find(canonical_sql);
-		if (kernel != NULL) { 
-			lua_State* L = InitLua();
-			LuaKernelCall(L, "kernel_entry_point", &query, 0, 0, 0);
+		string canonical_sql = generalize_query(sql->str, query.params);
+		string* code = cache.find(canonical_sql);
+		if (code != NULL) { 
+			lua_State* L = LuaInitialize();
+			LuaKernelCall(L, "kernel_entry_point", &query, code->c_str());
 			return true;
 		}
 	}

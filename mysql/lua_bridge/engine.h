@@ -1,7 +1,5 @@
 #include "sql_select.h"
 #include "query_cache.h"
-#include <vector>
-#include "mysql_cursor.h"
 
 using namespace std;
 
@@ -48,6 +46,6 @@ class Engine
 	QueryCache cache;
 
 public:
-	Engine(string kernel_dir) : cache(kernel_dir) {}
+	Engine(string const& kernel_dir) : cache(kernel_dir) {}
 	bool run(JOIN* join);
 };

@@ -3,6 +3,31 @@ local C = ffi.C
 
 local K = {}
 
+K.query_text = [[
+select
+    l_returnflag,
+     l_linestatus,
+
+    sum(l_quantity) as sum_qty,
+    sum(l_extendedprice) as sum_base_price,
+    sum(l_extendedprice*(1-l_discount)) as sum_disc_price,
+    sum(l_extendedprice*(1-l_discount)*(1+l_tax)) as sum_charge,
+    avg(l_quantity) as avg_qty,
+    avg(l_extendedprice) as avg_price,
+    avg(l_discount) as avg_disc,
+    count(*) as count_order
+from
+    lineitem
+where
+    l_shipdate <= ?
+group by
+    l_returnflag,
+    l_linestatus
+order by
+    l_returnflag,
+    l_linestatus;
+]]
+
 function K.packResponse(response, result)
    response:putString(string.char(result.l_returnflag))
    response:putString(string.char(result.l_linestatus))
@@ -27,13 +52,10 @@ local function initLineitemFields(iter, rowBuffer)
   iter.p_quantity = getFieldPtr("double *", "l_quantity", rowBuffer)
   iter.n_quantity = iter.tableInfo:getColumnId("l_quantity")
 
-  iter.p_shipdate = getFieldPtr("date_t *", "l_shipdate", rowBuffer)
+  iter.p_shipdate = getFieldPtr("flexistring *", "l_shipdate", rowBuffer)
   iter.n_shipdate = iter.tableInfo:getColumnId("l_shipdate")
 
-  iter.p_returnflag = getFieldPtr("flexistring *", "l_returnflag", rowBuffer)
   iter.n_returnflag = iter.tableInfo:getColumnId("l_returnflag")
-
-  iter.p_linestatus = getFieldPtr("flexistring *", "l_linestatus", rowBuffer)
   iter.n_linestatus = iter.tableInfo:getColumnId("l_linestatus")
 end
 
@@ -42,9 +64,9 @@ local function unpackLineitemRow(iter, row)
   iter:parseDouble(row, iter.n_discount, iter.p_discount)
   iter:parseDouble(row, iter.n_tax, iter.p_tax)
   iter:parseDouble(row, iter.n_quantity, iter.p_quantity)
-  iter:parseDate(row,   iter.n_shipdate, iter.p_shipdate)
-  iter:parseString(row, iter.n_returnflag, iter.p_returnflag)
-  iter:parseString(row, iter.n_linestatus, iter.p_linestatus)
+  iter:parseString(row, iter.n_shipdate, iter.p_shipdate)
+  iter:parseByteChunk(row, iter.n_returnflag, iter.pChunk, "l_returnflag")
+  iter:parseByteChunk(row, iter.n_linestatus, iter.pChunk, "l_linestatus")
 end
 
 K.input_iterators = {
@@ -81,9 +103,9 @@ typedef struct
      double l_discount;
      double l_tax;
      double l_quantity;
-     date_t l_shipdate;
-     flexistring l_returnflag;
-     flexistring l_linestatus;
+     flexistring l_shipdate;
+     int8_t   l_returnflag;
+     int8_t   l_linestatus;
 } LineitemProjection;
 
 typedef struct
@@ -96,8 +118,8 @@ typedef struct
     double avg_price;
     double avg_disc;
     size_t count_order;
-    flexistring l_returnflag;
-    flexistring l_linestatus;
+    int8_t   l_returnflag;
+    int8_t   l_linestatus;
 } Result;
 
 typedef struct
@@ -204,7 +226,7 @@ local function order_pred(a1, a2)
 end
 
 function K.kernel_init(params)
-  assert(type(params[4]) == 'integer')
+  assert(type(params[4]) == 'string')
   g_params = params
 
 end

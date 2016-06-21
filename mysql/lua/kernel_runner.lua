@@ -16,7 +16,7 @@ ffi.cdef[[
 
   int mysqlNextRecord(MySQLCursor *pCur, int *eof);
 
-  MySQLCursor* mysqlGetCursor(Engien* query, int k);
+  MySQLCursor* mysqlGetCursor(Query* query, int k);
 
   typedef struct str_chunk {
     char *ptr;
@@ -51,6 +51,7 @@ ffi.cdef[[
   void mysqlGetDouble(MySQLCursor* cursor, int columnNo, double *place);
   void mysqlGetDate(MySQLCursor* cursor, int columnNo, date_t *place);
   void mysqlGetString(MySQLCursor* cursor, int columnNo, flexistring *fstr);
+  void mysqlGetChunk(MySQLCursor* cursor, int columnNo, str_chunk *chunk);
 
   MySQLResult* mysqlResultCreate(Query* query);
   void mysqlResultSend(MySQLResult* result);
@@ -122,7 +123,7 @@ ffi.metatype(ffi.typeof("flexistring"), {
                end
 })
 
-function kernel_entry_point(query, path)
+function kernel_entry_point(query)
    jit.flush()
    if os.getenv("JIT_PROFILE") then
       prof.start(os.getenv("JIT_PROFILE"))
@@ -131,7 +132,7 @@ function kernel_entry_point(query, path)
    g_kernels = g_kernels or {}
    local K
    if not g_kernels[kernel_id] then
-      dbg("compiling kernel ", path)
+      dbg("compiling kernel ", query.code)
       K = loadstring(path, "kernel_code")()
       g_kernels[kernel_id] = K
       ffi.cdef(K.ffi_decls)

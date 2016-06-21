@@ -65,17 +65,18 @@ int mysqlGetKernelParameters(lua_State *L)
     for (i = 0; i < query->params.size(); i++) {
         lua_pushinteger(L, i+1);
         switch(query->params[i].type) {
-        case QueryParam::PARAM_INT:
+          case QueryParam::PARAM_INT:
             lua_pushinteger(L, (int)query->params[i].ival);
-            //lua_pushlong(L, query->params[i].ival);
             break;
-        case QueryParam::PARAM_REAL:
-            lua_pushdouble(L, query->params[i].ival);
+          case QueryParam::PARAM_REAL:
+            // TODO: ???
+            //lua_pushdouble(L, query->params[i].ival);
+            assert(false);
             break;
-        case QueryParam::PARAM_STRING:
+          case QueryParam::PARAM_STRING:
             lua_pushstring(L, query->params[i].sval.c_str());
             break;
-        default:
+          default:
             assert(false); // unknown paramerer
         };
         lua_settable(L, tbl);
@@ -87,7 +88,7 @@ int mysqlGetKernelParameters(lua_State *L)
 int mysqlNextRecord(MySQLCursor* cursor, int* eof)
 {
 	while (true) { 
-		int rc = table->file->ha_rnd_next(table->record);
+		int rc = cursor->table->file->ha_rnd_next(cursor->table->record);
 		if (rc == HA_ERR_END_OF_FILE) { 
 			*eof = true;
 			return 0;
@@ -107,6 +108,13 @@ void mysqlGetString(MySQLCursor* cursor, int columnNo, flexistring *fstr)
 	fstr->mem.buf.ptr = &cursor->strings[columnsNo].str[0];
 }
 
+void mysqlGetChunk(MySQLCursor* cursor, int columnNo, str_chunk* chunk) 
+{ 
+	cursor->fields[columnNo]->val_str(&cursor->strings[columnsNo].str);
+    chunk->ptr = &cursor->strings[columnsNo].str[0];
+    chunk->n = (int)cursor->strings[columnsNo].str.length();
+}
+
 void mysqlGetInt(MySQLCursor* cursor, int columnNo, int* dst) 
 {
 	*dst = (int)cursor->fields[columnNo]->val_int();
@@ -124,14 +132,14 @@ void mysqlGetDate(MySQLCursor* cursor, int columnNo, xdate_t* dst)
 	*dst = (date_t)TIME_to_ulonglong(&t);
 }
 
-MySQLCursor* mysqlGetCursor(JOIN *join, int k)
+MySQLCursor* mysqlGetCursor(Query* query, int k)
 {
-	return new MySQLCursor(join->table[k]);
+	return new MySQLCursor(query->join->table[k]);
 } 
 
-MySQLResult* mysqlResultCreate(JOIN* join)
+MySQLResult* mysqlResultCreate(Query* query)
 {
-	return new MySQLResult(join);
+	return new MySQLResult(query->join);
 }
 
 void mysqlResetSend(MySQLResultSet* result)
@@ -148,17 +156,17 @@ void mysqlResultWriteDate(MySQLResultSet* result, date_t val)
 {
 	MYSQL_TIME t;
 	unpack_time(&t, val);
-	result->list.push_back(new (result->join->thd->mem_root) Item_date_literal(result->join->thd, &t), join->thd->mem_root);
+	result->list.push_back(new (result->join->thd->mem_root) Item_date_literal(result->join->thd, &t), result->join->thd->mem_root);
 }
 
 void mysqlResultWriteDouble(MySQLResultSet* result, double val)
 {
-	result->list.push_back(new (result->join->thd->mem_root) Item_float(result->join->thd, val), join->thd->mem_root);
+	result->list.push_back(new (result->join->thd->mem_root) Item_float(result->join->thd, val), result->join->thd->mem_root);
 }
 
 void mysqlResultWriteString(MySQLResultSet* result, const char *str)
 {
-	result->list.push_back(new (result->join->thd->mem_root) Item_string(result->join->thd, str, strlen(str), system_charset_info), join->thd->mem_root);}
+	result->list.push_back(new (result->join->thd->mem_root) Item_string(result->join->thd, str, strlen(str), system_charset_info), result->join->thd->mem_root);}
 }
 
 void mysqlResultEnd(MySQLResultSet* result)
